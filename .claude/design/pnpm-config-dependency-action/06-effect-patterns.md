@@ -20,14 +20,24 @@ Services are organized in two tiers:
 - `ActionLogger` - Routes `Effect.logDebug` to `core.debug()`, `Effect.logInfo`
   to `core.info()`, etc.
 
-**Token lifecycle:**
+**Token lifecycle (three-phase, 2.0):**
 
-- `GitHubApp` / `GitHubAppLive` - Generate and automatically revoke GitHub App tokens
-  via `withToken(appId, privateKey, callback)`
+- `GitHubApp` / `GitHubAppLive` - GitHub App auth surface. In 2.0 `GitHubAppLive`
+  requires `OctokitAuthAppLive` **and** `HttpClient.HttpClient` (provided via
+  `FetchHttpClient.layer`). Used only by `pre.ts` / `post.ts`.
+- `GitHubToken` namespace - coordinates one installation token across phases:
+  `provision()` (pre, with fail-fast scope check), `client()` (main, builds a
+  `GitHubClient` layer), `dispose()` (post). The envelope is persisted to
+  `ActionState`, which is backed by the runner's `GITHUB_STATE` so a fresh
+  `ActionStateLive` in `main` reads the token `pre` persisted.
+- `ActionState` / `ActionStateLive` - cross-phase state store. Requires
+  `FileSystem.FileSystem`.
 
-**Infrastructure services** (constructed from token inside `GitHubApp.withToken()`):
+**Infrastructure services** (the `GitHubClient` is built from `GitHubToken.client()`):
 
-- `GitHubClient` / `GitHubClientLive(token)` - Octokit wrapper with `rest()` and `repo`
+- `GitHubClient` - Octokit wrapper with `rest()` and `repo`. In 2.0 this is a
+  namespace of layer constructors (`fromEnv` / `fromToken` / `fromApp`), not a
+  bare `GitHubClientLive`; this action builds it via `GitHubToken.client()`.
 - `GitBranch` / `GitBranchLive` - Branch CRUD: `exists`, `create`, `delete`, `getSha`
 - `GitCommit` / `GitCommitLive` - Git Data API: `createTree`, `createCommit`, `updateRef`
 - `CheckRun` / `CheckRunLive` - Check run lifecycle: `withCheckRun`, `complete`
@@ -38,25 +48,31 @@ Services are organized in two tiers:
 
 ### Workspace Services (from workspaces-effect)
 
-Workspace enumeration and publishability come from `workspaces-effect`
-directly — there is no local wrapper service:
+Workspace enumeration comes from `workspaces-effect` directly — there is no
+local wrapper service:
 
 - `WorkspaceDiscovery` / `WorkspaceDiscoveryLive` — Upstream Effect-native
   workspace enumeration. Provides `listPackages(cwd?)` and
   `importerMap(cwd?)`. Requires `WorkspaceRoot` and `NodeContext.layer`
   (FileSystem/Path).
 - `WorkspaceRoot` / `WorkspaceRootLive` — Resolves workspace root from cwd.
-- `PublishabilityDetectorAdaptiveLive` (and the simpler
-  `SilkPublishabilityDetectorLive`) — `workspaces-effect`'s
-  `PublishabilityDetector` Tag overrides; the adaptive variant depends on
-  `ChangesetConfig`.
+- `PublishabilityDetector` Tag (the override default `PublishabilityDetectorLive`
+  with vanilla rules). The action overrides this Tag with the silk/adaptive
+  detector from `@savvy-web/silk-effects` (see below).
+
+### Silk Services (from @savvy-web/silk-effects)
+
+Publishability rules and changeset-config reading live in `@savvy-web/silk-effects`. Both are FileSystem-based (read via `@effect/platform` FileSystem, not `node:fs`). `src/services/publishability.ts` and `src/services/changeset-config.ts` are thin re-export shims over this library.
+
+- `PublishabilityDetectorAdaptiveLive` (and the simpler `SilkPublishabilityDetectorLive`) — `PublishabilityDetector` Tag overrides. The adaptive variant requires `FileSystem | ChangesetConfig` and dispatches per-call on `ChangesetConfig.mode` (silk / vanilla / none).
+- `ChangesetConfig` Tag + `ChangesetConfigLive` — reads `.changeset/config.json`. Requires `ChangesetConfigReader` (→ FileSystem); the shim composes `ChangesetConfigReaderLive` so only a `FileSystem` requirement is left. Exposes `mode`, `versionPrivate`, `ignorePatterns`, `isIgnored` and `fixed`.
 
 ### Domain Services (src/services/)
 
-Each domain service uses `Context.Tag` + `Layer`:
+Each domain service uses `Context.Tag` + `Layer`. `ChangesetConfig` and the
+publishability overrides are no longer local — they are re-exported from
+`@savvy-web/silk-effects` (see above):
 
-- `ChangesetConfig` / `ChangesetConfigLive` — Reads `.changeset/config.json`
-  with per-`workspaceRoot` caching. No upstream deps.
 - `BranchManager` / `BranchManagerLive` - Depends on `GitBranch`, `GitCommit`, `CommandRunner`
 - `PnpmUpgrade` / `PnpmUpgradeLive` - Depends on `CommandRunner`
 - `ConfigDeps` / `ConfigDepsLive` - Depends on `NpmRegistry`
@@ -73,29 +89,24 @@ helpers) export standalone helper functions used directly by `program.ts`.
 
 ### Layer Composition
 
-All layers are wired together in `src/layers/app.ts`:
+All `main`-phase layers are wired together in `src/layers/app.ts`:
 
 ```typescript
-// main.ts wires the auth dependency before invoking Action.run:
-const AppLayer = GitHubAppLive.pipe(Layer.provide(OctokitAuthAppLive));
-Action.run(program, { layer: AppLayer });
+// main.ts — no { layer }; program needs only the core services Action.run injects:
+Action.run(program);
 
-// Inside program (program.ts):
-const ghApp = yield* GitHubApp;
-yield* ghApp.withToken(appId, privateKey, (token) =>
- Effect.gen(function* () {
-  process.env.GITHUB_TOKEN = token; // bridge to GitHubClientLive
-  const appLayer = makeAppLayer(dryRun);
-  yield* innerProgram(inputs, dryRun, headSha, appLayer);
- }),
-);
+// Inside program (program.ts) — no token plumbing:
+const appLayer = makeAppLayer(dryRun);
+yield* innerProgram(inputs, dryRun, headSha, appLayer);
 ```
 
-`makeAppLayer(dryRun)` takes only `dryRun` — the GitHub App token is bridged
-to `GitHubClientLive` via `process.env.GITHUB_TOKEN` rather than passed as a
-Layer parameter. The function separates library layers from domain layers,
-then uses `Layer.provideMerge` to wire domain layers on top of library
-layers.
+`makeAppLayer(dryRun)` takes only `dryRun`. It builds the `GitHubClient` from
+`GitHubToken.client()` (over a self-contained `ActionStateLive`, `Layer.orDie`),
+which reads the token envelope `pre` persisted — there is no
+`process.env.GITHUB_TOKEN` bridge. The function separates library layers from
+domain layers, then uses `Layer.provideMerge` to wire domain layers on top of
+library layers. The `pre` / `post` phases wire their own `GitHubAppLive`-based
+layers (`PreLive` / `PostLive`).
 
 ## Error Handling Strategy
 
@@ -139,18 +150,22 @@ export class PnpmError extends Schema.TaggedError<PnpmError>()("PnpmError", {
 
 ## Resource Management
 
-### Token Lifecycle via GitHubApp.withToken
+### Token Lifecycle via the GitHubToken namespace (three-phase)
 
-Token generation and revocation are handled automatically by the library:
+The installation token spans the three phases. `pre.ts` provisions it (with a
+fail-fast scope check) and persists the envelope to `ActionState`; `main` reads
+it back via `GitHubToken.client()`; `post.ts` revokes it via
+`GitHubToken.dispose()`. `post` always runs — even when `main` fails — and is
+guarded so a revocation failure never fails the workflow.
 
 ```typescript
-const ghApp = yield* GitHubApp;
-yield* ghApp.withToken(appId, privateKey, (token) =>
- Effect.gen(function* () {
-  // Token is valid here
-  // Automatically revoked when this callback completes (success or failure)
- }),
-);
+// pre.ts
+const token = yield* GitHubToken.provision({
+ permissions: { contents: "write", pull_requests: "write", checks: "write" },
+});
+
+// post.ts
+yield* GitHubToken.dispose().pipe(Effect.catchAll(/* never fail the workflow */));
 ```
 
 ### Check Run Lifecycle via CheckRun.withCheckRun
@@ -171,44 +186,36 @@ yield* checkRunService.withCheckRun(name, headSha, (checkRunId) =>
 
 ```typescript
 // program.ts
-import {
- Action, ActionEnvironment, ActionInputError, GitHubApp,
-} from "@savvy-web/github-action-effects";
-import { Config, Duration, Effect, Redacted } from "effect";
+import { Action, ActionEnvironment, ActionInputError } from "@savvy-web/github-action-effects";
+import { Config, Duration, Effect } from "effect";
 import { makeAppLayer } from "./layers/app.js";
 
 export const program = Effect.gen(function* () {
- const appId = yield* Config.string("app-id");
- const appPrivateKey = yield* Config.secret("app-private-key");
  const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
  const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
- // ... other Config.* calls
+ // ... other Config.* calls (no app-client-id / app-private-key here)
 
- const ghApp = yield* GitHubApp;
  const env = yield* ActionEnvironment;
  const headSha = (yield* env.github).sha;
 
- yield* ghApp
-  .withToken(appId, Redacted.value(appPrivateKey), (token) =>
-   Effect.gen(function* () {
-    process.env.GITHUB_TOKEN = token;
-    const appLayer = makeAppLayer(dryRun);
-    yield* innerProgram(inputs, dryRun, headSha, appLayer);
-   }),
-  )
-  .pipe(Effect.timeoutFail({
+ const appLayer = makeAppLayer(dryRun);
+ yield* innerProgram(inputs, dryRun, headSha, appLayer).pipe(
+  Effect.timeoutFail({
    duration: Duration.seconds(timeout),
    onTimeout: () => new Error(`Action timed out after ${timeout} seconds`),
-  }));
+  }),
+ );
 });
 
 // main.ts
-const AppLayer = GitHubAppLive.pipe(Layer.provide(OctokitAuthAppLive));
-Action.run(program, { layer: AppLayer });
+Action.run(program);
 ```
 
 **Testing:** The `program` is exported from `program.ts` for testability.
 Tests import `program` and `runCommands` directly without going through
 `main.ts` (which only contains the module-level `Action.run` call). They
 mock `@savvy-web/github-action-effects` via `vi.mock()` and test the
-exported `program` Effect with mock service layers.
+exported `program` Effect with mock service layers. `pre.ts` and `post.ts`
+have their own suites (`pre.test.ts`, `post.test.ts`) exercising token
+provisioning, duration reporting and `skip-token-revoke` short-circuiting via
+the library's test layers.

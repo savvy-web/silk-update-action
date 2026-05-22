@@ -37,7 +37,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: savvy-web/pnpm-config-dependency-action@main
         with:
-          app-id: ${{ secrets.APP_ID }}
+          app-client-id: ${{ secrets.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           config-dependencies: |
             typescript
@@ -58,8 +58,9 @@ jobs:
 
 | Input | Required | Default | Description |
 | ------- | ---------- | --------- | ------------- |
-| `app-id` | Yes | -- | GitHub App ID for authentication |
+| `app-client-id` | Yes | -- | GitHub App client ID for authentication |
 | `app-private-key` | Yes | -- | GitHub App private key (PEM format) |
+| `skip-token-revoke` | No | `false` | Skip token revocation in the post step (tokens expire after 1 hour anyway) |
 | `branch` | No | `pnpm/config-deps` | Branch name for the update PR |
 | `config-dependencies` | No | `""` | Config dependencies to update (one per line) |
 | `dependencies` | No | `""` | Workspace dependencies to update across `dependencies`, `devDependencies`, and `optionalDependencies` (one per line, supports globs) |
@@ -81,6 +82,15 @@ jobs:
 | `pr-url` | Pull request URL (if created or updated) |
 | `updates-count` | Number of dependencies updated |
 | `has-changes` | Whether any dependencies were updated |
+
+## Authentication
+
+The action authenticates as a GitHub App. It runs in three phases: a pre step provisions a short-lived installation token, the main step performs the dependency updates and the post step revokes the token. Tokens are revoked automatically; set `skip-token-revoke: true` to leave revocation to the natural 1-hour expiry instead.
+
+> [!IMPORTANT]
+> The `app-id` input has been renamed to `app-client-id`. Update your workflow and pass the App's client ID rather than its numeric App ID.
+
+The App needs `contents: write`, `pull-requests: write` and `checks: write` permissions. The pre step verifies these up front, so a failure before any updates run usually means the App is missing one of these scopes.
 
 ## Documentation
 

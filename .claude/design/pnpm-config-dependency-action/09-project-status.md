@@ -4,30 +4,43 @@
 
 ## Current State
 
-**Status:** Effect-first restructure complete. All domain logic wrapped as Effect
-services with `Context.Tag` + `Layer`, plus a few standalone helper modules
-(`PeerSync`, `WorkspaceYaml`). Layer composition centralized in
-`src/layers/app.ts`. The action now uses `workspaces-effect` for workspace and
-publishability concerns; `workspace-tools` is no longer a dependency.
+**Status:** Effect-first restructure complete and migrated to
+`@savvy-web/github-action-effects@^2.0.0` / `workspaces-effect@^1.0.0`. The
+action now runs as three phases (`pre` / `main` / `post`) around the 2.0
+`GitHubToken` token lifecycle. All domain logic is wrapped as Effect services
+with `Context.Tag` + `Layer`, plus a few standalone helper modules (`PeerSync`,
+`WorkspaceYaml`). Layer composition centralized in `src/layers/app.ts`. The
+action uses `workspaces-effect` for workspace enumeration and
+`@savvy-web/silk-effects@^0.4.0` for publishability detection and
+changeset-config reading; `workspace-tools` is no longer a dependency.
 
 **Architecture (current):**
 
-- **Entry split:** `src/main.ts` is a thin module-level wrapper that calls
-  `Action.run`; the testable `program` Effect lives in `src/program.ts` along
-  with `runCommands` and `runInstall` helpers.
+- **Three-phase entry:** `src/pre.ts` provisions the GitHub App installation
+  token (`GitHubToken.provision`, fail-fast scope check) and records a start
+  time; `src/main.ts` is a thin wrapper calling `Action.run(program)` (no
+  `{ layer }`); `src/post.ts` reports total duration and revokes the token
+  (`GitHubToken.dispose`, honoring `skip-token-revoke`). The testable `program`
+  Effect lives in `src/program.ts` along with `runCommands` and `runInstall`
+  helpers. Cross-phase state schemas live in `src/state.ts` (`StartTimeState`,
+  `STATE_KEYS`).
 - **Effect-first services:** Domain services in `src/services/` —
   `BranchManager`, `PnpmUpgrade`, `ConfigDeps`, `RegularDeps`,
-  `Report`, `Lockfile`, `Changesets`, `ChangesetConfig`, plus the
-  `Publishability` Layer overrides for the `PublishabilityDetector` Tag
-  from `workspaces-effect`. Stateless helpers (`PeerSync`, `WorkspaceYaml`)
+  `Report`, `Lockfile`, `Changesets`. `ChangesetConfig` and the
+  `PublishabilityDetector` Tag overrides are no longer local — they come
+  from `@savvy-web/silk-effects`, and `services/changeset-config.ts` /
+  `services/publishability.ts` are thin re-export shims over it. Stateless
+  helpers (`PeerSync`, `WorkspaceYaml`)
   export functions without their own Tag. Workspace enumeration goes
   through `WorkspaceDiscovery` from `workspaces-effect` directly — the
   local `Workspaces` wrapper service was removed (issue #38) when
-  `workspaces-effect@0.5.1` exposed cwd-accepting methods upstream.
+  `workspaces-effect` exposed cwd-accepting methods upstream.
 - **Layer composition:** `makeAppLayer(dryRun)` in `src/layers/app.ts` wires
-  all library and domain layers together. The GitHub App token reaches
-  `GitHubClientLive` via `process.env.GITHUB_TOKEN` set inside
-  `GitHubApp.withToken()` — the layer factory itself does not take a token.
+  all library and domain layers together. The `GitHubClient` is built from
+  `GitHubToken.client()` (over a self-contained `ActionStateLive`,
+  `Layer.orDie`), which reads the token envelope `pre` persisted to
+  `ActionState` — there is no bare `GitHubClientLive` and no
+  `process.env.GITHUB_TOKEN` bridge. The layer factory takes only `dryRun`.
 - **Pure helpers:** `src/utils/` contains stateless functions (`deps.ts`,
   `input.ts`, `markdown.ts`, `pnpm.ts`, `semver.ts`).
 - **No barrel re-exports:** Direct imports everywhere, no `index.ts` files.
@@ -38,9 +51,14 @@ publishability concerns; `workspace-tools` is no longer a dependency.
 
 **Implemented Features:**
 
-- Single-phase execution model orchestrated in `program.ts`.
-- GitHub App token lifecycle via `GitHubApp.withToken()`; token bridged to
-  `GitHubClientLive` through `process.env.GITHUB_TOKEN`.
+- Three-phase (`pre` / `main` / `post`) execution. The dependency-update
+  workflow is orchestrated in `program.ts` (`main` phase); token provisioning
+  and revocation live in `pre.ts` / `post.ts`.
+- GitHub App token lifecycle via the `GitHubToken` namespace: `provision()`
+  (pre, fail-fast scope check) → `client()` (main, builds `GitHubClient`) →
+  `dispose()` (post, honoring `skip-token-revoke`, never fails the workflow).
+  The envelope is persisted to `ActionState` (backed by `GITHUB_STATE`) — no
+  `process.env.GITHUB_TOKEN` bridge.
 - Branch management with delete-and-recreate strategy via `BranchManager`
   service.
 - Config dependency updates via `ConfigDeps` service (uses `NpmRegistry`).
@@ -61,9 +79,10 @@ publishability concerns; `workspace-tools` is no longer a dependency.
   `LockfileChange` per (catalog change, consuming importer, dep section)
   triple, carrying the precise `type` field so downstream consumers can
   trigger off `type` alone.
-- Changeset creation via `Changesets` service. The new gating rules
-  (versionable cascade + trigger/informational classification) replace the
-  previous always-on patch fallback. Empty changesets are no longer written.
+- Changeset creation via `Changesets` service. The gating rules (ignore gate, versionable cascade and trigger/informational classification) replace the previous always-on patch fallback. A changeset-ignored package (per
+  `ChangesetConfig.isIgnored`) is skipped before the publishability check, so
+  the `.changeset/config.json` `ignore` list wins even when
+  `privatePackages.version: true`. Empty changesets are no longer written.
   The third parameter to `Changesets.create` was renamed from `devUpdates`
   to `regularUpdates` and is now routed by `update.type` against the same
   `TRIGGER_TYPES` set already used for lockfile changes
@@ -75,10 +94,12 @@ publishability concerns; `workspace-tools` is no longer a dependency.
   trigger lane and are covered by `changesets.test.ts`
   ("catalog change in peerDependency triggers a changeset",
   "writes a changeset for peer-sync rewrites").
-- `ChangesetConfig` service: silk vs vanilla mode detection plus
-  `versionPrivate` flag for `.changeset/config.json`.
-- `PublishabilityDetector` overrides (`SilkPublishabilityDetectorLive`,
-  `PublishabilityDetectorAdaptiveLive`) over `workspaces-effect`.
+- Changeset-config reading (`mode`, `versionPrivate`, `ignorePatterns`,
+  `isIgnored`, `fixed`) and publishability detection
+  (`SilkPublishabilityDetectorLive`, `PublishabilityDetectorAdaptiveLive`) are
+  provided by `@savvy-web/silk-effects` (FileSystem-based), wired via the
+  `services/changeset-config.ts` and `services/publishability.ts` re-export
+  shims.
 - Verified commits via `BranchManager.commitChanges()` (GitHub API,
   `GitCommit.commitFiles`).
 - PR creation/update via `Report` service (uses `PullRequest` library service).
@@ -102,25 +123,41 @@ publishability concerns; `workspace-tools` is no longer a dependency.
   consume the upstream `WorkspaceDiscovery` Tag directly.
 - `src/services/workspaces.ts` and `src/services/workspaces.test.ts`
   (issue #38) — The local `Workspaces` wrapper service became unnecessary
-  once `workspaces-effect@0.5.1` exposed
+  once `workspaces-effect` exposed
   `WorkspaceDiscovery.listPackages(cwd?)` and
   `WorkspaceDiscovery.importerMap(cwd?)` accepting an optional cwd
   parameter. `RegularDeps`, `PeerSync`, `Lockfile`, and `Changesets` now
   yield `WorkspaceDiscovery` from `workspaces-effect` directly.
+- The single-phase token wiring (2.0 migration): the `GitHubApp.withToken()`
+  wrapper, `app-id` / `app-private-key` parsing in `program.ts`, the
+  `process.env.GITHUB_TOKEN` bridge, and the bare `GitHubClientLive` usage in
+  `makeAppLayer`. Token lifecycle now lives in `pre.ts` / `post.ts` via the
+  `GitHubToken` namespace; `makeAppLayer` builds `GitHubClient` from
+  `GitHubToken.client()`. The `app-id` input was renamed `app-client-id`.
 - The empty-changeset fallback path inside `Changesets.create` (a generic
   patch was previously written when nothing else triggered).
 - The single-section `DEP_FIELDS = ["devDependencies"]` constant in
   `RegularDeps` — replaced by `DEP_SECTIONS` covering
   `dependencies` / `devDependencies` / `optionalDependencies`, each with
   its accurate `type` field.
+- The local silk publishability implementation (`silkDetect`,
+  `resolveTargetAccess`, `readRawPackageJson`, the hand-written
+  `SilkPublishabilityDetectorLive` / `PublishabilityDetectorAdaptiveLive`)
+  and the local `node:fs`-based `ChangesetConfig` (Tag + reader + cache) —
+  adopted from `@savvy-web/silk-effects@^0.4.0` (commit `8980e92`).
+  `services/publishability.ts` and `services/changeset-config.ts` are now
+  thin re-export shims; the library is FileSystem-based, so `makeAppLayer`
+  provides `NodeContext.layer` to both. The unit suites
+  `src/services/changeset-config.test.ts` and
+  `src/services/publishability.test.ts` were deleted (logic now tested in
+  silk-effects); `changeset-emission.int.test.ts` was extended with a
+  `silk-ignored-versionable` fixture as an upstream-drift canary.
 
 **Next Steps:**
 
 1. Integration testing with real GitHub App in CI.
 2. Documentation: user guide and troubleshooting.
-3. Lift `SilkPublishabilityDetectorLive` (and any silk-specific changeset
-   logic) into `@savvy-web/silk-effects` once that package exists.
-4. Support for additional changeset strategies beyond `patch`.
+3. Support for additional changeset strategies beyond `patch`.
 
 ## Rationale
 
@@ -143,9 +180,11 @@ Effect makes this pattern easy with `Effect.all`, `Effect.either`, and custom er
 
 **Resource Management:**
 
-GitHub App tokens and check runs need proper lifecycle management. Effect's resource
-patterns (like `acquireUseRelease` used by `GitHubApp.withToken()` and
-`CheckRun.withCheckRun()`) ensure cleanup always happens.
+GitHub App tokens and check runs need proper lifecycle management. The token is
+provisioned in `pre` and revoked in `post` (which always runs, even when `main`
+fails) via the `GitHubToken` namespace, and check runs use Effect's resource
+pattern (`acquireUseRelease` under `CheckRun.withCheckRun()`) so cleanup always
+happens.
 
 **Testing:**
 
@@ -165,19 +204,24 @@ No need for complex mocking frameworks or module mocking.
 Adding a new service means defining its Tag, implementing its Layer, and adding it
 to `makeAppLayer`.
 
-### Why Single-Phase Instead of Pre/Main/Post?
+### Why Three-Phase (Pre/Main/Post)?
 
-**Simplicity:**
+The 2.0 library is built around the three-phase token lifecycle and steers
+single-token actions to the `GitHubToken` namespace. Adopting it:
 
-- One entry point instead of three
-- No cross-phase state persistence needed
-- Token lifecycle handled by library service
+- **Is idiomatic for 2.0.** `GitHubClientLive` is no longer a bare Layer;
+  `GitHubToken.client()` reads the envelope `pre` persisted, removing the
+  `process.env.GITHUB_TOKEN` bridge entirely.
+- **Revokes the token even when `main` fails.** `post` always runs and disposes
+  the token (guarded so it never fails the workflow). Tokens also expire after
+  1 hour, so `skip-token-revoke` is offered as an escape hatch.
+- **Fails fast on missing scopes.** `pre` passes the required permissions to
+  `GitHubToken.provision`, so a misconfigured App fails in `pre` rather than
+  mid-run in `main`.
 
-**Reliability:**
-
-- `GitHubApp.withToken()` guarantees token revocation via `acquireUseRelease`
-- No state corruption risk between phases
-- Simpler error handling (no partial state from failed phases)
+Cross-phase state persistence is handled by `ActionState` (backed by
+`GITHUB_STATE`); the only consumer-modelled state is `StartTimeState` for
+duration reporting.
 
 ### Why Dedicated Branch Instead of Ephemeral Branches?
 

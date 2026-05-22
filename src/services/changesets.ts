@@ -219,8 +219,17 @@ const createChangesetsImpl = (
 			const entry = perPackage.get(pkg.name);
 			if (!entry || entry.triggerRows.length === 0) continue;
 
-			// Versionable cascade: publishable OR versionPrivate
-			// pkg is already a full WorkspacePackage from getWorkspacePackagesSync v0.5.0
+			// Changeset `ignore` excludes a package from versioning entirely — it
+			// wins even when privatePackages.version is on — so guard before the
+			// (FileSystem-touching) publishability check.
+			const ignored = yield* config.isIgnored(pkg.name, workspaceRoot);
+			if (ignored) {
+				yield* Effect.logDebug(`Skipping changeset for ${pkg.name}: in changeset ignore list`);
+				continue;
+			}
+
+			// Versionable cascade: publishable OR versionPrivate.
+			// pkg is already a full WorkspacePackage from getWorkspacePackagesSync.
 			const targets = yield* detector.detect(pkg, workspaceRoot);
 			const publishable = targets.length > 0;
 			const versionable = publishable || (yield* config.versionPrivate(workspaceRoot));

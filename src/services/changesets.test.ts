@@ -46,12 +46,16 @@ const mockDetector = (versionableNames: ReadonlySet<string>) =>
 	});
 
 /**
- * Mock ChangesetConfig with configurable versionPrivate.
+ * Mock ChangesetConfig with configurable versionPrivate and ignore set.
+ * Matches the @savvy-web/silk-effects ChangesetConfig Tag's five-method shape.
  */
-const mockConfig = (versionPrivate = false) =>
+const mockConfig = (versionPrivate = false, ignored: ReadonlyArray<string> = []) =>
 	Layer.succeed(ChangesetConfig, {
 		mode: () => Effect.succeed("silk" as const),
 		versionPrivate: () => Effect.succeed(versionPrivate),
+		ignorePatterns: () => Effect.succeed(ignored),
+		isIgnored: (name: string) => Effect.succeed(ignored.includes(name)),
+		fixed: () => Effect.succeed([] as ReadonlyArray<ReadonlyArray<string>>),
 	});
 
 const setupChangesetDir = (root: string): void => {
@@ -82,13 +86,14 @@ describe("Changesets — versionable + trigger gating", () => {
 		devUpdates: ReadonlyArray<DependencyUpdateResult> = [],
 		peerUpdates: ReadonlyArray<DependencyUpdateResult> = [],
 		versionPrivate = false,
+		ignored: ReadonlyArray<string> = [],
 	) =>
 		Effect.runPromise(
 			Effect.flatMap(Changesets, (c) => c.create(tmpDir, lockfileChanges, devUpdates, peerUpdates)).pipe(
 				Effect.provide(
 					ChangesetsLive.pipe(
 						Layer.provide(
-							Layer.mergeAll(mockWorkspaces(packages), mockDetector(versionable), mockConfig(versionPrivate)),
+							Layer.mergeAll(mockWorkspaces(packages), mockDetector(versionable), mockConfig(versionPrivate, ignored)),
 						),
 					),
 				),
@@ -241,5 +246,32 @@ describe("Changesets — versionable + trigger gating", () => {
 			true,
 		);
 		expect(result).toHaveLength(1);
+	});
+
+	it("ignored + versionPrivate=true → no changeset written", async () => {
+		setupChangesetDir(tmpDir);
+		const pkgPath = join(tmpDir, "leaf");
+		mkdirSync(pkgPath, { recursive: true });
+		// Not publishable (empty versionable set), versionPrivate=true would
+		// normally version it — but it is in the ignore set, so it must be skipped.
+		await runCreate(
+			[{ name: "@scope/leaf", path: pkgPath }],
+			new Set<string>(),
+			[
+				{
+					type: "dependency",
+					dependency: "lodash",
+					from: "^4.17.20",
+					to: "^4.17.21",
+					affectedPackages: ["@scope/leaf"],
+				},
+			],
+			[],
+			[],
+			true, // versionPrivate
+			["@scope/leaf"], // ignored
+		);
+		const written = readdirSync(join(tmpDir, ".changeset")).filter((f) => f.endsWith(".md") && f !== "config.json");
+		expect(written).toHaveLength(0);
 	});
 });

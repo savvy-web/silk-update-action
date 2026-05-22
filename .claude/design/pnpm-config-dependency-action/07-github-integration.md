@@ -11,26 +11,33 @@
 - No user account dependency
 - Audit trail tied to app
 
-**Flow (handled by `GitHubApp.withToken()`):**
+**Flow (three-phase, coordinated by the `GitHubToken` namespace):**
 
-1. Create JWT signed with app private key
-2. Find installation for the current repository
-3. Exchange JWT for installation token
-4. Use installation token for all API calls
-5. Automatically revoke token when callback completes
+1. **pre** — `GitHubToken.provision({ permissions })` reads the `app-client-id`
+   / `app-private-key` inputs, signs a JWT, finds the installation, exchanges
+   the JWT for an installation token, runs a **fail-fast scope check** against
+   the requested permissions, and persists the token envelope to `ActionState`.
+2. **main** — `GitHubToken.client()` reads the envelope back from `ActionState`
+   and builds the `GitHubClient` layer used by all API calls.
+3. **post** — `GitHubToken.dispose()` revokes the token (unless
+   `skip-token-revoke` is set). `post` always runs, even when `main` fails.
 
-The entire authentication flow is handled by the `GitHubApp` service from
+`ActionState` is backed by the runner's `GITHUB_STATE`, which is process-global
+across the three Node processes, so the token survives the `pre` → `main` →
+`post` process boundaries. The entire flow is handled by
 `@savvy-web/github-action-effects`. No custom auth code exists in this codebase.
 
 ```typescript
-const ghApp = yield* GitHubApp;
-yield* ghApp.withToken(inputs["app-id"], inputs["app-private-key"], (token) =>
- Effect.gen(function* () {
-  // token is a valid installation token
-  const ghClient = GitHubClientLive(token);
-  // ... use services
- }),
-);
+// pre.ts
+const token = yield* GitHubToken.provision({
+ permissions: { contents: "write", pull_requests: "write", checks: "write" },
+});
+
+// main.ts (via makeAppLayer)
+const githubClient = GitHubToken.client().pipe(Layer.provide(actionState), Layer.orDie);
+
+// post.ts
+yield* GitHubToken.dispose();
 ```
 
 ## Branch Management

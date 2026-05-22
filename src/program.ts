@@ -16,9 +16,8 @@ import {
 	ActionOutputs,
 	CheckRun,
 	CommandRunner,
-	GitHubApp,
 } from "@savvy-web/github-action-effects";
-import { Config, Duration, Effect, LogLevel, Logger, Redacted } from "effect";
+import { Config, Duration, Effect, LogLevel, Logger } from "effect";
 import { makeAppLayer } from "./layers/app.js";
 import type { ChangesetFile, DependencyUpdateResult, PullRequestResult } from "./schemas/domain.js";
 import { BranchManager } from "./services/branch.js";
@@ -99,18 +98,18 @@ export const runInstall = (): Effect.Effect<void, CommandRunnerError, CommandRun
 	});
 
 /**
- * Main action program.
+ * Main action program (the `main` phase).
  *
- * Single-phase entry point that handles token lifecycle, check runs,
- * and the full dependency update workflow.
+ * Orchestrates the full dependency-update workflow: input parsing, the check
+ * run, and the update steps. The GitHub App token lifecycle lives in the
+ * pre/post phases — provisioned via `GitHubToken.provision` in `pre.ts` and
+ * read here through the app layer's `GitHubToken.client()`.
  */
 /* v8 ignore start -- orchestration code tested via integration */
 export const program = Effect.gen(function* () {
 	// Parse inputs via Config API
 	yield* Effect.logInfo("Starting pnpm config dependency action");
 
-	const appId = yield* Config.string("app-id");
-	const appPrivateKey = yield* Config.secret("app-private-key");
 	const branch = yield* Config.string("branch").pipe(Config.withDefault("pnpm/config-deps"));
 	const rawConfigDeps = yield* Config.string("config-dependencies").pipe(Config.withDefault(""));
 	const configDependencies = parseMultiValueInput(rawConfigDeps);
@@ -186,36 +185,31 @@ export const program = Effect.gen(function* () {
 		yield* Effect.logWarning("Running in dry-run mode - will detect changes but skip commit/push/PR");
 	}
 
-	// Generate GitHub App token and run the main workflow
-	const ghApp = yield* GitHubApp;
+	// Read head SHA and run the main workflow. The GitHub App installation token
+	// was provisioned in the pre phase and is read back inside the app layer via
+	// GitHubToken.client(); no token plumbing happens here.
 	const env = yield* ActionEnvironment;
 	const github = yield* env.github;
 	const headSha = github.sha;
 
-	yield* ghApp
-		.withToken(appId, Redacted.value(appPrivateKey), (token) =>
-			Effect.gen(function* () {
-				// Bridge GitHub App token to GitHubClientLive (reads from env)
-				process.env.GITHUB_TOKEN = token;
-				const appLayer = makeAppLayer(dryRun);
-				yield* innerProgram(
-					{
-						branch,
-						"config-dependencies": configDependencies,
-						dependencies,
-						"peer-lock": peerLock,
-						"peer-minor": peerMinor,
-						"update-pnpm": updatePnpm,
-						changesets,
-						"auto-merge": autoMerge as "" | "merge" | "squash" | "rebase",
-						run,
-					},
-					dryRun,
-					headSha,
-					appLayer,
-				).pipe(Logger.withMinimumLogLevel(effectLogLevel));
-			}),
-		)
+	const appLayer = makeAppLayer(dryRun);
+	yield* innerProgram(
+		{
+			branch,
+			"config-dependencies": configDependencies,
+			dependencies,
+			"peer-lock": peerLock,
+			"peer-minor": peerMinor,
+			"update-pnpm": updatePnpm,
+			changesets,
+			"auto-merge": autoMerge as "" | "merge" | "squash" | "rebase",
+			run,
+		},
+		dryRun,
+		headSha,
+		appLayer,
+	)
+		.pipe(Logger.withMinimumLogLevel(effectLogLevel))
 		.pipe(
 			Effect.timeoutFail({
 				duration: Duration.seconds(timeout),

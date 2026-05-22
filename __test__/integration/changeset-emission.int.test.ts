@@ -28,14 +28,16 @@ const discoveryLayer = WorkspaceDiscoveryLive.pipe(
 	Layer.provide(Layer.merge(WorkspaceRootLive.pipe(Layer.provide(platform)), platform)),
 );
 
-// Combined layer for Changesets and its dependencies
+// Combined layer for Changesets and its dependencies. The silk-effects
+// ChangesetConfig/detector layers are FileSystem-backed, so provide `platform`
+// (NodeContext.layer) into the merged dependency layer.
 const fullLayer = ChangesetsLive.pipe(
 	Layer.provide(
 		Layer.mergeAll(
 			discoveryLayer,
 			PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(ChangesetConfigLive)),
 			ChangesetConfigLive,
-		),
+		).pipe(Layer.provideMerge(platform)),
 	),
 );
 
@@ -166,5 +168,12 @@ describe("changeset emission integration", () => {
 	it("config-dep-no-catalog-effect: no real lockfile change writes nothing", async () => {
 		const { emitted } = await runScenario("config-dep-no-catalog-effect");
 		expect(emitted).toHaveLength(0);
+	});
+
+	it("silk-ignored-versionable: ignored leaf is gated out despite versionPrivate; sibling still emits", async () => {
+		const { emitted } = await runScenario("silk-ignored-versionable");
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].content).toContain('"@scope/kept-leaf": patch');
+		expect(emitted.some((e) => e.content.includes("@scope/ignored-leaf"))).toBe(false);
 	});
 });
