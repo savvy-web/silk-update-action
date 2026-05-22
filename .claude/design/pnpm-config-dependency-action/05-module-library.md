@@ -13,7 +13,7 @@ and/or the new `workspaces-effect` package.
 
 There is no local `Workspaces` wrapper service. Domain services consume the
 upstream `WorkspaceDiscovery` Tag from `workspaces-effect` directly. The
-local wrapper was removed (issue #38) once `workspaces-effect@0.5.1` exposed
+local wrapper was removed (issue #38) once `workspaces-effect` exposed
 `WorkspaceDiscovery.listPackages(cwd?)` and
 `WorkspaceDiscovery.importerMap(cwd?)` accepting an optional cwd parameter.
 
@@ -37,54 +37,17 @@ importer ids into package names.
 (FileSystem/Path). Both are wired in `makeAppLayer`; integration tests build
 their own `discoveryLayer` from `NodeContext.layer` directly.
 
-### src/services/changeset-config.ts - ChangesetConfig
+### src/services/changeset-config.ts - ChangesetConfig (re-export shim)
 
-Reads `.changeset/config.json` from the workspace root (with per-call,
-layer-scoped caching) and exposes:
+This module is a thin re-export shim over `@savvy-web/silk-effects`. The local `node:fs` reader, the layer-scoped cache and the local `ChangesetConfig` Tag were deleted — that logic now lives in the shared library. The shim re-exports the library `ChangesetConfig` Tag and `ChangesetMode`, and exports `ChangesetConfigLive = LibChangesetConfigLive.pipe(Layer.provide(ChangesetConfigReaderLive))` so consumers only need to satisfy a platform `FileSystem` (the library reads `.changeset/config.json` via `@effect/platform` FileSystem, not `node:fs`).
 
-- `mode(workspaceRoot)` — returns `"silk" | "vanilla" | "none"`. `silk` when
-  the configured `changelog` value (or its first array element) starts with
-  `@savvy-web/changesets`; `vanilla` when changesets is configured otherwise;
-  `none` when `.changeset/config.json` does not exist.
-- `versionPrivate(workspaceRoot)` — returns whether
-  `privatePackages.version === true`.
+The library `ChangesetConfig` service exposes five methods — `mode`, `versionPrivate`, `ignorePatterns`, `isIgnored` and `fixed` — versus the two (`mode`, `versionPrivate`) the local implementation had. `isIgnored(name, root)` backs the new ignore gate in `Changesets.create` (see below). See `@savvy-web/silk-effects` for mode-detection and caching semantics.
 
-The cache is layer-scoped (each `ChangesetConfigLive` instance gets its own
-`Map`), so tests that provide a fresh layer per case don't share state. In
-production, each `.changeset/config.json` is read at most once per
-`workspaceRoot` for the action's lifetime.
+### src/services/publishability.ts - PublishabilityDetector overrides (re-export shim)
 
-### src/services/publishability.ts - PublishabilityDetector overrides
+This module is a thin re-export shim: `export { PublishabilityDetectorAdaptiveLive, SilkPublishabilityDetectorLive } from "@savvy-web/silk-effects"`. The hand-written silk rules (`silkDetect`, `resolveTargetAccess`, `readRawPackageJson`) and the local adaptive dispatcher were deleted; they now live in the shared library. Both layers override `workspaces-effect`'s `PublishabilityDetector` Tag and are FileSystem-based: `PublishabilityDetectorAdaptiveLive` requires `FileSystem | ChangesetConfig` and dispatches per-call on `ChangesetConfig.mode` (silk / vanilla / none). `makeAppLayer` wires the adaptive variant. See `@savvy-web/silk-effects` for the silk rule details.
 
-Provides two `Layer` overrides for `workspaces-effect`'s
-`PublishabilityDetector` Tag:
-
-- **`SilkPublishabilityDetectorLive`** — applies silk rules
-  (`publishConfig.targets`, shorthand expansion, access inheritance):
-  - `pkg.private !== true` → publishable (one default target).
-  - `pkg.private === true` + `publishConfig.access` set + no targets →
-    publishable (one target).
-  - `pkg.private === true` + `publishConfig.targets` non-empty → resolve each
-    target; emit one `PublishTarget` per target that resolves to
-    `public`/`restricted` access. Strings inherit parent access; objects may
-    declare their own.
-  - Otherwise → not publishable (`[]`).
-  This is the chunk that will lift cleanly to `@savvy-web/silk-effects` later.
-
-- **`PublishabilityDetectorAdaptiveLive`** — reads `ChangesetConfig.mode`
-  per-call and dispatches:
-  - `"silk"`    → silk rules (above).
-  - `"vanilla"` → library default (`PublishabilityDetectorLive` from
-    `workspaces-effect`).
-  - `"none"`    → always returns `[]`.
-  Implemented with `Layer.effect` and per-call dispatch via a yielded
-  `ChangesetConfig` rather than `Layer.unwrapEffect`, so the mode is
-  re-checked on every `detect` call. `makeAppLayer` wires the adaptive
-  variant.
-
-The versionable cascade (publishable OR `versionPrivate`) lives inline in
-`Changesets.create` — it is silk-changesets-specific and short enough not to
-need its own service.
+The versionable cascade (publishable OR `versionPrivate`) plus the ignore gate live inline in `Changesets.create` — they are silk-changesets-specific and short enough not to need their own service.
 
 ### src/services/branch.ts - BranchManager
 
@@ -331,13 +294,19 @@ RegularDeps scan.
     "added" action and uses `update.type` directly when no override is
     provided.
 - A changeset is emitted for a package only when it has at least one
-  trigger row AND the package is **versionable**:
-  `versionable = publishable || versionPrivate`, where:
-  - `publishable` = `PublishabilityDetector.detect(...)` returns at least
-    one target (silk rules, vanilla rules, or none-mode noop, depending on
-    `ChangesetConfig.mode`).
-  - `versionPrivate` = `ChangesetConfig.versionPrivate(workspaceRoot)`
-    (i.e. `.changeset/config.json` has `privatePackages.version: true`).
+  trigger row, the package is **not changeset-ignored**, AND the package is
+  **versionable**:
+  - **Ignore gate:** `ChangesetConfig.isIgnored(pkg.name, workspaceRoot)` is
+    checked first (before the publishability check). A package listed in
+    `.changeset/config.json`'s `ignore` array is skipped entirely — the
+    ignore list wins even when `privatePackages.version: true`, so an ignored
+    package is never versioned.
+  - `versionable = publishable || versionPrivate`, where:
+    - `publishable` = `PublishabilityDetector.detect(...)` returns at least
+      one target (silk rules, vanilla rules, or none-mode noop, depending on
+      `ChangesetConfig.mode`).
+    - `versionPrivate` = `ChangesetConfig.versionPrivate(workspaceRoot)`
+      (i.e. `.changeset/config.json` has `privatePackages.version: true`).
 - Empty changesets are no longer written. The previous fallback path that
   wrote a generic patch on every run has been deleted.
 - Each emitted changeset's body is a single Markdown table covering both
@@ -372,16 +341,24 @@ as `PullRequestError` instead of returning a sentinel `{ number: 0, url: "" }`.
 ## Layer Composition (src/layers/app.ts)
 
 `makeAppLayer(dryRun)` wires all library and domain layers. Its only argument
-is `dryRun`; the GitHub App token is bridged to `GitHubClientLive` via
-`process.env.GITHUB_TOKEN` upstream in `program.ts`, not as a Layer parameter.
+is `dryRun`. The `GitHubClient` layer is built from `GitHubToken.client()`,
+which reads the installation-token envelope `pre` persisted to `ActionState` —
+there is no bare `GitHubClientLive` and no `process.env.GITHUB_TOKEN` bridge.
+`ActionState` is provided locally (backed by `NodeContext.layer`'s FileSystem)
+so the layer is self-contained, and `Layer.orDie` turns a missing/unreadable
+token into a fatal defect, keeping the resulting `githubClient` at `R = never`
+for the `withCheckRun` callback.
 
 ```typescript
 export const makeAppLayer = (dryRun: boolean) => {
- const ghGraphql = GitHubGraphQLLive.pipe(Layer.provide(GitHubClientLive));
+ const actionState = ActionStateLive.pipe(Layer.provide(NodeContext.layer));
+ const githubClient = GitHubToken.client().pipe(Layer.provide(actionState), Layer.orDie);
+
+ const ghGraphql = GitHubGraphQLLive.pipe(Layer.provide(githubClient));
  const npmRegistry = NpmRegistryLive.pipe(Layer.provide(CommandRunnerLive));
- const gitBranch = GitBranchLive.pipe(Layer.provide(GitHubClientLive));
- const gitCommit = GitCommitLive.pipe(Layer.provide(GitHubClientLive));
- const prLayer = PullRequestLive.pipe(Layer.provide(Layer.merge(GitHubClientLive, ghGraphql)));
+ const gitBranch = GitBranchLive.pipe(Layer.provide(githubClient));
+ const gitCommit = GitCommitLive.pipe(Layer.provide(githubClient));
+ const prLayer = PullRequestLive.pipe(Layer.provide(Layer.merge(githubClient, ghGraphql)));
 
  // Platform layer (FileSystem, Path) for workspaces-effect's WorkspaceDiscovery.
  const platform = NodeContext.layer;
@@ -390,14 +367,19 @@ export const makeAppLayer = (dryRun: boolean) => {
   Layer.provide(Layer.merge(workspaceRoot, platform)),
  );
 
- const changesetConfig = ChangesetConfigLive;
+ // ChangesetConfigLive (silk-effects, FileSystem-backed via its reader) and
+ // PublishabilityDetectorAdaptiveLive both require a platform FileSystem;
+ // provide the existing `platform` (NodeContext.layer) to both.
+ const changesetConfig = ChangesetConfigLive.pipe(Layer.provide(platform));
  // PublishabilityDetectorAdaptiveLive overrides PublishabilityDetector and
  // reads ChangesetConfig.mode per-call to dispatch to silk/vanilla/noop.
- const publishabilityDetector = PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(changesetConfig));
+ const publishabilityDetector = PublishabilityDetectorAdaptiveLive.pipe(
+  Layer.provide(Layer.merge(changesetConfig, platform)),
+ );
 
  const libraryLayers = Layer.mergeAll(
-  GitHubClientLive, gitBranch, gitCommit,
-  CheckRunLive.pipe(Layer.provide(GitHubClientLive)),
+  githubClient, gitBranch, gitCommit,
+  CheckRunLive.pipe(Layer.provide(githubClient)),
   prLayer, npmRegistry, CommandRunnerLive, DryRunLive(dryRun),
  );
 
@@ -422,6 +404,8 @@ export const makeAppLayer = (dryRun: boolean) => {
 satisfies their FileSystem/Path requirements. There is no local `Workspaces`
 service Tag — domain services consume the upstream `WorkspaceDiscovery` Tag
 directly.
+
+`ChangesetConfigLive` and `PublishabilityDetectorAdaptiveLive` (both re-exported from `@savvy-web/silk-effects`) are FileSystem-based — they read `.changeset/config.json` and package manifests via `@effect/platform` FileSystem rather than `node:fs`, so the same `platform` (`NodeContext.layer`) is provided to both. `ChangesetConfigLive` carries its own `ChangesetConfigReaderLive` (composed in the shim), leaving only the FileSystem requirement for `makeAppLayer` to satisfy.
 
 ## Pure Helpers (src/utils/)
 

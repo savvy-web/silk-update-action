@@ -3,8 +3,8 @@ status: current
 module: pnpm-config-dependency-action
 category: architecture
 created: 2026-02-06
-updated: 2026-04-28
-last-synced: 2026-04-28
+updated: 2026-05-22
+last-synced: 2026-05-22
 completeness: 95
 related: []
 dependencies: []
@@ -29,12 +29,12 @@ dependency ranges across workspace packages to keep them consistent.
 - Syncs peer dependency ranges across workspace packages (`syncPeers` helper) with configurable lock/minor strategies
 - Supports glob patterns for dependency matching
 - Runs custom commands after updates (linting, testing, building)
-- Integrates with Changesets for versioning, with publishability- and
+- Integrates with Changesets for versioning, with ignore-, publishability- and
   `versionPrivate`-aware gating via the `WorkspaceDiscovery` service (from
-  `workspaces-effect`), `ChangesetConfig`, and `Publishability` Layer
-  overrides
+  `workspaces-effect`) and the `ChangesetConfig` + `PublishabilityDetector`
+  override services (from `@savvy-web/silk-effects`)
 - Reconciles the lockfile via `pnpm install --frozen-lockfile=false --fix-lockfile`
-- Uses GitHub App authentication via `GitHubApp.withToken()` for secure, short-lived tokens
+- Uses GitHub App authentication across a three-phase (pre/main/post) token lifecycle coordinated by the `GitHubToken` namespace for secure, short-lived tokens
 - Manages dedicated update branch with delete-and-recreate strategy
 - Creates verified/signed commits via GitHub API (`GitCommit.commitFiles`)
 - Creates detailed PR summaries with dependency changes
@@ -64,9 +64,9 @@ Load sections based on what you are working on. Do not load all sections at once
 | Work Context | Section | File |
 | --- | --- | --- |
 | Runtime deps, key packages | Dependencies | @./01-dependencies.md |
-| Module structure, data flow, single-phase execution | Architecture | @./02-architecture.md |
+| Module structure, data flow, pre/main/post execution | Architecture | @./02-architecture.md |
 | Core interfaces, Effect error types | Type Definitions | @./03-type-definitions.md |
-| main.ts + program.ts entry points | Entry Point | @./04-module-entry-points.md |
+| pre/main/post + program.ts entry points | Entry Points | @./04-module-entry-points.md |
 | Domain services, layer composition, pure helpers | Services & Utilities | @./05-module-library.md |
 | Service architecture, error handling, retry, resource mgmt | Effect Patterns | @./06-effect-patterns.md |
 | Auth, branch mgmt, check runs, PR management | GitHub Integration | @./07-github-integration.md |

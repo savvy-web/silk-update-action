@@ -4,12 +4,16 @@ branding:
   icon: package
   color: yellow
 inputs:
-  app-id:
-    description: GitHub App ID for authentication
+  app-client-id:
+    description: GitHub App client ID for authentication
     required: true
   app-private-key:
     description: GitHub App private key (PEM format)
     required: true
+  skip-token-revoke:
+    description: Skip token revocation in the post step (tokens expire after 1 hour anyway)
+    required: false
+    default: "false"
   branch:
     description: Branch name for dependency update PR
     required: false
@@ -24,8 +28,10 @@ inputs:
     default: ""
   dependencies:
     description: |
-      Dev dependencies to update (one per line, supports globs).
-      Matches against devDependencies in all workspace package.json files.
+      Dependencies to update (one per line, supports globs).
+      Matches against dependencies, devDependencies, and optionalDependencies
+      in all workspace package.json files (peerDependencies are managed via
+      peer-lock / peer-minor).
       Example:
         vitest
         @savvy-web/*
@@ -102,4 +108,6 @@ outputs:
     description: Whether any dependencies were updated
 runs:
   using: node24
+  pre: dist/pre.js
   main: dist/main.js
+  post: dist/post.js

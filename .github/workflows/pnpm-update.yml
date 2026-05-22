@@ -44,7 +44,7 @@ jobs:
         id: update
         uses: savvy-web/pnpm-config-dependency-action@main
         with:
-          app-id: ${{ secrets.APP_ID }}
+          app-client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           branch: ${{ inputs.branch || 'pnpm/config-deps' }}
           dry-run: ${{ inputs.dry-run || false }}
@@ -54,6 +54,9 @@ jobs:
             @savvy-web/pnpm-plugin-silk
           dependencies: |
             @savvy-web/*
+            semver-effect
+            workspaces-effect
+            yaml
           run: |
             pnpm savvy-commit init
             pnpm savvy-lint init

@@ -6,10 +6,15 @@
 
 ```text
 src/
-├── main.ts                # Module-level entry point — calls `Action.run`
+├── pre.ts                 # Pre-phase entry — provisions token via GitHubToken.provision
+├── pre.test.ts
+├── main.ts                # Main-phase entry — calls `Action.run(program)`
 ├── main.test.ts
 ├── main.effect.test.ts
+├── post.ts                # Post-phase entry — reports duration, GitHubToken.dispose
+├── post.test.ts
 ├── program.ts             # Effect program + `runCommands` + `runInstall` helpers
+├── state.ts               # StartTimeState (Schema.Class) + STATE_KEYS cross-phase state
 ├── errors/
 │   ├── errors.ts          # Schema.TaggedError definitions
 │   └── errors.test.ts
@@ -21,9 +26,8 @@ src/
 ├── services/
 │   ├── branch.ts          # BranchManager service (Context.Tag)
 │   ├── branch.test.ts
-│   ├── changeset-config.ts # ChangesetConfig service (mode + versionPrivate)
-│   ├── changeset-config.test.ts
-│   ├── changesets.ts      # Changesets service (versionable + trigger gating)
+│   ├── changeset-config.ts # re-export shim → @savvy-web/silk-effects ChangesetConfig
+│   ├── changesets.ts      # Changesets service (versionable + ignore + trigger gating)
 │   ├── changesets.test.ts
 │   ├── config-deps.ts     # ConfigDeps service
 │   ├── config-deps.test.ts
@@ -33,8 +37,7 @@ src/
 │   ├── peer-sync.test.ts
 │   ├── pnpm-upgrade.ts    # PnpmUpgrade service
 │   ├── pnpm-upgrade.test.ts
-│   ├── publishability.ts  # PublishabilityDetector Layer overrides (silk + adaptive)
-│   ├── publishability.test.ts
+│   ├── publishability.ts  # re-export shim → @savvy-web/silk-effects detector overrides
 │   ├── regular-deps.ts    # RegularDeps service
 │   ├── regular-deps.test.ts
 │   ├── report.ts          # Report service (PR, summary, commit msg)
@@ -53,11 +56,14 @@ src/
 
 **Key architectural notes:**
 
-- **Entry split:** `main.ts` is a thin module-level wrapper that calls
-  `Action.run(program, { layer: AppLayer })` where
-  `AppLayer = GitHubAppLive.pipe(Layer.provide(OctokitAuthAppLive))`. The
-  testable Effect program lives in `program.ts` so tests can import it
-  without triggering module-level execution.
+- **Three-phase entry:** the action runs as `pre` / `main` / `post`. `pre.ts`
+  provisions the GitHub App installation token; `main.ts` is a thin wrapper
+  that calls `Action.run(program)` (no `{ layer }` — `program`'s only
+  requirements are the core services `Action.run` injects); `post.ts` reports
+  total duration and revokes the token. The testable Effect program lives in
+  `program.ts` so tests can import it without triggering module-level
+  execution. The build (`@savvy-web/github-action-builder`) derives the three
+  entry points from the `runs` block in `action.yml`.
 - **Effect-first services:** All domain logic is wrapped in Effect services with
   `Context.Tag` + `Layer`. Services are defined in `src/services/`, pure helpers
   in `src/utils/`. Two services (`PeerSync`, `WorkspaceYaml`) export standalone
@@ -66,18 +72,20 @@ src/
   which wires all library layers (from `@savvy-web/github-action-effects`),
   upstream `WorkspaceDiscoveryLive` + `WorkspaceRootLive` from
   `workspaces-effect` (provided by `NodeContext.layer` from
-  `@effect/platform-node`), the `PublishabilityDetector` override, and domain
-  service layers together. Token plumbing lives upstream in `program.ts` —
-  `GitHubApp.withToken()` runs before `makeAppLayer` and bridges the token to
-  `GitHubClientLive` via `process.env.GITHUB_TOKEN`. `makeAppLayer` itself does
-  not take a token parameter.
+  `@effect/platform-node`), the `PublishabilityDetector` override and
+  `ChangesetConfig` from `@savvy-web/silk-effects` (both FileSystem-based, also
+  provided `NodeContext.layer`), and domain service layers together. The
+  `GitHubClient` layer is built from
+  `GitHubToken.client()`, which reads the installation token envelope `pre`
+  persisted to `ActionState` — there is no bare `GitHubClientLive` and no
+  `process.env.GITHUB_TOKEN` bridge. `makeAppLayer` takes only `dryRun`.
 - **No barrel re-exports:** Direct imports everywhere. No `index.ts` files.
 - **Tests co-located:** Each `.ts` file has a `.test.ts` sibling in the same directory.
 - **Removed dependencies:** `workspace-tools` is no longer used. All workspace
   enumeration now goes through `WorkspaceDiscovery` from `workspaces-effect`
   (consumed directly by `RegularDeps`, `PeerSync`, `Lockfile`, and
   `Changesets`). The local `Workspaces` wrapper service was removed (issue
-  #38) once `workspaces-effect@0.5.1` exposed
+  #38) once `workspaces-effect` exposed
   `WorkspaceDiscovery.listPackages(cwd?)` and
   `WorkspaceDiscovery.importerMap(cwd?)` accepting an optional cwd parameter.
 
@@ -85,10 +93,9 @@ src/
 
 ```mermaid
 graph TD
+    PRE[pre.ts: GitHubToken.provision + save start time] --> A
     A[main.ts: Action.run] --> B[program.ts: Parse Inputs via Config]
-    B --> C[GitHubApp.withToken: Generate Token]
-    C --> C1[Bridge token via process.env.GITHUB_TOKEN]
-    C1 --> D[makeAppLayer dryRun: Build All Layers]
+    B --> D[makeAppLayer dryRun: Build All Layers, GitHubToken.client]
     D --> E[CheckRun.withCheckRun]
     E --> F[BranchManager.manage]
     F --> G{Branch Exists?}
@@ -114,7 +121,7 @@ graph TD
     T --> T2{Changes Detected?}
     T2 -->|No| U[Exit Early]
     T2 -->|Yes| V{changesets input AND .changeset/ dir?}
-    V -->|Yes| W[Changesets.create — versionable + trigger gating]
+    V -->|Yes| W[Changesets.create — ignore + versionable + trigger gating]
     V -->|No| X[BranchManager.commitChanges]
     W --> X
     X --> Y[Report.createOrUpdatePR]
@@ -123,16 +130,27 @@ graph TD
     Y2 -->|No| Z
     Y3 --> Z[Update Check Run]
     Z --> AA[Write Summary]
-    AA --> AB[Token Revoked Automatically]
-    S --> AB
-    U --> AB
+    AA --> POST[post.ts: report duration + GitHubToken.dispose]
+    S --> POST
+    U --> POST
 ```
+
+Phases run as separate Node processes. `pre` provisions the installation
+token and persists its envelope to `ActionState` (backed by `GITHUB_STATE`);
+`main` reads it back via `GitHubToken.client()`; `post` always runs (even if
+`main` fails) to revoke the token via `GitHubToken.dispose()`.
 
 ## Execution Model
 
-The action executes as a **single phase**. Steps are implemented in
-`src/program.ts`; `src/main.ts` only calls `Action.run`. The numbering below
-is descriptive — `program.ts` uses its own step labels in log messages.
+The action runs as **three phases** (`pre` / `main` / `post`), each a separate
+Node process. `pre.ts` provisions the installation token (`GitHubToken.provision`
+with a fail-fast scope check) and records the start time to `ActionState`;
+`post.ts` reports total duration and revokes the token (`GitHubToken.dispose`,
+guarded so it never fails the workflow, honoring `skip-token-revoke`). The
+dependency-update workflow below runs entirely in the `main` phase. Steps are
+implemented in `src/program.ts`; `src/main.ts` only calls `Action.run(program)`.
+The numbering below is descriptive — `program.ts` uses its own step labels in
+log messages.
 
 ### Step 1: Parse Inputs
 
@@ -147,35 +165,39 @@ is descriptive — `program.ts` uses its own step labels in log messages.
   before `syncPeers` is called).
 - A warning is emitted for any `peer-lock`/`peer-minor` entry that does not
   match the `dependencies` patterns.
-- Inputs: `app-id`, `app-private-key`, `branch`, `config-dependencies`,
-  `dependencies`, `peer-lock`, `peer-minor`, `run`, `update-pnpm`,
-  `changesets`, `auto-merge`, `dry-run`, `log-level`, `timeout`.
+- The `main` phase does **not** parse `app-client-id` / `app-private-key` —
+  those are consumed by `GitHubToken.provision` in `pre.ts`. `main`-phase
+  inputs: `branch`, `config-dependencies`, `dependencies`, `peer-lock`,
+  `peer-minor`, `run`, `update-pnpm`, `changesets`, `auto-merge`, `dry-run`,
+  `log-level`, `timeout`.
 
-### Step 2: Generate Token and Wire Layers
+### Step 2: Wire Layers
 
-- `GitHubApp.withToken()` handles the full token lifecycle.
-- Inside the callback, the action sets `process.env.GITHUB_TOKEN` so
-  `GitHubClientLive` (which reads from the env) picks up the installation
-  token, then builds the per-run layer:
+- The installation token was already provisioned in `pre` and its envelope
+  persisted to `ActionState`. `program.ts` does no token plumbing — it just
+  builds the per-run layer:
 
 ```typescript
 const appLayer = makeAppLayer(dryRun);
 ```
 
-`makeAppLayer(dryRun)` (note: `dryRun` is the only parameter — token plumbing
-happens upstream) wires:
+`makeAppLayer(dryRun)` wires:
 
-- Library layers: `GitHubClientLive`, `GitBranchLive`, `GitCommitLive`,
-  `CheckRunLive`, `PullRequestLive`, `NpmRegistryLive`, `GitHubGraphQLLive`,
-  `CommandRunnerLive`, `DryRunLive(dryRun)`.
+- The `GitHubClient` layer from `GitHubToken.client()` (over a self-contained
+  `ActionStateLive`, `Layer.orDie`), reused by every dependent library layer:
+  `GitBranchLive`, `GitCommitLive`, `CheckRunLive`, `PullRequestLive`,
+  `GitHubGraphQLLive`. Plus `NpmRegistryLive`, `CommandRunnerLive`,
+  `DryRunLive(dryRun)`.
 - Workspace layers from `workspaces-effect`: `WorkspaceDiscoveryLive`,
   `WorkspaceRootLive` (both provided with `NodeContext.layer` from
   `@effect/platform-node` for FileSystem/Path).
-- `workspaces-effect` overrides: `PublishabilityDetectorAdaptiveLive` (which
-  consults `ChangesetConfig.mode` per call and dispatches to silk / vanilla /
-  noop detection).
-- Domain layers: `ChangesetConfig`, `BranchManagerLive`, `PnpmUpgradeLive`,
-  `ConfigDepsLive`, `RegularDepsLive`, `ChangesetsLive`, `ReportLive`.
+- Silk layers from `@savvy-web/silk-effects` (re-exported via local shims):
+  `ChangesetConfigLive` and the `PublishabilityDetector` override
+  `PublishabilityDetectorAdaptiveLive` (which consults `ChangesetConfig.mode`
+  per call and dispatches to silk / vanilla / noop detection). Both are
+  FileSystem-based and provided `NodeContext.layer`.
+- Domain layers: `BranchManagerLive`, `PnpmUpgradeLive`, `ConfigDepsLive`,
+  `RegularDepsLive`, `ChangesetsLive`, `ReportLive`.
 
 ### Step 3: Create Check Run
 
@@ -296,9 +318,13 @@ happens upstream) wires:
     go to triggers, `devDependency` goes to informational rows only. The
     routing uses the same `TRIGGER_TYPES` set as lockfile changes so a
     `peerDependency` arriving via either path is treated identically.
-  - A package gets a changeset only when it has at least one trigger row
-    AND it is **versionable** (publishable per `PublishabilityDetector`, OR
-    `versionPrivate` per `ChangesetConfig`).
+  - A changeset-ignored package (listed in `.changeset/config.json`'s
+    `ignore` array, checked via `ChangesetConfig.isIgnored`) is skipped
+    entirely before the publishability check — the ignore list wins even
+    when `privatePackages.version: true`.
+  - A non-ignored package gets a changeset only when it has at least one
+    trigger row AND it is **versionable** (publishable per
+    `PublishabilityDetector`, OR `versionPrivate` per `ChangesetConfig`).
   - Empty changesets are no longer written (the previous fallback path that
     wrote a generic patch on every run has been removed).
 

@@ -1,39 +1,82 @@
-# Module Entry Point
+# Module Entry Points
 
 [Back to index](./_index.md)
 
-## src/main.ts - Module-Level Entry
+The action ships three entry points wired to the `runs` block in `action.yml`:
+`pre: dist/pre.js`, `main: dist/main.js`, `post: dist/post.js`. The GitHub App
+token lifecycle spans them — `pre` provisions, `main` consumes, `post` revokes.
 
-`main.ts` is intentionally tiny: it wires `GitHubAppLive` (which depends on
-`OctokitAuthAppLive`) into a top-level `AppLayer` and invokes `Action.run` on
-the program imported from `./program.ts`.
+## src/pre.ts - Pre-Phase Entry
+
+`pre.ts` provisions the GitHub App installation token and records the start
+time for `post`'s duration report. `GitHubToken.provision({ permissions })`
+reads the `app-client-id` / `app-private-key` inputs, mints the token, performs
+a **fail-fast scope check** (a missing App scope fails here in `pre` rather than
+mid-run in `main`), resolves the App identity best-effort and persists the token
+envelope to `ActionState`. The start time is saved as a `StartTimeState`
+(`src/state.ts`).
 
 ```typescript
-import { Action, GitHubAppLive, OctokitAuthAppLive } from "@savvy-web/github-action-effects";
-import { Layer } from "effect";
+yield* state.save(STATE_KEYS.startTime, new StartTimeState({ startedAt: Date.now() }), StartTimeState);
+const token = yield* GitHubToken.provision({
+ permissions: { contents: "write", pull_requests: "write", checks: "write" },
+});
+```
+
+`PreLive` provides `GitHubAppLive` (over `OctokitAuthAppLive` and
+`FetchHttpClient.layer` — in 2.0 `GitHubAppLive` requires
+`HttpClient.HttpClient`) merged with `NodeFileSystem.layer`. The
+module-level run is guarded by `if (process.env.GITHUB_ACTIONS)` so importing
+the module in tests does not execute it.
+
+## src/post.ts - Post-Phase Entry
+
+`post.ts` runs after `main`, even on failure. It reports total duration from the
+saved `StartTimeState`, then revokes the token via `GitHubToken.dispose()`. The
+new `skip-token-revoke` input short-circuits revocation. The whole effect is
+guarded with `Effect.catchAll` (around `dispose`) plus `Effect.catchAllDefect`
+so a post failure never fails the workflow. `PostLive` mirrors `PreLive`.
+
+## src/main.ts - Main-Phase Entry
+
+`main.ts` is intentionally tiny: it calls `Action.run(program)` on the program
+imported from `./program.ts`. No `{ layer }` is needed — after the three-phase
+migration `program`'s only requirements are the core services `Action.run`
+injects (`ActionEnvironment`, `ActionOutputs`, config provider); `GitHubClient`
+and the domain services are provided internally by `appLayer`.
+
+```typescript
+import { Action } from "@savvy-web/github-action-effects";
 import { program } from "./program.js";
 
-const AppLayer = GitHubAppLive.pipe(Layer.provide(OctokitAuthAppLive));
-
-Action.run(program, { layer: AppLayer });
+/* v8 ignore next */
+Action.run(program);
 ```
 
 The module-level call is annotated with `/* v8 ignore next */` so coverage is
 attributed to `program.ts`. Tests import `program` and `runCommands` directly
 from `./program.js` without ever evaluating `main.ts`.
 
+## src/state.ts - Cross-Phase State
+
+`pre`, `main` and `post` run as separate Node processes. GitHub Actions persists
+state between them as `STATE_*` env vars; `ActionState.save/get` encode/decode
+each value through its Schema. `state.ts` defines `StartTimeState` (a
+`Schema.Class` holding `startedAt: number`) and `STATE_KEYS`. The token envelope
+itself is **not** modelled here — `GitHubToken.provision` persists it under its
+own internal key.
+
 ## src/program.ts - The Effect Program
 
-**Responsibility:** Orchestrate the complete dependency update workflow in a
-single phase, including token lifecycle, check runs, and all update steps.
+**Responsibility:** Orchestrate the complete dependency update workflow for the
+`main` phase, including check runs and all update steps. Token provisioning and
+revocation live in `pre.ts` / `post.ts`, not here.
 
 ### Input Parsing
 
 Inputs are parsed using Effect's `Config.*` API:
 
 ```typescript
-const appId = yield* Config.string("app-id");
-const appPrivateKey = yield* Config.secret("app-private-key");
 const branch = yield* Config.string("branch").pipe(Config.withDefault("pnpm/config-deps"));
 const rawConfigDeps = yield* Config.string("config-dependencies").pipe(Config.withDefault(""));
 const configDependencies = parseMultiValueInput(rawConfigDeps);
@@ -68,45 +111,36 @@ if (peerOverlap.length > 0) {
 newline-separated lists (with optional `*` bullets and `#` comments), or
 comma-separated strings.
 
-### Token Lifecycle and Layer Composition
+### Layer Composition
 
-Token is generated via `GitHubApp.withToken()`. The private key is read as a
-`Config.secret` and unwrapped with `Redacted.value()` before passing to the token
-generator. Inside the callback, the action bridges the token to
-`GitHubClientLive` via `process.env.GITHUB_TOKEN` and then builds the
-per-run layer:
+There is no token plumbing in `program.ts`. The installation token was
+provisioned in `pre` and its envelope persisted to `ActionState`; `program`
+reads `headSha` from `ActionEnvironment`, builds the per-run layer and runs
+`innerProgram` under the log-level minimum and the timeout:
 
 ```typescript
-const ghApp = yield* GitHubApp;
 const env = yield* ActionEnvironment;
-const github = yield* env.github;
-const headSha = github.sha;
+const headSha = (yield* env.github).sha;
 
-yield* ghApp
- .withToken(appId, Redacted.value(appPrivateKey), (token) =>
-  Effect.gen(function* () {
-   process.env.GITHUB_TOKEN = token;
-   const appLayer = makeAppLayer(dryRun);
-   yield* innerProgram(inputs, dryRun, headSha, appLayer)
-    .pipe(Logger.withMinimumLogLevel(effectLogLevel));
-  }),
- )
+const appLayer = makeAppLayer(dryRun);
+yield* innerProgram(inputs, dryRun, headSha, appLayer)
+ .pipe(Logger.withMinimumLogLevel(effectLogLevel))
  .pipe(Effect.timeoutFail({
   duration: Duration.seconds(timeout),
   onTimeout: () => new Error(`Action timed out after ${timeout} seconds`),
  }));
 ```
 
-Note: `makeAppLayer` takes a single `dryRun` parameter — it does **not** take
-a token. The token reaches `GitHubClientLive` through `process.env.GITHUB_TOKEN`,
-not as a constructor argument. Earlier docs showing `makeAppLayer(token, dryRun)`
-are stale.
+`makeAppLayer(dryRun)` builds the `GitHubClient` from `GitHubToken.client()`
+(see `src/layers/app.ts`), which reads the token envelope from `ActionState` —
+no `process.env.GITHUB_TOKEN` bridge. There is no `GitHubApp` import or
+`withToken` wrapper in `program.ts` anymore.
 
 ### Program Structure
 
 The module exports:
 
-- `program` — the main Effect (input parsing, token lifecycle, timeout).
+- `program` — the main Effect (input parsing, layer composition, timeout).
 - `innerProgram(inputs, dryRun, headSha, appLayer)` — the orchestration body.
   Provides `appLayer` at two levels (outer + inside the `withCheckRun`
   callback) because the callback signature requires `R = never`.
@@ -123,12 +157,8 @@ The module exports:
 `CommandRunner`) and `WorkspaceDiscovery` (from `workspaces-effect`) in its
 context.
 
-The module-level call in `main.ts` uses `Action.run` which handles all error
-formatting via `formatCause` automatically:
-
-```typescript
-Action.run(program, { layer: AppLayer });
-```
+The module-level call in `main.ts` uses `Action.run(program)` which handles all
+error formatting via `formatCause` automatically.
 
 Timeout is applied inside `program` via `Effect.timeoutFail` using the
 configurable `timeout` input (default: 180 seconds).
@@ -145,6 +175,9 @@ Report-related functions (PR creation, commit messages, summaries) live in the
 
 ### Required GitHub App Permissions
 
+Passed to `GitHubToken.provision({ permissions })` in `pre.ts` for a fail-fast
+scope check:
+
 - `contents: write` - Push commits and branches
-- `pull-requests: write` - Create and update PRs
+- `pull_requests: write` - Create and update PRs
 - `checks: write` - Create and update check runs
