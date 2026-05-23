@@ -70,9 +70,9 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: savvy-web/pnpm-config-dependency-action@main
+      - uses: savvy-web/pnpm-config-dependency-action@v1
         with:
-          app-id: ${{ secrets.APP_ID }}
+          app-client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           config-dependencies: |
             typescript
@@ -139,9 +139,9 @@ To test the action without creating commits or pull requests, enable dry-run
 mode:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@main
+- uses: savvy-web/pnpm-config-dependency-action@v1
   with:
-    app-id: ${{ secrets.APP_ID }}
+    app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
     config-dependencies: |
       typescript

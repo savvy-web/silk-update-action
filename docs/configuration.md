@@ -201,10 +201,10 @@ Whether any dependency changes were detected (`"true"` or `"false"`).
 ### Using Outputs
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@main
+- uses: savvy-web/pnpm-config-dependency-action@v1
   id: update-deps
   with:
-    app-id: ${{ secrets.APP_ID }}
+    app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
     config-dependencies: |
       typescript
@@ -345,18 +345,18 @@ do not produce a changeset.
 Run the action twice in the same workflow with different branches:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@main
+- uses: savvy-web/pnpm-config-dependency-action@v1
   with:
-    app-id: ${{ secrets.APP_ID }}
+    app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
     branch: deps/config
     config-dependencies: |
       typescript
       @biomejs/biome
 
-- uses: savvy-web/pnpm-config-dependency-action@main
+- uses: savvy-web/pnpm-config-dependency-action@v1
   with:
-    app-id: ${{ secrets.APP_ID }}
+    app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
     branch: deps/regular
     dependencies: |
@@ -369,9 +369,9 @@ Run the action twice in the same workflow with different branches:
 Automatically merge the dependency PR once status checks pass:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@main
+- uses: savvy-web/pnpm-config-dependency-action@v1
   with:
-    app-id: ${{ secrets.APP_ID }}
+    app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
     config-dependencies: |
       typescript
@@ -383,10 +383,10 @@ Automatically merge the dependency PR once status checks pass:
 Use outputs to gate subsequent steps:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@main
+- uses: savvy-web/pnpm-config-dependency-action@v1
   id: deps
   with:
-    app-id: ${{ secrets.APP_ID }}
+    app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
     dependencies: |
       effect
