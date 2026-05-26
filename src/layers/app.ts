@@ -63,8 +63,13 @@ const makeRuntimeResolvers = (live: boolean) => {
 	// Live path: runtime-resolver fetches GitHub/nodejs.org data. Auth comes from
 	// GitHubAutoAuth (reads GITHUB_TOKEN / PAT from env); Layer.orDie keeps the E
 	// channel `never` (GitHubAutoAuth only fails when GITHUB_APP_* env is set,
-	// which this action does not use). Auto*CacheLive falls back to bundled data
-	// on any fetch failure, so an unauthenticated live path still works.
+	// which this action does not use — it consumes app credentials as inputs).
+	// Auto*CacheLive falls back to bundled data on any fetch failure, so an
+	// unauthenticated live path still works. Caveat: if a workflow sets GITHUB_APP_*
+	// env vars for some other purpose, the orDie defect fires at layer-construction
+	// time and would escape program.ts's Effect.catchAll (before any fallback can
+	// engage). Acceptable because runtime-data: live is opt-in; revisit orDie if
+	// that constraint changes.
 	const githubLayer = GitHubClientLive.pipe(Layer.provide(GitHubAutoAuth), Layer.orDie);
 	const nodeFetchers = Layer.merge(
 		NodeVersionFetcherLive.pipe(Layer.provide(githubLayer)),

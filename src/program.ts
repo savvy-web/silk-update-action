@@ -133,6 +133,9 @@ export const program = Effect.gen(function* () {
 	const rawRuntimeDeno = yield* Config.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
 	const rawRuntimeBun = yield* Config.string("upgrade-runtime-bun").pipe(Config.withDefault("false"));
 	const runtimeData = yield* Config.string("runtime-data").pipe(Config.withDefault("offline"));
+	if (runtimeData !== "offline" && runtimeData !== "live") {
+		yield* Effect.logWarning(`Unknown runtime-data value "${runtimeData}", defaulting to "offline"`);
+	}
 	const runtimeLive = runtimeData === "live";
 
 	// Validate each runtime input: must be "auto", "false", or a parseable semver range.
