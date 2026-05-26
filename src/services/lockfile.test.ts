@@ -28,6 +28,7 @@ const MockWorkspacesLive = Layer.succeed(WorkspaceDiscovery, {
 			{ name: "@savvy-web/utils", path: "/workspace/pkgs/utils" },
 		] as unknown as ReadonlyArray<WorkspacePackage>),
 	getPackage: () => Effect.die("getPackage not used in lockfile tests"),
+	refresh: () => Effect.void,
 	importerMap: (_cwd) =>
 		Effect.succeed(
 			new Map<string, WorkspacePackage>([

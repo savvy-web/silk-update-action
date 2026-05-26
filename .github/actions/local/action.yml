@@ -58,6 +58,35 @@ inputs:
     description: Update pnpm version in packageManager and devEngines fields
     required: false
     default: "true"
+  upgrade-runtime-node:
+    description: |
+      Upgrade the Node.js entry in devEngines.runtime.
+      Values: false (skip), auto (resolve latest within the existing range,
+      no-op for static pins), or a semver range (e.g. ^22) to move to and add
+      if missing.
+    required: false
+    default: "false"
+  upgrade-runtime-deno:
+    description: |
+      Upgrade the Deno entry in devEngines.runtime.
+      Values: false (skip), auto, or a semver range (e.g. ^2). See
+      upgrade-runtime-node for semantics.
+    required: false
+    default: "false"
+  upgrade-runtime-bun:
+    description: |
+      Upgrade the Bun entry in devEngines.runtime.
+      Values: false (skip), auto, or a semver range (e.g. ^1). See
+      upgrade-runtime-node for semantics.
+    required: false
+    default: "false"
+  runtime-data:
+    description: |
+      Data source for runtime version resolution.
+      - offline: bundled runtime-resolver cache only (no network)
+      - live: fetch latest data, falling back to the bundled cache on failure
+    required: false
+    default: offline
   dry-run:
     description: Run without making changes (for testing)
     required: false

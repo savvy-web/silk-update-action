@@ -18,6 +18,7 @@ import {
 	CommandRunner,
 } from "@savvy-web/github-action-effects";
 import { Config, Duration, Effect, LogLevel, Logger } from "effect";
+import { Range } from "semver-effect";
 import { makeAppLayer } from "./layers/app.js";
 import type { ChangesetFile, DependencyUpdateResult, PullRequestResult } from "./schemas/domain.js";
 import { BranchManager } from "./services/branch.js";
@@ -29,6 +30,7 @@ import { syncPeers } from "./services/peer-sync.js";
 import { PnpmUpgrade } from "./services/pnpm-upgrade.js";
 import { RegularDeps } from "./services/regular-deps.js";
 import { Report } from "./services/report.js";
+import { RuntimeUpgrade } from "./services/runtime-upgrade.js";
 import { formatWorkspaceYaml, readWorkspaceYaml } from "./services/workspace-yaml.js";
 import { matchesPattern } from "./utils/deps.js";
 import { parseMultiValueInput } from "./utils/input.js";
@@ -127,9 +129,39 @@ export const program = Effect.gen(function* () {
 	const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
 	const logLevel = yield* Config.string("log-level").pipe(Config.withDefault("auto"));
 	const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
+	const rawRuntimeNode = yield* Config.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
+	const rawRuntimeDeno = yield* Config.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
+	const rawRuntimeBun = yield* Config.string("upgrade-runtime-bun").pipe(Config.withDefault("false"));
+	const runtimeData = yield* Config.string("runtime-data").pipe(Config.withDefault("offline"));
+	const runtimeLive = runtimeData === "live";
+
+	// Validate each runtime input: must be "auto", "false", or a parseable semver range.
+	for (const [inputName, value] of [
+		["upgrade-runtime-node", rawRuntimeNode],
+		["upgrade-runtime-deno", rawRuntimeDeno],
+		["upgrade-runtime-bun", rawRuntimeBun],
+	] as const) {
+		if (value !== "auto" && value !== "false") {
+			yield* Range.parse(value).pipe(
+				Effect.mapError(
+					(e) =>
+						new ActionInputError({
+							inputName,
+							reason: `Invalid semver range: ${String(e)}`,
+							rawValue: value,
+						}),
+				),
+			);
+		}
+	}
+
+	const anyRuntime = rawRuntimeNode !== "false" || rawRuntimeDeno !== "false" || rawRuntimeBun !== "false";
+	if (anyRuntime) {
+		yield* Effect.logInfo(`Runtime upgrades enabled (data source: ${runtimeData})`);
+	}
 
 	// Cross-validate: at least one update type must be active
-	if (configDependencies.length === 0 && dependencies.length === 0 && !updatePnpm) {
+	if (configDependencies.length === 0 && dependencies.length === 0 && !updatePnpm && !anyRuntime) {
 		yield* Effect.fail(
 			new ActionInputError({
 				inputName: "config-dependencies",
@@ -192,7 +224,7 @@ export const program = Effect.gen(function* () {
 	const github = yield* env.github;
 	const headSha = github.sha;
 
-	const appLayer = makeAppLayer(dryRun);
+	const appLayer = makeAppLayer(dryRun, { runtimeLive });
 	yield* innerProgram(
 		{
 			branch,
@@ -204,6 +236,7 @@ export const program = Effect.gen(function* () {
 			changesets,
 			"auto-merge": autoMerge as "" | "merge" | "squash" | "rebase",
 			run,
+			runtime: { node: rawRuntimeNode, deno: rawRuntimeDeno, bun: rawRuntimeBun },
 		},
 		dryRun,
 		headSha,
@@ -232,6 +265,7 @@ const innerProgram = (
 		changesets: boolean;
 		"auto-merge": "" | "merge" | "squash" | "rebase";
 		run: ReadonlyArray<string>;
+		runtime: { node: string; deno: string; bun: string };
 	},
 	dryRun: boolean,
 	headSha: string,
@@ -293,6 +327,29 @@ const innerProgram = (
 							} else {
 								yield* Effect.logInfo("pnpm is already up-to-date");
 							}
+						}
+
+						// Upgrade runtimes (devEngines.runtime)
+						yield* Effect.logInfo("Step 3b: Upgrading runtimes");
+						const runtimeUpdates: DependencyUpdateResult[] = [];
+						const runtimeUpgradeService = yield* RuntimeUpgrade;
+						const runtimeResults = yield* runtimeUpgradeService.upgrade(inputs.runtime).pipe(
+							Effect.catchAll((error) =>
+								Effect.gen(function* () {
+									yield* Effect.logWarning(`Failed to upgrade runtimes: ${error.reason}`);
+									return [] as const;
+								}),
+							),
+						);
+						for (const r of runtimeResults) {
+							yield* Effect.logInfo(`${r.runtime}: ${r.from ?? "added"} -> ${r.to}`);
+							runtimeUpdates.push({
+								dependency: r.runtime,
+								from: r.from,
+								to: r.to,
+								type: "runtime",
+								package: null,
+							});
 						}
 
 						// Update config dependencies
@@ -376,7 +433,13 @@ const innerProgram = (
 						const changes = yield* compareLockfiles(lockfileBefore, lockfileAfter);
 						yield* Effect.logDebug(`Detected changes: ${JSON.stringify(changes)}`);
 
-						const allUpdates = [...configUpdatesFromPnpm, ...configUpdates, ...regularUpdates, ...peerUpdates];
+						const allUpdates = [
+							...configUpdatesFromPnpm,
+							...runtimeUpdates,
+							...configUpdates,
+							...regularUpdates,
+							...peerUpdates,
+						];
 						yield* Effect.logDebug(
 							`Total updates: ${allUpdates.length} (config: ${configUpdates.length + configUpdatesFromPnpm.length}, dev: ${regularUpdates.length}, peer: ${peerUpdates.length})`,
 						);

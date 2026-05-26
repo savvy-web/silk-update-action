@@ -1,44 +1,38 @@
-# GitHub App Setup
+# GitHub App setup
 
 This guide explains how to create and configure the GitHub App required by the
 pnpm Config Dependency Action.
 
-## Table of Contents
+## Table of contents
 
-- [Why a GitHub App?](#why-a-github-app)
+- [Why a GitHub App](#why-a-github-app)
 - [Step 1: Create the App](#step-1-create-the-app)
-- [Step 2: Configure Permissions](#step-2-configure-permissions)
-- [Step 3: Generate a Private Key](#step-3-generate-a-private-key)
+- [Step 2: Configure permissions](#step-2-configure-permissions)
+- [Step 3: Generate a private key](#step-3-generate-a-private-key)
 - [Step 4: Install the App](#step-4-install-the-app)
-- [Step 5: Store Secrets](#step-5-store-secrets)
+- [Step 5: Store secrets](#step-5-store-secrets)
 
-## Why a GitHub App?
+## Why a GitHub App
 
-The action uses GitHub App authentication instead of personal access tokens
-(PATs) for several reasons:
+The action authenticates as a GitHub App rather than with a personal access token. A GitHub App gives you four things a PAT does not.
 
-- **Short-lived tokens**: Installation tokens expire after 1 hour, reducing the
-  window of exposure if leaked
-- **Fine-grained permissions**: Only the permissions the action needs are
-  granted, nothing more
-- **Verified commits**: Commits created through the GitHub API with an App token
-  are automatically signed and marked as "Verified"
-- **No user dependency**: The App is not tied to any individual user account
-- **Audit trail**: All actions are attributed to the App, making it easy to
-  track automated changes
+- **Short-lived tokens**: an installation token expires after one hour, so a leaked token is useless within the hour
+- **Fine-grained permissions**: the App is granted only the scopes the action needs and nothing more
+- **Verified commits**: commits made through the GitHub API with an App token are signed and show the "Verified" badge
+- **No user dependency**: the App is not tied to any individual user account, and the commits are attributed to the App in the audit trail
 
 ## Step 1: Create the App
 
 1. Go to **Settings > Developer settings > GitHub Apps**
 2. Click **New GitHub App**
 3. Fill in the required fields:
-   - **Name**: Choose a descriptive name (e.g., `my-org-dep-updater`)
+   - **Name**: Choose a descriptive name (e.g. `my-org-dep-updater`)
    - **Homepage URL**: Your repository URL
    - **Webhook**: Uncheck "Active" (this app does not need webhooks)
 4. Click **Create GitHub App**
-5. Note the **App ID** shown on the settings page
+5. Note the **Client ID** shown on the settings page (this is the value the action's `app-client-id` input expects, not the numeric App ID)
 
-## Step 2: Configure Permissions
+## Step 2: Configure permissions
 
 Under **Permissions & events**, set the following repository permissions:
 
@@ -51,12 +45,12 @@ Under **Permissions & events**, set the following repository permissions:
 No organization or account permissions are needed. No webhook events need to be
 subscribed to.
 
-## Step 3: Generate a Private Key
+## Step 3: Generate a private key
 
 1. On the App settings page, scroll to **Private keys**
 2. Click **Generate a private key**
 3. A `.pem` file will download automatically
-4. Store this file securely -- it is used to authenticate as the App
+4. Store this file securely — it is used to authenticate as the App
 
 The private key content (including the `-----BEGIN RSA PRIVATE KEY-----` and
 `-----END RSA PRIVATE KEY-----` markers) is what you will store as a secret.
@@ -71,7 +65,7 @@ The private key content (including the `-----BEGIN RSA PRIVATE KEY-----` and
 
 The App must be installed on every repository where you plan to use the action.
 
-## Step 5: Store Secrets
+## Step 5: Store secrets
 
 Add the App credentials as GitHub Actions secrets:
 
@@ -80,16 +74,16 @@ Add the App credentials as GitHub Actions secrets:
 1. Go to the target repository
 2. Navigate to **Settings > Secrets and variables > Actions**
 3. Click **New repository secret**
-4. Add `APP_ID` with the App ID from Step 1
+4. Add `APP_CLIENT_ID` with the client ID from Step 1
 5. Add `APP_PRIVATE_KEY` with the full contents of the `.pem` file from Step 3
 
 ### Organization-level secrets (recommended for multiple repos)
 
 1. Go to **Organization Settings > Secrets and variables > Actions**
-2. Add `APP_ID` and `APP_PRIVATE_KEY`
+2. Add `APP_CLIENT_ID` and `APP_PRIVATE_KEY`
 3. Set repository access to the repositories that use the action
 
-## Verifying the Setup
+## Verifying the setup
 
 Run the action with `dry-run: true` to verify authentication works:
 
@@ -103,15 +97,9 @@ Run the action with `dry-run: true` to verify authentication works:
     dry-run: true
 ```
 
-If authentication succeeds, the workflow log will show:
+If authentication succeeds, the pre step provisions the installation token without error and the run continues into the main step. If the pre step fails, open its log from the workflow run to see the reason and check:
 
-```text
-Token generated for app "your-app-name" (expires: ...)
-```
-
-If it fails, check:
-
-- The App ID matches the correct App
+- The client ID matches the correct App
 - The private key is the full PEM content (not a file path)
 - The App is installed on the repository
 - The required permissions are granted

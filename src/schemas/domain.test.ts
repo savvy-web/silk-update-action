@@ -89,6 +89,17 @@ describe("DependencyUpdateResult", () => {
 		});
 		expect(result.type).toBe("optionalDependency");
 	});
+
+	it("accepts type 'runtime'", () => {
+		const decoded = Schema.decodeUnknownSync(DependencyUpdateResult)({
+			dependency: "node",
+			from: "^24.0.0",
+			to: "^24.16.0",
+			type: "runtime",
+			package: null,
+		});
+		expect(decoded.type).toBe("runtime");
+	});
 });
 
 describe("ChangesetFile", () => {

@@ -1,32 +1,32 @@
 # Configuration
 
-Complete reference for all action inputs, outputs, and usage patterns.
+Complete reference for all action inputs, outputs and usage patterns.
 
-## Table of Contents
+## Table of contents
 
 - [Inputs](#inputs)
 - [Outputs](#outputs)
 - [Authentication](#authentication)
-- [Dependency Selection](#dependency-selection)
-- [Post-Update Commands](#post-update-commands)
-- [Branch Management](#branch-management)
-- [Changeset Integration](#changeset-integration)
-- [Advanced Patterns](#advanced-patterns)
+- [Dependency selection](#dependency-selection)
+- [Post-update commands](#post-update-commands)
+- [Branch management](#branch-management)
+- [Changeset integration](#changeset-integration)
+- [Advanced patterns](#advanced-patterns)
 
 ## Inputs
 
-### Required Inputs
+### Required inputs
 
-#### `app-id`
+#### `app-client-id`
 
-The numeric ID of your GitHub App. Found on the GitHub App settings page.
+The client ID of your GitHub App. Found on the GitHub App settings page. This is the App's client ID, not its numeric App ID.
 
 #### `app-private-key`
 
 The private key for your GitHub App in PEM format. Generate this from the GitHub
 App settings page and store it as a repository secret.
 
-### Optional Inputs
+### Optional inputs
 
 #### `config-dependencies`
 
@@ -43,7 +43,7 @@ config-dependencies: |
 #### `dependencies`
 
 Workspace dependencies to update, one per line. Matches against the
-`dependencies`, `devDependencies`, and `optionalDependencies` fields in all
+`dependencies`, `devDependencies` and `optionalDependencies` fields in all
 workspace `package.json` files. Supports glob patterns.
 
 ```yaml
@@ -52,7 +52,7 @@ dependencies: |
   @savvy-web/*
 ```
 
-`peerDependencies` are intentionally not matched here -- peer ranges are
+`peerDependencies` are intentionally not matched here — peer ranges are
 managed by the [`peer-lock`](#peer-lock) and [`peer-minor`](#peer-minor) inputs
 instead.
 
@@ -60,7 +60,7 @@ If a package lists the same dependency in multiple sections (for example, both
 `dependencies` and `devDependencies`), each section is updated independently
 and reported as a separate row in the PR summary.
 
-At least one of `config-dependencies`, `dependencies`, or `update-pnpm: true`
+At least one of `config-dependencies`, `dependencies` or `update-pnpm: true`
 must be active.
 
 #### `peer-lock`
@@ -135,6 +135,92 @@ The version change is tracked as a config dependency update. Default: `true`.
 update-pnpm: false # Disable automatic pnpm upgrades
 ```
 
+#### `upgrade-runtime-node`
+
+Upgrade the Node.js entry in `devEngines.runtime`. Three modes:
+
+- `false` (default) — skip; Node.js runtime is not touched
+- `auto` — resolve the latest version within the existing entry's range and
+  re-decorate with its operator; no-op if the entry is a static exact pin, if
+  no entry exists, or if the resolved version already matches the current value;
+  never adds a missing entry
+- A semver range (e.g. `^22`) — resolve the latest version satisfying the given
+  range, then write it back **preserving the existing entry's operator** (an
+  exact pin like `24.11.0` stays exact, a caret stays caret) regardless of the
+  operator in the range you pass — the range only selects which line to move to.
+  Adds a new entry if one is missing, using the range's own operator in that case
+
+```yaml
+upgrade-runtime-node: auto
+```
+
+> **EOL note:** Version resolution only covers currently-maintained (non
+> end-of-life) major lines. If the existing entry or an explicit range targets
+> an EOL line (e.g. `^20` after Node 20 reaches EOL), resolution fails and the
+> runtime bump is skipped with a warning. This applies to both offline and live
+> data sources.
+
+#### `upgrade-runtime-deno`
+
+Upgrade the Deno entry in `devEngines.runtime`. Accepts the same values as
+`upgrade-runtime-node` (`false`, `auto`, or a semver range such as `^2`).
+Default: `false`.
+
+```yaml
+upgrade-runtime-deno: auto
+```
+
+#### `upgrade-runtime-bun`
+
+Upgrade the Bun entry in `devEngines.runtime`. Accepts the same values as
+`upgrade-runtime-node` (`false`, `auto`, or a semver range such as `^1`).
+Default: `false`.
+
+```yaml
+upgrade-runtime-bun: ^1
+```
+
+#### `runtime-data`
+
+Data source used by the runtime version resolver. Default: `offline`.
+
+- `offline` — use only the bundled `runtime-resolver` cache; no network access
+  or authentication required
+- `live` — fetch the latest runtime data from the network, falling back to the
+  bundled cache on failure
+
+```yaml
+runtime-data: live
+```
+
+**Example — auto-upgrade Node.js and Deno using the existing ranges:**
+
+If your root `package.json` contains:
+
+```json
+{
+  "devEngines": {
+    "runtime": [
+      { "name": "node", "version": "^24.0.0", "onFail": "ignore" },
+      { "name": "deno", "version": "^2.0.0", "onFail": "ignore" }
+    ]
+  }
+}
+```
+
+With this configuration:
+
+```yaml
+upgrade-runtime-node: auto
+upgrade-runtime-deno: auto
+```
+
+The action resolves the latest Node.js `^24` and Deno `^2` versions (within
+maintained lines) and rewrites the `version` fields to e.g. `^24.16.0` and
+`^2.1.0`, preserving the `^` operator and the `onFail` field. The bump is
+included in the PR summary and commit message. It does not trigger a changeset
+and does not run `pnpm install`.
+
 #### `changesets`
 
 When set to `true` and a `.changeset/` directory exists, the action creates
@@ -149,21 +235,22 @@ changesets: false # Skip changeset creation
 #### `dry-run`
 
 When set to `true`, the action detects changes and reports them in the GitHub
-Actions summary but does not commit, push, or create a PR. Useful for testing
+Actions summary but does not commit, push or create a PR. Useful for testing
 configuration. Default: `false`.
 
 #### `log-level`
 
-Controls logging verbosity. Default: `info`.
+Controls logging verbosity. Default: `auto`.
 
-- `info` -- Standard logging with step progress
-- `debug` -- Verbose logging with detailed state dumps (lockfile structure, git
-  status, parsed inputs)
+- `auto` — debug when `ACTIONS_STEP_DEBUG` is enabled, info otherwise
+- `info` — buffered outcome summaries only
+- `verbose` — unbuffered operation milestones
+- `debug` — full command output and internal state (lockfile structure, git status, parsed inputs)
 
 #### `auto-merge`
 
 Enables GitHub's auto-merge on the dependency update PR after it is created.
-Accepted values are `merge`, `squash`, or `rebase`, corresponding to the merge
+Accepted values are `merge`, `squash` and `rebase`, matching the merge
 strategy. Leave empty (the default) to disable auto-merge.
 
 **Prerequisites:**
@@ -172,8 +259,8 @@ strategy. Leave empty (the default) to disable auto-merge.
 - Branch protection rules with required status checks must be configured on the
   base branch
 
-If auto-merge cannot be enabled (e.g., missing prerequisites), the action logs a
-warning and continues -- it does not fail the workflow.
+If auto-merge cannot be enabled (e.g. missing prerequisites), the action logs a
+warning and continues — it does not fail the workflow.
 
 ```yaml
 auto-merge: squash # Enable auto-merge with squash strategy
@@ -184,7 +271,7 @@ auto-merge: squash # Enable auto-merge with squash strategy
 ### `pr-number`
 
 The pull request number, if a PR was created or updated. Empty if no PR was
-created (e.g., no changes detected or dry-run mode).
+created (no changes detected, or dry-run mode).
 
 ### `pr-url`
 
@@ -198,7 +285,7 @@ The number of dependencies that were updated (string).
 
 Whether any dependency changes were detected (`"true"` or `"false"`).
 
-### Using Outputs
+### Using outputs
 
 ```yaml
 - uses: savvy-web/pnpm-config-dependency-action@v1
@@ -218,23 +305,19 @@ Whether any dependency changes were detected (`"true"` or `"false"`).
 
 ## Authentication
 
-The action uses GitHub App authentication for secure, short-lived tokens:
+The action authenticates as a GitHub App, and the token's lifecycle spans the three phases. The pre phase exchanges the App credentials for a short-lived installation token. The main phase uses that token for every GitHub API call. The post phase revokes it.
 
-1. **Pre-phase**: Generates a JWT from the app credentials, exchanges it for an
-   installation token
-2. **Main phase**: Uses the installation token for all GitHub API calls
-3. **Post-phase**: Revokes the token automatically
+The token is masked in workflow logs, so it does not appear in build output even when a step echoes its environment.
 
-Tokens are automatically masked in workflow logs using the `ActionOutputs`
-service's `setSecret()` method.
+## Dependency selection
 
-## Dependency Selection
-
-### Config Dependencies
+### Config dependencies
 
 [Config dependencies](https://pnpm.io/config-dependencies) are declared in
-`pnpm-workspace.yaml` and provide workspace-level tooling. They are updated with
-`pnpm add --config <package>`.
+`pnpm-workspace.yaml` and provide workspace-level tooling. The action queries
+the npm registry directly for the latest version and edits the
+`configDependencies` entry in `pnpm-workspace.yaml` in place, which avoids the
+catalog promotion that `pnpm add --config` would introduce.
 
 ```yaml
 # pnpm-workspace.yaml
@@ -243,11 +326,11 @@ configDependencies:
   "@biomejs/biome": 1.6.1
 ```
 
-### Workspace Dependencies
+### Workspace dependencies
 
 Workspace dependencies are matched against the `dependencies`,
-`devDependencies`, and `optionalDependencies` fields in all `package.json`
-files. `peerDependencies` are intentionally excluded -- peer ranges are
+`devDependencies` and `optionalDependencies` fields in all `package.json`
+files. `peerDependencies` are intentionally excluded — peer ranges are
 managed by the `peer-lock` and `peer-minor` inputs.
 
 The action queries the npm registry directly for latest versions (avoids
@@ -260,17 +343,13 @@ is enabled). Glob patterns follow Node's `path.matchesGlob`:
 | `@effect/*` | All packages in the `@effect` scope |
 | `@savvy-web/*` | All packages in the `@savvy-web` scope |
 
-### Peer Dependency Syncing
+### Peer dependency syncing
 
 Peer dependency ranges can be automatically synced when the corresponding
 workspace dependency updates. This is controlled by the `peer-lock` and
 `peer-minor` inputs.
 
-**Why sync peers?** Published packages list peer dependencies to declare
-compatibility. When you update a dependency like `vitest`, the peer range
-should reflect the tested version. `devDependency` changes alone do not
-trigger a release (they are stripped from published packages), but peer range
-changes are consumer-facing and produce a patch changeset.
+Published packages list peer dependencies to declare compatibility. When you update a dependency like `vitest`, the peer range should reflect the version you tested against. A `devDependency` change alone does not warrant a release, since dev dependencies are stripped from published packages — but a peer range change is consumer-facing and produces a patch changeset.
 
 **Strategies:**
 
@@ -283,18 +362,17 @@ Version resolution follows semver naturally. If the workspace dependency
 specifier is `^3.1.0`, the action resolves the latest version satisfying that
 range. There is no special major-version skip rule.
 
-## Post-Update Commands
+## Post-update commands
 
 Commands specified in the `run` input execute after all dependency updates and
-`pnpm install`. Use them to fix formatting, run tests, or rebuild.
+`pnpm install`. Use them to fix formatting, run tests or rebuild.
 
 - Commands run sequentially in the order listed
 - All commands are attempted even if earlier ones fail
-- If any command fails, the action reports the failure, updates the check run
-  with an error status, and exits without creating a PR
+- If any command fails, the action reports the failure, updates the check run with an error status and exits without creating a PR
 - Commands are executed via `sh -c`, so shell features are available
 
-## Branch Management
+## Branch management
 
 The action manages a dedicated branch for dependency updates:
 
@@ -308,14 +386,14 @@ The action manages a dedicated branch for dependency updates:
 This approach ensures the PR always shows a clean diff against `main` with only
 the dependency changes.
 
-## Changeset Integration
+## Changeset integration
 
 If your repository has a `.changeset/` directory and the `changesets` input is
 `true` (the default), the action creates changesets based on consumer-facing
 changes. A workspace package gets a `patch` changeset only when **both** gates
 pass:
 
-1. **Trigger gate** -- at least one consumer-facing change must apply to the
+1. **Trigger gate** — at least one consumer-facing change must apply to the
    package:
    - `peerDependency` range update (from `peer-lock` or `peer-minor` syncing)
    - `dependency` or `optionalDependency` change detected in the lockfile
@@ -324,23 +402,27 @@ pass:
    when a sibling trigger exists, but never trigger a changeset on their own
    (dev dependencies are stripped from published packages).
 
-2. **Versionable gate** -- the package must be versionable:
+   `devEngines.runtime` upgrades (from `upgrade-runtime-*`) and pnpm self-upgrades
+   (from `update-pnpm`) are tooling-level changes that appear in the PR summary
+   and commit message but never create a changeset and never run `pnpm install`.
+
+2. **Versionable gate** — the package must be versionable:
    - **Publishable** packages (detected by `workspaces-effect`'s
-     `PublishabilityDetector` -- non-private, or with a `publishConfig`
+     `PublishabilityDetector` — non-private, or with a `publishConfig`
      targeting a registry), or
    - Private packages opted in via the `versionPrivate` changeset config
 
    Private packages that are not versionable are skipped silently.
 
-Changeset tables include all changes for a package -- both triggers and
-informational dev rows -- using specific type values: `dependency`,
+Changeset tables include all changes for a package — both triggers and
+informational dev rows — using specific type values: `dependency`,
 `optionalDependency`, `peerDependency`, `devDependency`. Empty changesets are
 not written; config-only updates (`pnpm-workspace.yaml` `configDependencies`)
 do not produce a changeset.
 
-## Advanced Patterns
+## Advanced patterns
 
-### Separate Config and Regular Updates
+### Separate config and regular updates
 
 Run the action twice in the same workflow with different branches:
 
@@ -364,7 +446,7 @@ Run the action twice in the same workflow with different branches:
       @effect/*
 ```
 
-### Auto-Merge with Squash
+### Auto-merge with squash
 
 Automatically merge the dependency PR once status checks pass:
 
@@ -378,7 +460,7 @@ Automatically merge the dependency PR once status checks pass:
     auto-merge: squash
 ```
 
-### Conditional Updates
+### Conditional updates
 
 Use outputs to gate subsequent steps:
 

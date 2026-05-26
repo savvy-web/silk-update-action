@@ -4,6 +4,8 @@
 
 /* v8 ignore next -- @preserve */
 
+/* v8 ignore next no need to test internals of the throttle plugin -- @preserve */
+
 /*!
  * content-type
  * Copyright(c) 2015 Douglas Christopher Wilson

@@ -2,24 +2,24 @@
 
 Common issues and their solutions.
 
-## Table of Contents
+## Table of contents
 
-- [Authentication Errors](#authentication-errors)
-- [No Changes Detected](#no-changes-detected)
-- [Custom Commands Failing](#custom-commands-failing)
-- [Branch Conflicts](#branch-conflicts)
-- [Changeset Issues](#changeset-issues)
-- [Lockfile Comparison Issues](#lockfile-comparison-issues)
+- [Authentication errors](#authentication-errors)
+- [No changes detected](#no-changes-detected)
+- [Custom commands failing](#custom-commands-failing)
+- [Branch conflicts](#branch-conflicts)
+- [Changeset issues](#changeset-issues)
+- [Lockfile comparison issues](#lockfile-comparison-issues)
 
-## Authentication Errors
+## Authentication errors
 
 ### "Pre-action failed: Failed to authenticate as GitHub App"
 
-**Cause**: The `app-id` or `app-private-key` input is incorrect.
+**Cause**: The `app-client-id` or `app-private-key` input is incorrect.
 
 **Solutions**:
 
-- Verify the App ID matches your GitHub App (found on the App settings page)
+- Verify the client ID matches your GitHub App (found on the App settings page)
 - Ensure the private key is the full PEM content, including the
   `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` markers
 - Check that the secret was stored correctly (no extra whitespace or truncation)
@@ -41,11 +41,11 @@ Common issues and their solutions.
 
 **Solutions**:
 
-- Check the workflow logs for errors in the "Pre" section
-- Ensure `action.yml` is using the correct `runs.pre` path
+- Check the workflow logs for errors in the "Pre" section, where the token is provisioned
+- Pin the action to a released version (`@v1` or a full tag) rather than a branch or fork that may be missing the pre step
 - Verify the runner has network access to `api.github.com`
 
-## No Changes Detected
+## No changes detected
 
 ### "No dependency updates available"
 
@@ -70,7 +70,7 @@ Common issues and their solutions.
   target packages (glob patterns must follow pnpm conventions)
 - Verify that `pnpm install` resolves correctly (check the install step in logs)
 
-## Custom Commands Failing
+## Custom commands failing
 
 ### "Custom commands failed: pnpm lint:fix"
 
@@ -95,7 +95,7 @@ Common issues and their solutions.
 - Verify that all dev dependencies are installed (the action runs after
   `pnpm install`)
 
-## Branch Conflicts
+## Branch conflicts
 
 ### "Failed to delete branch"
 
@@ -116,7 +116,7 @@ based on a slightly older commit.
 **Solution**: This is expected behavior. The next run will reset the branch to
 the latest `main` again.
 
-## Changeset Issues
+## Changeset issues
 
 ### No changesets created
 
@@ -133,8 +133,8 @@ packages were affected by the changes.
 - Verify the affected packages are versionable: either publishable, or marked
   via the `versionPrivate` config. Private packages without `versionPrivate`
   are skipped.
-- Config-only changes (`pnpm-workspace.yaml` `configDependencies`) no longer
-  produce empty changesets
+- Config-only changes (`pnpm-workspace.yaml` `configDependencies`) do not
+  produce a changeset on their own
 
 ### Changeset created for wrong package
 
@@ -145,7 +145,7 @@ that catalog reference.
 packages referencing that catalog are affected. Review the changeset to verify
 correctness.
 
-## Lockfile Comparison Issues
+## Lockfile comparison issues
 
 ### Debug output shows empty catalogs or importers
 

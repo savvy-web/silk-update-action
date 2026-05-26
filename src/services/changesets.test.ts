@@ -19,6 +19,7 @@ const mockWorkspaces = (packages: ReadonlyArray<{ name: string; path: string }>)
 		listPackages: () => Effect.succeed(packages as unknown as ReadonlyArray<WorkspacePackage>),
 		getPackage: () => Effect.die("getPackage not used"),
 		importerMap: () => Effect.die("importerMap not used"),
+		refresh: () => Effect.void,
 	});
 
 /**

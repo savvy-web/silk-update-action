@@ -7,15 +7,13 @@
 All domain logic is wrapped as Effect services with `Context.Tag` + `Layer`,
 or (for stateless concerns) exported as standalone helper functions. Each
 service depends on library services from `@savvy-web/github-action-effects`
-and/or the new `workspaces-effect` package.
+and/or `workspaces-effect`.
 
 ### Workspace discovery (via workspaces-effect)
 
-There is no local `Workspaces` wrapper service. Domain services consume the
-upstream `WorkspaceDiscovery` Tag from `workspaces-effect` directly. The
-local wrapper was removed (issue #38) once `workspaces-effect` exposed
-`WorkspaceDiscovery.listPackages(cwd?)` and
-`WorkspaceDiscovery.importerMap(cwd?)` accepting an optional cwd parameter.
+Domain services consume the upstream `WorkspaceDiscovery` Tag from
+`workspaces-effect` directly, via its `listPackages(cwd?)` and
+`importerMap(cwd?)` methods (both accept an optional cwd).
 
 The upstream service interface (relevant slice):
 
@@ -39,13 +37,13 @@ their own `discoveryLayer` from `NodeContext.layer` directly.
 
 ### src/services/changeset-config.ts - ChangesetConfig (re-export shim)
 
-This module is a thin re-export shim over `@savvy-web/silk-effects`. The local `node:fs` reader, the layer-scoped cache and the local `ChangesetConfig` Tag were deleted — that logic now lives in the shared library. The shim re-exports the library `ChangesetConfig` Tag and `ChangesetMode`, and exports `ChangesetConfigLive = LibChangesetConfigLive.pipe(Layer.provide(ChangesetConfigReaderLive))` so consumers only need to satisfy a platform `FileSystem` (the library reads `.changeset/config.json` via `@effect/platform` FileSystem, not `node:fs`).
+This module is a thin re-export shim over `@savvy-web/silk-effects`. It re-exports the library `ChangesetConfig` Tag and `ChangesetMode`, and exports `ChangesetConfigLive = LibChangesetConfigLive.pipe(Layer.provide(ChangesetConfigReaderLive))` so consumers only need to satisfy a platform `FileSystem` (the library reads `.changeset/config.json` via `@effect/platform` FileSystem, not `node:fs`).
 
-The library `ChangesetConfig` service exposes five methods — `mode`, `versionPrivate`, `ignorePatterns`, `isIgnored` and `fixed` — versus the two (`mode`, `versionPrivate`) the local implementation had. `isIgnored(name, root)` backs the new ignore gate in `Changesets.create` (see below). See `@savvy-web/silk-effects` for mode-detection and caching semantics.
+The `ChangesetConfig` service exposes `mode`, `versionPrivate`, `ignorePatterns`, `isIgnored` and `fixed`. `isIgnored(name, root)` backs the ignore gate in `Changesets.create` (see below). See `@savvy-web/silk-effects` for mode-detection and caching semantics.
 
 ### src/services/publishability.ts - PublishabilityDetector overrides (re-export shim)
 
-This module is a thin re-export shim: `export { PublishabilityDetectorAdaptiveLive, SilkPublishabilityDetectorLive } from "@savvy-web/silk-effects"`. The hand-written silk rules (`silkDetect`, `resolveTargetAccess`, `readRawPackageJson`) and the local adaptive dispatcher were deleted; they now live in the shared library. Both layers override `workspaces-effect`'s `PublishabilityDetector` Tag and are FileSystem-based: `PublishabilityDetectorAdaptiveLive` requires `FileSystem | ChangesetConfig` and dispatches per-call on `ChangesetConfig.mode` (silk / vanilla / none). `makeAppLayer` wires the adaptive variant. See `@savvy-web/silk-effects` for the silk rule details.
+This module is a thin re-export shim: `export { PublishabilityDetectorAdaptiveLive, SilkPublishabilityDetectorLive } from "@savvy-web/silk-effects"`. The silk rules and the adaptive dispatcher live in the shared library. Both layers override `workspaces-effect`'s `PublishabilityDetector` Tag and are FileSystem-based: `PublishabilityDetectorAdaptiveLive` requires `FileSystem | ChangesetConfig` and dispatches per-call on `ChangesetConfig.mode` (silk / vanilla / none). `makeAppLayer` wires the adaptive variant. See `@savvy-web/silk-effects` for the silk rule details.
 
 The versionable cascade (publishable OR `versionPrivate`) plus the ignore gate live inline in `Changesets.create` — they are silk-changesets-specific and short enough not to need their own service.
 
@@ -158,7 +156,7 @@ export class RegularDeps extends Context.Tag("RegularDeps")<RegularDeps, {
 
 - Queries npm registry directly via `NpmRegistry` service.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
-  `workspaces-effect` (consumed directly — no local wrapper service).
+  `workspaces-effect`.
 - Uses `matchesPattern` from `src/utils/deps.ts` for glob matching.
 - Preserves specifier prefix (`^`, `~`, or exact) from `package.json`.
 - Skips `catalog:` and `workspace:` specifiers.
@@ -174,7 +172,7 @@ export class RegularDeps extends Context.Tag("RegularDeps")<RegularDeps, {
 - `updatePackageJson` accepts `Map<DepSectionField, Map<string, string>>`
   so each section is updated independently without cross-pollination.
 - `DependencyUpdateResult.type` reflects the actual section (`dependency`
-  / `devDependency` / `optionalDependency`) instead of being hardcoded.
+  / `devDependency` / `optionalDependency`).
 - Gracefully handles npm query failures per-dependency.
 
 ### src/services/peer-sync.ts - PeerSync
@@ -269,9 +267,7 @@ export class Changesets extends Context.Tag("Changesets")<Changesets, {
 }>() {}
 ```
 
-Note that `workspaceRoot` is the **first** parameter (the previous signature
-that took it last is no longer supported). The third parameter was renamed
-from `devUpdates` to `regularUpdates` to reflect that it now carries
+`workspaceRoot` is the **first** parameter. `regularUpdates` carries the
 dependency/devDependency/optionalDependency updates from the multi-section
 RegularDeps scan.
 
@@ -287,12 +283,9 @@ RegularDeps scan.
   - `regularUpdates` are routed by `update.type` against the same
     `TRIGGER_TYPES` set used for lockfile changes:
     `dependency`/`optionalDependency`/`peerDependency` go to
-    `triggerRows`; `devDependency` goes to `devRows`. RegularDeps does
-    not currently emit `peerDependency`-typed records (peer ranges are
-    managed by `syncPeers`), but the routing tolerates them so future
-    expansion is safe. `updateToRow` honors `from === null` for the
-    "added" action and uses `update.type` directly when no override is
-    provided.
+    `triggerRows`; `devDependency` goes to `devRows`. `updateToRow`
+    honors `from === null` for the "added" action and uses `update.type`
+    directly when no override is provided.
 - A changeset is emitted for a package only when it has at least one
   trigger row, the package is **not changeset-ignored**, AND the package is
   **versionable**:
@@ -307,8 +300,7 @@ RegularDeps scan.
       `ChangesetConfig.mode`).
     - `versionPrivate` = `ChangesetConfig.versionPrivate(workspaceRoot)`
       (i.e. `.changeset/config.json` has `privatePackages.version: true`).
-- Empty changesets are no longer written. The previous fallback path that
-  wrote a generic patch on every run has been deleted.
+- Empty changesets are not written.
 - Each emitted changeset's body is a single Markdown table covering both
   trigger and informational rows, deduplicated by `(dependency, type)`.
 
@@ -316,6 +308,68 @@ RegularDeps scan.
 
 - `hasChangesets(workspaceRoot?)` — checks for the existence of
   `.changeset/` (used for early skip / no-op messaging).
+
+### src/services/runtime-upgrade.ts - RuntimeUpgrade
+
+Upgrade `devEngines.runtime` entries (node/deno/bun) in the root `package.json`
+via `runtime-resolver`. Depends on `NodeResolver`, `DenoResolver`, and
+`BunResolver` Tags from `runtime-resolver`. Mirrors `PnpmUpgrade`; resolver
+failures are caught and skipped per-runtime, never fatal.
+
+**Service interface:**
+
+```typescript
+export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
+ RuntimeUpgrade,
+ {
+  readonly upgrade: (
+   config: RuntimeUpgradeConfig,
+   workspaceRoot?: string,
+  ) => Effect.Effect<readonly RuntimeUpgradeResult[], FileSystemError>;
+ }
+>() {}
+```
+
+**Types:**
+
+- `RuntimeName` — `"node" | "deno" | "bun"`.
+- `RuntimeUpgradeConfig` — `{ node: string; deno: string; bun: string }` where each field
+  is `"false"`, `"auto"`, or an explicit semver range string.
+- `RuntimeUpgradeResult` — `{ runtime: RuntimeName; from: string | null; to: string; added: boolean }`.
+
+**Resolution algorithm (per runtime):**
+
+1. If the mode is `"false"`, return `null` (skip).
+2. Look up the existing `devEngines.runtime` entry via `findRuntimeEntry`.
+3. **`auto` mode:** if no entry exists or it is a static pin (`isStaticVersion`), skip with a
+   warning. Otherwise use the existing version string as the target range and its leading
+   operator (`parseRuntimeOperator`) as the output operator.
+4. **Explicit range mode:** use the user-typed value as the target range. The output operator
+   follows the **existing** entry (`parseRuntimeOperator(entry.version)`) so its pattern is
+   preserved — an exact pin stays exact, a caret stays caret — even when the input range used a
+   different operator. Only when **adding** a brand-new entry (no existing entry) does the output
+   operator fall back to the one the user typed in the range.
+5. Call `resolver.resolve({ semverRange: targetRange })` and get `latest`. On any error
+   (`VersionNotFoundError` or network failure), log a warning and skip.
+6. Re-decorate: `operator + latest` via `redecorateVersion`. If `newVersion === from`, skip (already
+   current).
+7. Call `upsertRuntimeEntry(pkgJson, runtime, newVersion)` to write the new version into the
+   package JSON object in memory. Track whether an entry was added vs modified.
+8. After processing all runtimes, write back `package.json` (preserving indentation via
+   `detectIndent`) only if at least one update succeeded.
+
+**Shape handling (via `upsertRuntimeEntry`):**
+
+- Existing array entry: version is updated in place, all other fields preserved.
+- Existing single-object entry: version is updated in place, shape stays as object.
+- New entry into existing array: new object appended, mirroring a sibling's `onFail` (or `"ignore"`
+  if none).
+- New entry when `runtime` field is absent: created as a single-element array.
+- New entry when `runtime` field is a single object: promoted to a two-element array.
+
+**EOL note:** `runtime-resolver`'s bundled cache and live API both exclude end-of-life major lines.
+A resolution targeting an EOL line returns `VersionNotFoundError` and is skipped with a warning.
+This means `auto` on a `^20`-ranged entry (once Node 20 is EOL) will no-op.
 
 ### src/services/report.ts - Report
 
@@ -335,22 +389,32 @@ export class Report extends Context.Tag("Report")<Report, {
 }>() {}
 ```
 
-**Key fix:** PR creation failures propagate through the Effect error channel
-as `PullRequestError` instead of returning a sentinel `{ number: 0, url: "" }`.
+PR creation failures propagate through the Effect error channel as
+`PullRequestError` rather than returning a sentinel result.
 
 ## Layer Composition (src/layers/app.ts)
 
-`makeAppLayer(dryRun)` wires all library and domain layers. Its only argument
-is `dryRun`. The `GitHubClient` layer is built from `GitHubToken.client()`,
-which reads the installation-token envelope `pre` persisted to `ActionState` —
-there is no bare `GitHubClientLive` and no `process.env.GITHUB_TOKEN` bridge.
-`ActionState` is provided locally (backed by `NodeContext.layer`'s FileSystem)
-so the layer is self-contained, and `Layer.orDie` turns a missing/unreadable
-token into a fatal defect, keeping the resulting `githubClient` at `R = never`
-for the `withCheckRun` callback.
+`makeAppLayer(dryRun, { runtimeLive })` wires all library and domain layers.
+`dryRun` controls the `DryRun` service; `runtimeLive` (default: `false`) selects
+how the `NodeResolver`, `DenoResolver` and `BunResolver` Tags consumed by
+`RuntimeUpgradeLive` are built (see `makeRuntimeResolvers` in `src/layers/app.ts`):
+the offline path provides resolvers over the bundled `Offline*CacheLive` (no
+network or auth), the live path provides them over `Auto*CacheLive` backed by
+version fetchers and a `GitHubClientLive` (auth from `GitHubAutoAuth`) that fall
+back to the bundled cache on any fetch failure. The `GitHubClient` layer used by
+the rest of the action is built from `GitHubToken.client()`, which reads the
+installation-token envelope the pre phase persisted to `ActionState` — there is
+no bare `GitHubClientLive` and no `process.env.GITHUB_TOKEN` bridge. `ActionState`
+is provided locally (backed by `NodeContext.layer`'s FileSystem) so the layer is
+self-contained, and `Layer.orDie` turns a missing/unreadable token into a fatal
+defect, keeping the resulting `githubClient` at `R = never` for the `withCheckRun`
+callback.
 
 ```typescript
-export const makeAppLayer = (dryRun: boolean) => {
+export const makeAppLayer = (
+ dryRun: boolean,
+ options: { runtimeLive: boolean } = { runtimeLive: false },
+) => {
  const actionState = ActionStateLive.pipe(Layer.provide(NodeContext.layer));
  const githubClient = GitHubToken.client().pipe(Layer.provide(actionState), Layer.orDie);
 
@@ -383,6 +447,11 @@ export const makeAppLayer = (dryRun: boolean) => {
   prLayer, npmRegistry, CommandRunnerLive, DryRunLive(dryRun),
  );
 
+ // NodeResolver/DenoResolver/BunResolver, built offline (bundled cache) or
+ // live (Auto*CacheLive over fetchers + GitHubClientLive). See
+ // makeRuntimeResolvers for the live wiring.
+ const runtimeResolvers = makeRuntimeResolvers(options.runtimeLive);
+
  const domainLayers = Layer.mergeAll(
   workspaceDiscovery,
   changesetConfig,
@@ -393,6 +462,7 @@ export const makeAppLayer = (dryRun: boolean) => {
   ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
   RegularDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, workspaceDiscovery))),
   ReportLive.pipe(Layer.provide(prLayer)),
+  RuntimeUpgradeLive.pipe(Layer.provide(runtimeResolvers)),
  );
 
  return Layer.provideMerge(domainLayers, libraryLayers);
@@ -401,9 +471,7 @@ export const makeAppLayer = (dryRun: boolean) => {
 
 `WorkspaceDiscoveryLive` and `WorkspaceRootLive` come from
 `workspaces-effect`; `NodeContext.layer` (from `@effect/platform-node`)
-satisfies their FileSystem/Path requirements. There is no local `Workspaces`
-service Tag — domain services consume the upstream `WorkspaceDiscovery` Tag
-directly.
+satisfies their FileSystem/Path requirements.
 
 `ChangesetConfigLive` and `PublishabilityDetectorAdaptiveLive` (both re-exported from `@savvy-web/silk-effects`) are FileSystem-based — they read `.changeset/config.json` and package manifests via `@effect/platform` FileSystem rather than `node:fs`, so the same `platform` (`NodeContext.layer`) is provided to both. `ChangesetConfigLive` carries its own `ChangesetConfigReaderLive` (composed in the shim), leaving only the FileSystem requirement for `makeAppLayer` to satisfy.
 
@@ -431,6 +499,25 @@ directly.
 - `parsePnpmVersion(raw, stripPnpmPrefix?)` - Parse version from `packageManager` or `devEngines`
 - `formatPnpmVersion(version, hasCaret)` - Format version with optional caret
 - `detectIndent(content)` - Detect JSON file indentation (reused by `RegularDeps` and `PeerSync`)
+
+### src/utils/runtime.ts
+
+Pure helpers for reading and rewriting `devEngines.runtime` entries. No Effect
+service dependencies — mirrors `src/utils/pnpm.ts`.
+
+- `parseRuntimeOperator(raw)` — Extract the leading range operator (`^`, `~`, `>=`, etc.)
+  from a version string; returns `""` for a bare version with no operator.
+- `isStaticVersion(raw)` — True when `raw` is a static exact version (`X.Y.Z`, optionally with
+  prerelease/build) and carries no range operator, wildcard (`x`/`*`), OR-set (`||`), or partial
+  form. Used to make `auto` a no-op on pinned versions.
+- `redecorateVersion(resolved, operator)` — Re-attach an operator to a resolved exact version
+  (e.g. `"^" + "24.16.0"` → `"^24.16.0"`).
+- `findRuntimeEntry(devEngines, runtime)` — Find the `devEngines.runtime` entry for `runtime`
+  (accepts object or array shape), or `null` if absent.
+- `upsertRuntimeEntry(pkgJson, runtime, version)` — Set the version for `runtime` inside
+  `pkgJson.devEngines.runtime`, mutating `pkgJson` in place. Handles all shape variants (existing
+  array entry, existing single-object entry, new entry into array, promote single-object to array,
+  create array when absent). Returns `{ added: boolean }`.
 
 ### src/utils/semver.ts
 

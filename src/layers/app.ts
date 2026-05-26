@@ -20,6 +20,23 @@ import {
 	PullRequestLive,
 } from "@savvy-web/github-action-effects";
 import { Layer } from "effect";
+import {
+	AutoBunCacheLive,
+	AutoDenoCacheLive,
+	AutoNodeCacheLive,
+	BunResolverLive,
+	BunVersionFetcherLive,
+	DenoResolverLive,
+	DenoVersionFetcherLive,
+	GitHubAutoAuth,
+	GitHubClientLive,
+	NodeResolverLive,
+	NodeScheduleFetcherLive,
+	NodeVersionFetcherLive,
+	OfflineBunCacheLive,
+	OfflineDenoCacheLive,
+	OfflineNodeCacheLive,
+} from "runtime-resolver";
 import { WorkspaceDiscoveryLive, WorkspaceRootLive } from "workspaces-effect";
 
 import { BranchManagerLive } from "../services/branch.js";
@@ -30,9 +47,41 @@ import { PnpmUpgradeLive } from "../services/pnpm-upgrade.js";
 import { PublishabilityDetectorAdaptiveLive } from "../services/publishability.js";
 import { RegularDepsLive } from "../services/regular-deps.js";
 import { ReportLive } from "../services/report.js";
+import { RuntimeUpgradeLive } from "../services/runtime-upgrade.js";
 
 /* v8 ignore start - pure Layer wiring, tested indirectly via service integration tests */
-export const makeAppLayer = (dryRun: boolean) => {
+
+/** Build the three runtime-resolver services, offline (bundled) or live (Auto, falls back to bundled). */
+const makeRuntimeResolvers = (live: boolean) => {
+	if (!live) {
+		return Layer.mergeAll(
+			NodeResolverLive.pipe(Layer.provide(OfflineNodeCacheLive)),
+			DenoResolverLive.pipe(Layer.provide(OfflineDenoCacheLive)),
+			BunResolverLive.pipe(Layer.provide(OfflineBunCacheLive)),
+		);
+	}
+	// Live path: runtime-resolver fetches GitHub/nodejs.org data. Auth comes from
+	// GitHubAutoAuth (reads GITHUB_TOKEN / PAT from env); Layer.orDie keeps the E
+	// channel `never` (GitHubAutoAuth only fails when GITHUB_APP_* env is set,
+	// which this action does not use). Auto*CacheLive falls back to bundled data
+	// on any fetch failure, so an unauthenticated live path still works.
+	const githubLayer = GitHubClientLive.pipe(Layer.provide(GitHubAutoAuth), Layer.orDie);
+	const nodeFetchers = Layer.merge(
+		NodeVersionFetcherLive.pipe(Layer.provide(githubLayer)),
+		NodeScheduleFetcherLive.pipe(Layer.provide(githubLayer)),
+	);
+	return Layer.mergeAll(
+		NodeResolverLive.pipe(Layer.provide(AutoNodeCacheLive.pipe(Layer.provide(nodeFetchers)))),
+		DenoResolverLive.pipe(
+			Layer.provide(AutoDenoCacheLive.pipe(Layer.provide(DenoVersionFetcherLive.pipe(Layer.provide(githubLayer))))),
+		),
+		BunResolverLive.pipe(
+			Layer.provide(AutoBunCacheLive.pipe(Layer.provide(BunVersionFetcherLive.pipe(Layer.provide(githubLayer))))),
+		),
+	);
+};
+
+export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } = { runtimeLive: false }) => {
 	// The GitHub App installation token is provisioned in the pre phase and
 	// persisted to ActionState. GitHubToken.client() reads it back and builds a
 	// GitHubClient — no process.env.GITHUB_TOKEN bridge. ActionState is provided
@@ -84,6 +133,7 @@ export const makeAppLayer = (dryRun: boolean) => {
 		ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
 		RegularDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, workspaceDiscovery))),
 		ReportLive.pipe(Layer.provide(prLayer)),
+		RuntimeUpgradeLive.pipe(Layer.provide(makeRuntimeResolvers(options.runtimeLive))),
 	);
 
 	return Layer.provideMerge(domainLayers, libraryLayers);

@@ -24,26 +24,26 @@ const token = yield* GitHubToken.provision({
 ```
 
 `PreLive` provides `GitHubAppLive` (over `OctokitAuthAppLive` and
-`FetchHttpClient.layer` — in 2.0 `GitHubAppLive` requires
-`HttpClient.HttpClient`) merged with `NodeFileSystem.layer`. The
-module-level run is guarded by `if (process.env.GITHUB_ACTIONS)` so importing
-the module in tests does not execute it.
+`FetchHttpClient.layer`, since `GitHubAppLive` requires `HttpClient.HttpClient`)
+merged with `NodeFileSystem.layer`. The module-level run is guarded by
+`if (process.env.GITHUB_ACTIONS)` so importing the module in tests does not
+execute it.
 
 ## src/post.ts - Post-Phase Entry
 
 `post.ts` runs after `main`, even on failure. It reports total duration from the
 saved `StartTimeState`, then revokes the token via `GitHubToken.dispose()`. The
-new `skip-token-revoke` input short-circuits revocation. The whole effect is
+`skip-token-revoke` input short-circuits revocation. The whole effect is
 guarded with `Effect.catchAll` (around `dispose`) plus `Effect.catchAllDefect`
 so a post failure never fails the workflow. `PostLive` mirrors `PreLive`.
 
 ## src/main.ts - Main-Phase Entry
 
 `main.ts` is intentionally tiny: it calls `Action.run(program)` on the program
-imported from `./program.ts`. No `{ layer }` is needed — after the three-phase
-migration `program`'s only requirements are the core services `Action.run`
-injects (`ActionEnvironment`, `ActionOutputs`, config provider); `GitHubClient`
-and the domain services are provided internally by `appLayer`.
+imported from `./program.ts`. No `{ layer }` is needed — `program`'s only
+requirements are the core services `Action.run` injects (`ActionEnvironment`,
+`ActionOutputs`, config provider); `GitHubClient` and the domain services are
+provided internally by `appLayer`.
 
 ```typescript
 import { Action } from "@savvy-web/github-action-effects";
@@ -94,9 +94,19 @@ const autoMerge = yield* Config.string("auto-merge").pipe(Config.withDefault("")
 const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
 const logLevel = yield* Config.string("log-level").pipe(Config.withDefault("auto"));
 const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
+// upgrade-runtime-{node,deno,bun} default "false"; runtime-data default "offline".
+const rawRuntimeNode = yield* Config.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
+const rawRuntimeDeno = yield* Config.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
+const rawRuntimeBun = yield* Config.string("upgrade-runtime-bun").pipe(Config.withDefault("false"));
+const runtimeData = yield* Config.string("runtime-data").pipe(Config.withDefault("offline"));
+const runtimeLive = runtimeData === "live";
+
+// Each upgrade-runtime-* value must be "auto", "false", or a parseable semver
+// range — explicit ranges are validated via Range.parse from semver-effect.
+const anyRuntime = rawRuntimeNode !== "false" || rawRuntimeDeno !== "false" || rawRuntimeBun !== "false";
 
 // Cross-validate: at least one update type must be active
-if (configDependencies.length === 0 && dependencies.length === 0 && !updatePnpm) {
+if (configDependencies.length === 0 && dependencies.length === 0 && !updatePnpm && !anyRuntime) {
  return yield* Effect.fail(new ActionInputError({ /* ... */ }));
 }
 
@@ -109,7 +119,8 @@ if (peerOverlap.length > 0) {
 
 `parseMultiValueInput` (in `src/utils/input.ts`) accepts JSON arrays,
 newline-separated lists (with optional `*` bullets and `#` comments), or
-comma-separated strings.
+comma-separated strings. The `runtime-data` input (`offline` | `live`) selects
+which `runtime-resolver` cache layers `makeAppLayer` wires.
 
 ### Layer Composition
 
@@ -122,7 +133,7 @@ reads `headSha` from `ActionEnvironment`, builds the per-run layer and runs
 const env = yield* ActionEnvironment;
 const headSha = (yield* env.github).sha;
 
-const appLayer = makeAppLayer(dryRun);
+const appLayer = makeAppLayer(dryRun, { runtimeLive });
 yield* innerProgram(inputs, dryRun, headSha, appLayer)
  .pipe(Logger.withMinimumLogLevel(effectLogLevel))
  .pipe(Effect.timeoutFail({
@@ -131,10 +142,11 @@ yield* innerProgram(inputs, dryRun, headSha, appLayer)
  }));
 ```
 
-`makeAppLayer(dryRun)` builds the `GitHubClient` from `GitHubToken.client()`
-(see `src/layers/app.ts`), which reads the token envelope from `ActionState` —
-no `process.env.GITHUB_TOKEN` bridge. There is no `GitHubApp` import or
-`withToken` wrapper in `program.ts` anymore.
+`makeAppLayer(dryRun, { runtimeLive })` builds the `GitHubClient` from
+`GitHubToken.client()` (see `src/layers/app.ts`), which reads the token envelope
+from `ActionState` — no `process.env.GITHUB_TOKEN` bridge. `program.ts` does no
+token plumbing of its own. `runtimeLive` (derived from `runtime-data === "live"`)
+selects the `runtime-resolver` cache layers.
 
 ### Program Structure
 
@@ -147,12 +159,11 @@ The module exports:
 - `runCommands(commands)` — execute custom commands sequentially via
   `CommandRunner` (`sh -c "<cmd>"`); returns `{ successful, failed }`.
 - `runInstall()` — runs `pnpm install --frozen-lockfile=false --fix-lockfile`
-  via `CommandRunner.exec`. Replaces the older
-  `rm -rf node_modules pnpm-lock.yaml && pnpm install` clean-install pattern.
+  via `CommandRunner.exec`.
 
 `innerProgram` requires all domain services (`BranchManager`, `PnpmUpgrade`,
-`ConfigDeps`, `RegularDeps`, `Changesets`, `Report`) and helper functions
-(`captureLockfileState`, `compareLockfiles`, `syncPeers`,
+`RuntimeUpgrade`, `ConfigDeps`, `RegularDeps`, `Changesets`, `Report`) and
+helper functions (`captureLockfileState`, `compareLockfiles`, `syncPeers`,
 `formatWorkspaceYaml`) plus library services (`ActionOutputs`, `CheckRun`,
 `CommandRunner`) and `WorkspaceDiscovery` (from `workspaces-effect`) in its
 context.

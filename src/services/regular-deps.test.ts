@@ -61,6 +61,7 @@ const mockWorkspaces = (packages: ReadonlyArray<{ name: string; path: string }>)
 		listPackages: () => Effect.succeed(packages as unknown as ReadonlyArray<WorkspacePackage>),
 		getPackage: () => Effect.die("getPackage not used in regular-deps tests"),
 		importerMap: () => Effect.die("importerMap not used in regular-deps tests"),
+		refresh: () => Effect.void,
 	});
 
 /**
@@ -78,6 +79,7 @@ const failingWorkspaces = (): Layer.Layer<WorkspaceDiscovery> =>
 			),
 		getPackage: () => Effect.die("getPackage not used in regular-deps tests"),
 		importerMap: () => Effect.die("importerMap not used in regular-deps tests"),
+		refresh: () => Effect.void,
 	});
 
 const runWithService = <A, E>(
