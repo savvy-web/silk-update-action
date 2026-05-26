@@ -141,8 +141,14 @@ const commitChangesImpl = (
 	branchName: string,
 ): Effect.Effect<void, GitCommitError | CommandRunnerError> =>
 	Effect.gen(function* () {
-		// Check if there are changes to commit
-		const statusResult = yield* cmd.execCapture("git", ["status", "--porcelain"]);
+		// Check if there are changes to commit.
+		//
+		// Use core.fileMode=false so a working tree dirtied only by executable-bit
+		// flips (e.g. husky chmod-ing .husky hook scripts during a `run` command)
+		// is not mistaken for a committable change. We commit file content via the
+		// GitHub API at mode 100644, so a mode-only change produces an empty
+		// tree-diff — committing it would create an empty commit and a spurious PR.
+		const statusResult = yield* cmd.execCapture("git", ["-c", "core.fileMode=false", "status", "--porcelain"]);
 		const lines = statusResult.stdout.split("\n").filter((l) => l.trim().length > 0);
 
 		if (lines.length === 0) {

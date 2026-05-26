@@ -183,7 +183,7 @@ describe("BranchManager.manage", () => {
 describe("BranchManager.commitChanges", () => {
 	it("returns early when there are no changes", async () => {
 		const responses = new Map<string, CommandResponse>([
-			["git status --porcelain", { exitCode: 0, stdout: "", stderr: "" }],
+			["git -c core.fileMode=false status --porcelain", { exitCode: 0, stdout: "", stderr: "" }],
 		]);
 
 		const { commitState, result } = runWithBranchManager(
@@ -205,7 +205,7 @@ describe("BranchManager.commitChanges", () => {
 	it("commits changed files via GitHub API", async () => {
 		const responses = new Map<string, CommandResponse>([
 			[
-				"git status --porcelain",
+				"git -c core.fileMode=false status --porcelain",
 				{
 					exitCode: 0,
 					stdout: " M package.json\n",
@@ -242,7 +242,7 @@ describe("BranchManager.commitChanges", () => {
 	it("handles deleted files with sha: null", async () => {
 		const responses = new Map<string, CommandResponse>([
 			[
-				"git status --porcelain",
+				"git -c core.fileMode=false status --porcelain",
 				{
 					exitCode: 0,
 					stdout: "D  deleted-file.ts\n",
@@ -274,7 +274,7 @@ describe("BranchManager.commitChanges", () => {
 	it("skips unreadable files gracefully", async () => {
 		const responses = new Map<string, CommandResponse>([
 			[
-				"git status --porcelain",
+				"git -c core.fileMode=false status --porcelain",
 				{
 					exitCode: 0,
 					stdout: "M  nonexistent-file.ts\n",
@@ -297,5 +297,41 @@ describe("BranchManager.commitChanges", () => {
 		expect(Either.isRight(either)).toBe(true);
 		// No commit should be created since no files could be read
 		expect(commitState.commits).toHaveLength(0);
+	});
+
+	it("ignores executable-bit-only changes and does not create an empty commit", async () => {
+		// Regression: a `run` command (e.g. husky chmod-ing .husky/commit-msg
+		// during `savvy-commit init`) can flip a tracked file's executable bit
+		// without changing its content. A mode-sensitive `git status` reports it
+		// as modified, but committing file content via the GitHub API at mode
+		// 100644 yields an empty tree-diff — an empty commit + spurious PR.
+		// commitChanges must query status with core.fileMode=false so a mode-only
+		// dirty tree is treated as no change.
+		const responses = new Map<string, CommandResponse>([
+			// Mode-sensitive status (the buggy path) would surface a real, readable
+			// file as modified purely because of an executable-bit flip.
+			["git status --porcelain", { exitCode: 0, stdout: " M package.json\n", stderr: "" }],
+			// Mode-insensitive status (the correct path) reports nothing — the only
+			// working-tree difference was the chmod.
+			["git -c core.fileMode=false status --porcelain", { exitCode: 0, stdout: "", stderr: "" }],
+			["git fetch origin pnpm/config", { exitCode: 0, stdout: "", stderr: "" }],
+			["git reset --hard origin/pnpm/config", { exitCode: 0, stdout: "", stderr: "" }],
+		]);
+
+		const { commitState, result } = runWithBranchManager(
+			Effect.gen(function* () {
+				const manager = yield* BranchManager;
+				return yield* manager.commitChanges("chore: update deps", "pnpm/config");
+			}),
+			undefined,
+			responses,
+		);
+
+		const either = await result;
+
+		expect(Either.isRight(either)).toBe(true);
+		// No commit should be created from a mode-only change.
+		expect(commitState.commits).toHaveLength(0);
+		expect(commitState.trees).toHaveLength(0);
 	});
 });
