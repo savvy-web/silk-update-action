@@ -26,6 +26,7 @@ export const NonEmptyString = Schema.String.pipe(Schema.minLength(1, { message: 
  * - "devDependency" for dev dependencies updated by RegularDeps
  * - "peerDependency" for peer dependencies synced by PeerSync
  * - "optionalDependency" for optional dependencies
+ * - "runtime" for devEngines.runtime engine bumps (node/deno/bun)
  */
 export const DependencyType = Schema.Literal(
 	"config",
@@ -33,6 +34,7 @@ export const DependencyType = Schema.Literal(
 	"devDependency",
 	"peerDependency",
 	"optionalDependency",
+	"runtime",
 );
 
 /**

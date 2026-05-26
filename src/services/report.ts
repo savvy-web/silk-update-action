@@ -114,12 +114,14 @@ const generateCommitMessageImpl = (updates: ReadonlyArray<DependencyUpdateResult
 	const depCount = updates.filter((u) => u.type === "dependency").length;
 	const devCount = updates.filter((u) => u.type === "devDependency").length;
 	const peerCount = updates.filter((u) => u.type === "peerDependency").length;
+	const runtimeCount = updates.filter((u) => u.type === "runtime").length;
 
 	const parts: string[] = [];
 	if (configCount > 0) parts.push(`${configCount} config`);
 	if (depCount > 0) parts.push(`${depCount} dependency`);
 	if (devCount > 0) parts.push(`${devCount} dev`);
 	if (peerCount > 0) parts.push(`${peerCount} peer`);
+	if (runtimeCount > 0) parts.push(`${runtimeCount} runtime`);
 
 	const botName = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
 	const botEmail = appSlug

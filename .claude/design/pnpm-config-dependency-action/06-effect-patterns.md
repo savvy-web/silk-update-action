@@ -20,9 +20,9 @@ Services are organized in two tiers:
 - `ActionLogger` - Routes `Effect.logDebug` to `core.debug()`, `Effect.logInfo`
   to `core.info()`, etc.
 
-**Token lifecycle (three-phase, 2.0):**
+**Token lifecycle (three-phase):**
 
-- `GitHubApp` / `GitHubAppLive` - GitHub App auth surface. In 2.0 `GitHubAppLive`
+- `GitHubApp` / `GitHubAppLive` - GitHub App auth surface. `GitHubAppLive`
   requires `OctokitAuthAppLive` **and** `HttpClient.HttpClient` (provided via
   `FetchHttpClient.layer`). Used only by `pre.ts` / `post.ts`.
 - `GitHubToken` namespace - coordinates one installation token across phases:
@@ -35,9 +35,9 @@ Services are organized in two tiers:
 
 **Infrastructure services** (the `GitHubClient` is built from `GitHubToken.client()`):
 
-- `GitHubClient` - Octokit wrapper with `rest()` and `repo`. In 2.0 this is a
-  namespace of layer constructors (`fromEnv` / `fromToken` / `fromApp`), not a
-  bare `GitHubClientLive`; this action builds it via `GitHubToken.client()`.
+- `GitHubClient` - Octokit wrapper with `rest()` and `repo`. A namespace of
+  layer constructors (`fromEnv` / `fromToken` / `fromApp`), not a bare
+  `GitHubClientLive`; this action builds it via `GitHubToken.client()`.
 - `GitBranch` / `GitBranchLive` - Branch CRUD: `exists`, `create`, `delete`, `getSha`
 - `GitCommit` / `GitCommitLive` - Git Data API: `createTree`, `createCommit`, `updateRef`
 - `CheckRun` / `CheckRunLive` - Check run lifecycle: `withCheckRun`, `complete`
@@ -48,8 +48,7 @@ Services are organized in two tiers:
 
 ### Workspace Services (from workspaces-effect)
 
-Workspace enumeration comes from `workspaces-effect` directly — there is no
-local wrapper service:
+Workspace enumeration comes from `workspaces-effect` directly:
 
 - `WorkspaceDiscovery` / `WorkspaceDiscoveryLive` — Upstream Effect-native
   workspace enumeration. Provides `listPackages(cwd?)` and
@@ -59,6 +58,18 @@ local wrapper service:
 - `PublishabilityDetector` Tag (the override default `PublishabilityDetectorLive`
   with vanilla rules). The action overrides this Tag with the silk/adaptive
   detector from `@savvy-web/silk-effects` (see below).
+
+### Runtime resolver services (from runtime-resolver)
+
+`RuntimeUpgrade` resolves `devEngines.runtime` versions through three resolver
+Tags from `runtime-resolver`:
+
+- `NodeResolver` / `DenoResolver` / `BunResolver` — per-runtime resolvers, each
+  backed by a cache layer. `makeAppLayer` provides either the bundled
+  `Offline*CacheLive` layers (default, no network/auth) or the live
+  `Auto*CacheLive` layers (which fall back to bundled data on fetch failure),
+  selected by `runtimeLive`. The live path also wires `GitHubClientLive` over
+  `GitHubAutoAuth` for the resolvers' GitHub/nodejs.org fetchers.
 
 ### Silk Services (from @savvy-web/silk-effects)
 
@@ -70,11 +81,12 @@ Publishability rules and changeset-config reading live in `@savvy-web/silk-effec
 ### Domain Services (src/services/)
 
 Each domain service uses `Context.Tag` + `Layer`. `ChangesetConfig` and the
-publishability overrides are no longer local — they are re-exported from
-`@savvy-web/silk-effects` (see above):
+publishability overrides are re-exported from `@savvy-web/silk-effects` (see
+above):
 
 - `BranchManager` / `BranchManagerLive` - Depends on `GitBranch`, `GitCommit`, `CommandRunner`
 - `PnpmUpgrade` / `PnpmUpgradeLive` - Depends on `CommandRunner`
+- `RuntimeUpgrade` / `RuntimeUpgradeLive` - Depends on `NodeResolver`, `DenoResolver`, `BunResolver` (from `runtime-resolver`)
 - `ConfigDeps` / `ConfigDepsLive` - Depends on `NpmRegistry`
 - `RegularDeps` / `RegularDepsLive` - Depends on `NpmRegistry`,
   `WorkspaceDiscovery`
@@ -96,17 +108,18 @@ All `main`-phase layers are wired together in `src/layers/app.ts`:
 Action.run(program);
 
 // Inside program (program.ts) — no token plumbing:
-const appLayer = makeAppLayer(dryRun);
+const appLayer = makeAppLayer(dryRun, { runtimeLive });
 yield* innerProgram(inputs, dryRun, headSha, appLayer);
 ```
 
-`makeAppLayer(dryRun)` takes only `dryRun`. It builds the `GitHubClient` from
-`GitHubToken.client()` (over a self-contained `ActionStateLive`, `Layer.orDie`),
-which reads the token envelope `pre` persisted — there is no
-`process.env.GITHUB_TOKEN` bridge. The function separates library layers from
-domain layers, then uses `Layer.provideMerge` to wire domain layers on top of
-library layers. The `pre` / `post` phases wire their own `GitHubAppLive`-based
-layers (`PreLive` / `PostLive`).
+`makeAppLayer(dryRun, { runtimeLive })` takes `dryRun` plus a `runtimeLive` flag
+that selects the `runtime-resolver` cache layers (bundled offline vs live). It
+builds the `GitHubClient` from `GitHubToken.client()` (over a self-contained
+`ActionStateLive`, `Layer.orDie`), which reads the token envelope `pre`
+persisted — there is no `process.env.GITHUB_TOKEN` bridge. The function
+separates library layers from domain layers, then uses `Layer.provideMerge` to
+wire domain layers on top of library layers. The `pre` / `post` phases wire
+their own `GitHubAppLive`-based layers (`PreLive` / `PostLive`).
 
 ## Error Handling Strategy
 
@@ -117,7 +130,7 @@ Effect distinguishes between **expected errors** (typed, recoverable) and **unex
 - `PnpmError` - pnpm command failures
 - `GitError` - git operation failures
 - `GitHubApiError` - API call failures
-- `InvalidInputError` - validation failures
+- `ActionInputError` (from the library) - input validation failures raised in `program.ts`
 - `FileSystemError` - file read/write failures
 - `LockfileError` - lockfile parsing failures
 
@@ -198,7 +211,7 @@ export const program = Effect.gen(function* () {
  const env = yield* ActionEnvironment;
  const headSha = (yield* env.github).sha;
 
- const appLayer = makeAppLayer(dryRun);
+ const appLayer = makeAppLayer(dryRun, { runtimeLive });
  yield* innerProgram(inputs, dryRun, headSha, appLayer).pipe(
   Effect.timeoutFail({
    duration: Duration.seconds(timeout),
@@ -213,9 +226,9 @@ Action.run(program);
 
 **Testing:** The `program` is exported from `program.ts` for testability.
 Tests import `program` and `runCommands` directly without going through
-`main.ts` (which only contains the module-level `Action.run` call). They
-mock `@savvy-web/github-action-effects` via `vi.mock()` and test the
-exported `program` Effect with mock service layers. `pre.ts` and `post.ts`
-have their own suites (`pre.test.ts`, `post.test.ts`) exercising token
-provisioning, duration reporting and `skip-token-revoke` short-circuiting via
-the library's test layers.
+`main.ts` (which only contains the module-level `Action.run` call). Library
+services are injected via `Layer.succeed` fakes or the library's in-memory
+test layers (e.g. `PullRequestTest`) rather than `vi.mock`. `pre.ts` and
+`post.ts` have their own suites exercising token provisioning, duration
+reporting and `skip-token-revoke` short-circuiting via the library's test
+layers.

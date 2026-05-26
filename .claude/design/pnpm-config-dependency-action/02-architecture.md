@@ -22,7 +22,7 @@ src/
 │   ├── domain.ts          # Effect Schema definitions (domain types)
 │   └── domain.test.ts
 ├── layers/
-│   └── app.ts             # makeAppLayer(dryRun) - layer composition
+│   └── app.ts             # makeAppLayer(dryRun, { runtimeLive }) - layer composition
 ├── services/
 │   ├── branch.ts          # BranchManager service (Context.Tag)
 │   ├── branch.test.ts
@@ -42,6 +42,8 @@ src/
 │   ├── regular-deps.test.ts
 │   ├── report.ts          # Report service (PR, summary, commit msg)
 │   ├── report.test.ts
+│   ├── runtime-upgrade.ts # RuntimeUpgrade service (devEngines.runtime upgrades)
+│   ├── runtime-upgrade.test.ts
 │   ├── workspace-yaml.ts  # WorkspaceYaml helpers
 │   └── workspace-yaml.test.ts
 └── utils/
@@ -51,6 +53,8 @@ src/
     ├── input.test.ts
     ├── markdown.ts        # npmUrl, cleanVersion
     ├── pnpm.ts            # parsePnpmVersion, formatPnpmVersion, detectIndent
+    ├── runtime.ts         # parseRuntimeOperator, isStaticVersion, redecorateVersion, upsertRuntimeEntry
+    ├── runtime.test.ts
     └── semver.ts          # resolveLatestInRange
 ```
 
@@ -68,26 +72,24 @@ src/
   `Context.Tag` + `Layer`. Services are defined in `src/services/`, pure helpers
   in `src/utils/`. Two services (`PeerSync`, `WorkspaceYaml`) export standalone
   helpers without their own Tag.
-- **Layer composition:** `src/layers/app.ts` exports `makeAppLayer(dryRun)`
-  which wires all library layers (from `@savvy-web/github-action-effects`),
-  upstream `WorkspaceDiscoveryLive` + `WorkspaceRootLive` from
-  `workspaces-effect` (provided by `NodeContext.layer` from
-  `@effect/platform-node`), the `PublishabilityDetector` override and
+- **Layer composition:** `src/layers/app.ts` exports
+  `makeAppLayer(dryRun, { runtimeLive })` which wires all library layers (from
+  `@savvy-web/github-action-effects`), upstream `WorkspaceDiscoveryLive` +
+  `WorkspaceRootLive` from `workspaces-effect` (provided by `NodeContext.layer`
+  from `@effect/platform-node`), the `PublishabilityDetector` override and
   `ChangesetConfig` from `@savvy-web/silk-effects` (both FileSystem-based, also
-  provided `NodeContext.layer`), and domain service layers together. The
-  `GitHubClient` layer is built from
+  provided `NodeContext.layer`), runtime-resolver cache layers
+  (`Offline*CacheLive` or `Auto*CacheLive` depending on `runtimeLive`), and
+  domain service layers together. The `GitHubClient` layer is built from
   `GitHubToken.client()`, which reads the installation token envelope `pre`
   persisted to `ActionState` — there is no bare `GitHubClientLive` and no
-  `process.env.GITHUB_TOKEN` bridge. `makeAppLayer` takes only `dryRun`.
+  `process.env.GITHUB_TOKEN` bridge.
 - **No barrel re-exports:** Direct imports everywhere. No `index.ts` files.
 - **Tests co-located:** Each `.ts` file has a `.test.ts` sibling in the same directory.
-- **Removed dependencies:** `workspace-tools` is no longer used. All workspace
-  enumeration now goes through `WorkspaceDiscovery` from `workspaces-effect`
-  (consumed directly by `RegularDeps`, `PeerSync`, `Lockfile`, and
-  `Changesets`). The local `Workspaces` wrapper service was removed (issue
-  #38) once `workspaces-effect` exposed
-  `WorkspaceDiscovery.listPackages(cwd?)` and
-  `WorkspaceDiscovery.importerMap(cwd?)` accepting an optional cwd parameter.
+- **Workspace enumeration:** All workspace enumeration goes through the upstream
+  `WorkspaceDiscovery` Tag from `workspaces-effect`, consumed directly by
+  `RegularDeps`, `PeerSync`, `Lockfile` and `Changesets` via its
+  `listPackages(cwd?)` and `importerMap(cwd?)` methods.
 
 ## Data Flow
 
@@ -95,7 +97,7 @@ src/
 graph TD
     PRE[pre.ts: GitHubToken.provision + save start time] --> A
     A[main.ts: Action.run] --> B[program.ts: Parse Inputs via Config]
-    B --> D[makeAppLayer dryRun: Build All Layers, GitHubToken.client]
+    B --> D[makeAppLayer dryRun runtimeLive: Build All Layers, GitHubToken.client]
     D --> E[CheckRun.withCheckRun]
     E --> F[BranchManager.manage]
     F --> G{Branch Exists?}
@@ -105,8 +107,11 @@ graph TD
     I --> J
     J --> J2{update-pnpm?}
     J2 -->|Yes| J3[PnpmUpgrade.upgrade]
-    J2 -->|No| K
-    J3 --> K[ConfigDeps.updateConfigDeps]
+    J2 -->|No| J4
+    J3 --> J4{upgrade-runtime-*?}
+    J4 -->|Yes| J5[RuntimeUpgrade.upgrade]
+    J4 -->|No| K
+    J5 --> K[ConfigDeps.updateConfigDeps]
     K --> L[RegularDeps.updateRegularDeps]
     L --> L2[syncPeers peer-lock + peer-minor]
     L2 --> M[runInstall: pnpm install --frozen-lockfile=false --fix-lockfile]
@@ -160,7 +165,8 @@ log messages.
   `utils/input.ts` (supports newline, bullet, comma, JSON-array forms; strips
   `# comments`).
 - Cross-validation: at least one update type must be active
-  (`config-dependencies`, `dependencies`, or `update-pnpm: true`).
+  (`config-dependencies`, `dependencies`, `update-pnpm: true`, or any
+  `upgrade-runtime-*` set to non-`false`).
 - `peer-lock` and `peer-minor` must not overlap (validated in `program.ts`
   before `syncPeers` is called).
 - A warning is emitted for any `peer-lock`/`peer-minor` entry that does not
@@ -168,8 +174,13 @@ log messages.
 - The `main` phase does **not** parse `app-client-id` / `app-private-key` —
   those are consumed by `GitHubToken.provision` in `pre.ts`. `main`-phase
   inputs: `branch`, `config-dependencies`, `dependencies`, `peer-lock`,
-  `peer-minor`, `run`, `update-pnpm`, `changesets`, `auto-merge`, `dry-run`,
-  `log-level`, `timeout`.
+  `peer-minor`, `run`, `update-pnpm`, `upgrade-runtime-node`,
+  `upgrade-runtime-deno`, `upgrade-runtime-bun`, `runtime-data`, `changesets`,
+  `auto-merge`, `dry-run`, `log-level`, `timeout`.
+- The `upgrade-runtime-*` inputs (`false` | `auto` | a semver range) are
+  validated via `Range.parse` from `semver-effect` when an explicit range is
+  provided (non-`false`, non-`auto` values). The `runtime-data` input selects
+  the resolver layer wired in `makeAppLayer`.
 
 ### Step 2: Wire Layers
 
@@ -178,10 +189,10 @@ log messages.
   builds the per-run layer:
 
 ```typescript
-const appLayer = makeAppLayer(dryRun);
+const appLayer = makeAppLayer(dryRun, { runtimeLive });
 ```
 
-`makeAppLayer(dryRun)` wires:
+`makeAppLayer(dryRun, { runtimeLive })` wires:
 
 - The `GitHubClient` layer from `GitHubToken.client()` (over a self-contained
   `ActionStateLive`, `Layer.orDie`), reused by every dependent library layer:
@@ -197,7 +208,10 @@ const appLayer = makeAppLayer(dryRun);
   per call and dispatches to silk / vanilla / noop detection). Both are
   FileSystem-based and provided `NodeContext.layer`.
 - Domain layers: `BranchManagerLive`, `PnpmUpgradeLive`, `ConfigDepsLive`,
-  `RegularDepsLive`, `ChangesetsLive`, `ReportLive`.
+  `RegularDepsLive`, `ChangesetsLive`, `ReportLive`, `RuntimeUpgradeLive`.
+- Runtime resolver layers from `runtime-resolver`: `Offline*CacheLive` (default,
+  bundled data, no network/auth) or `Auto*CacheLive` (live, falls back to
+  bundled), selected by the `runtimeLive` flag passed to `makeAppLayer`.
 
 ### Step 3: Create Check Run
 
@@ -224,6 +238,30 @@ const appLayer = makeAppLayer(dryRun);
 - `PnpmUpgrade.upgrade()` parses version, queries npm, runs `corepack use`.
 - Updates `devEngines.packageManager.version` if present.
 
+### Step 6b: Upgrade Runtimes (conditional)
+
+- Conditional on any `upgrade-runtime-node/deno/bun` input being non-`false`.
+- `RuntimeUpgrade.upgrade(config, workspaceRoot?)` reads root `package.json`,
+  resolves the latest version via `runtime-resolver` (either offline bundled
+  cache or live network per `runtime-data`), and rewrites `devEngines.runtime`
+  in place — preserving the object/array shape.
+- `auto` mode: resolve the latest version within the existing entry's range,
+  re-decorate with the existing operator. No-op if the entry is a static exact
+  pin, if no entry exists, or if the resolved version equals the current value.
+  Never adds a missing entry.
+- Explicit semver range mode: resolve the latest satisfying the user-typed
+  range. Adds a new entry if missing (promoting a single-object `runtime` to
+  an array, or creating an array when absent; new entries default to the
+  sibling's `onFail` or `"ignore"`).
+- Results flow into `runtimeUpdates` and then `allUpdates` for PR/commit/summary
+  and the `has-changes` / `updates-count` outputs. Runtime bumps never trigger
+  `Changesets.create` and never trigger `runInstall`, matching the pnpm tooling
+  bump.
+- `runtime-resolver` only resolves versions within currently-maintained
+  (non-EOL) runtime major lines. Resolution for an EOL line returns a
+  `VersionNotFoundError`, which is caught per-runtime and emits a warning —
+  the other runtimes still run.
+
 ### Step 7: Update Config Dependencies
 
 - `ConfigDeps.updateConfigDeps()` queries npm via `NpmRegistry` service.
@@ -234,8 +272,7 @@ const appLayer = makeAppLayer(dryRun);
 
 - `RegularDeps.updateRegularDeps()` queries npm via `NpmRegistry` service.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
-  `workspaces-effect` (consumed directly — there is no longer a local
-  `Workspaces` wrapper service).
+  `workspaces-effect`.
 - Matches patterns and updates specifiers.
 - Skips `catalog:` and `workspace:` specifiers.
 - Iterates `dependencies`, `devDependencies`, and `optionalDependencies`
@@ -267,8 +304,7 @@ const appLayer = makeAppLayer(dryRun);
     lockfile changes.
   - `--fix-lockfile` reconciles the lockfile against the just-modified
     manifests while leaving unrelated transitives at their currently-pinned
-    versions. This replaces the older `rm -rf node_modules pnpm-lock.yaml &&
-    pnpm install` clean-install approach.
+    versions.
 
 ### Step 10: Format pnpm-workspace.yaml
 
@@ -290,12 +326,12 @@ const appLayer = makeAppLayer(dryRun);
 ### Step 13: Detect Changes
 
 - `compareLockfiles(before, after, workspaceRoot?)` produces `LockfileChange[]`.
-  Catalog comparison now emits **one record per (catalog change, consuming
+  Catalog comparison emits **one record per (catalog change, consuming
   importer, dep section) triple** with the precise type field
   (`dependency` / `devDependency` / `optionalDependency` / `peerDependency`)
   so downstream Changesets gating can use `type` alone as the trigger signal.
 - `allUpdates` is the concatenation of `configUpdatesFromPnpm`,
-  `configUpdates`, `regularUpdates`, and `peerUpdates`.
+  `configUpdates`, `regularUpdates`, `peerUpdates`, and `runtimeUpdates`.
 - Also checks `git status --porcelain` to detect any other modified files.
 - Exit early if no changes detected.
 
@@ -303,8 +339,7 @@ const appLayer = makeAppLayer(dryRun);
 
 - Skipped if `changesets` input is `false` (default: `true`).
 - `Changesets.create(workspaceRoot, lockfileChanges, regularUpdates,
-  peerUpdates)` has `workspaceRoot` as the **first** parameter.
-  `regularUpdates` (renamed from `devUpdates`) now carries
+  peerUpdates)` takes `workspaceRoot` first. `regularUpdates` carries the
   dependency/devDependency/optionalDependency updates from the multi-section
   RegularDeps scan.
 - Gating rules:
@@ -325,8 +360,7 @@ const appLayer = makeAppLayer(dryRun);
   - A non-ignored package gets a changeset only when it has at least one
     trigger row AND it is **versionable** (publishable per
     `PublishabilityDetector`, OR `versionPrivate` per `ChangesetConfig`).
-  - Empty changesets are no longer written (the previous fallback path that
-    wrote a generic patch on every run has been removed).
+  - Empty changesets are not written.
 
 ### Step 15: Commit, Push, and Create PR
 

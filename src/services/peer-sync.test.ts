@@ -30,6 +30,7 @@ const makeWorkspacesLayer = (packages: ReadonlyArray<{ name: string; path: strin
 		listPackages: vi.fn(() => Effect.succeed(packages as unknown as ReadonlyArray<WorkspacePackage>)),
 		getPackage: vi.fn(() => Effect.die("getPackage not used in peer-sync tests")),
 		importerMap: vi.fn(() => Effect.succeed(new Map())),
+		refresh: vi.fn(() => Effect.void),
 	});
 
 /**
@@ -47,6 +48,7 @@ const makeFailingWorkspacesLayer = () =>
 		),
 		getPackage: vi.fn(() => Effect.die("getPackage not used in peer-sync tests")),
 		importerMap: vi.fn(() => Effect.succeed(new Map())),
+		refresh: vi.fn(() => Effect.void),
 	});
 
 /**

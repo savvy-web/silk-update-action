@@ -12,68 +12,47 @@ No barrel re-exports exist. Import directly from the defining module.
 
 ## Domain Schemas (src/schemas/domain.ts)
 
+See `src/schemas/domain.ts` for the full set of `Schema.Struct` definitions
+(`BranchResult`, `DependencyChange`, `ChangedPackage`, `ChangesetFile`,
+`PullRequestResult`). Each schema derives its TypeScript type via `typeof
+Schema.Type`.
+
+The load-bearing type is the `DependencyType` discriminator, shared by
+`DependencyUpdateResult` and `LockfileChange` and used across the pipeline as
+the changeset-trigger signal:
+
 ```typescript
-import { Schema } from "effect";
+/**
+ * Dependency type discriminator. The `runtime` member tags
+ * devEngines.runtime engine bumps (node/deno/bun) emitted by RuntimeUpgrade.
+ */
+export const DependencyType = Schema.Literal(
+ "config",
+ "dependency",
+ "devDependency",
+ "peerDependency",
+ "optionalDependency",
+ "runtime",
+);
 
-/** Branch management result. */
-export const BranchResult = Schema.Struct({
- branch: NonEmptyString,
- created: Schema.Boolean,
- upToDate: Schema.Boolean,
- baseRef: Schema.String,
-});
-
-/** Dependency update result. */
+/** One per (path, dep, section) update; carries the precise `type`. */
 export const DependencyUpdateResult = Schema.Struct({
  dependency: NonEmptyString,
  from: Schema.NullOr(Schema.String),
  to: NonEmptyString,
- type: Schema.Literal("config", "dependency", "devDependency", "peerDependency", "optionalDependency"),
+ type: DependencyType,
  package: Schema.NullOr(Schema.String),
 });
 
-/** Single dependency change info. */
-export const DependencyChange = Schema.Struct({
- dependency: NonEmptyString,
- from: Schema.NullOr(Schema.String),
- to: NonEmptyString,
-});
-
-/** Changed package information. */
-export const ChangedPackage = Schema.Struct({
- name: NonEmptyString,
- path: Schema.String,
- version: Schema.String,
- changes: Schema.Array(DependencyChange),
-});
-
-/** Changeset file to create. */
-export const ChangesetFile = Schema.Struct({
- id: NonEmptyString,
- packages: Schema.Array(Schema.String),
- type: Schema.Literal("patch", "minor", "major"),
- summary: NonEmptyString,
-});
-
-/** Pull request result. */
-export const PullRequestResult = Schema.Struct({
- number: Schema.Number.pipe(Schema.positive()),
- url: Schema.String.pipe(Schema.startsWith("https://")),
- created: Schema.Boolean,
- nodeId: Schema.String,
-});
-
-/** Lockfile change detected during comparison. */
+/** One per (catalog change, importer, section) triple from compareLockfiles. */
 export const LockfileChange = Schema.Struct({
- type: Schema.Literal("config", "dependency", "devDependency", "peerDependency", "optionalDependency"),
+ type: DependencyType,
  dependency: NonEmptyString,
  from: Schema.NullOr(Schema.String),
  to: NonEmptyString,
  affectedPackages: Schema.Array(Schema.String),
 });
 ```
-
-All schemas derive TypeScript types via `typeof Schema.Type`.
 
 ## Module-Level Types (src/services/pnpm-upgrade.ts)
 
@@ -84,6 +63,25 @@ export interface PnpmUpgradeResult {
  readonly to: string;
  readonly packageManagerUpdated: boolean;
  readonly devEnginesUpdated: boolean;
+}
+```
+
+## Module-Level Types (src/services/runtime-upgrade.ts)
+
+```typescript
+/** Result of a single runtime upgrade. */
+export interface RuntimeUpgradeResult {
+ readonly runtime: RuntimeName;
+ readonly from: string | null;
+ readonly to: string;
+ readonly added: boolean; // true when a new devEngines.runtime entry was created
+}
+
+/** Per-runtime mode: "false" | "auto" | a semver range. */
+export interface RuntimeUpgradeConfig {
+ readonly node: string;
+ readonly deno: string;
+ readonly bun: string;
 }
 ```
 
@@ -98,99 +96,41 @@ export interface ParsedPnpmVersion {
 }
 ```
 
-## Effect Error Types (src/errors/errors.ts)
-
-Uses Effect's `Schema.TaggedError` for typed error handling with rich metadata:
+## Pure Helper Types (src/utils/runtime.ts)
 
 ```typescript
-import { Schema } from "effect";
+/** A JavaScript runtime managed by this action. */
+export type RuntimeName = "node" | "deno" | "bun";
 
-/** Input validation error. */
-export class InvalidInputError extends Schema.TaggedError<InvalidInputError>()(
- "InvalidInputError",
- { field: NonEmptyString, value: Schema.Unknown, reason: NonEmptyString },
-) {}
-
-/** GitHub API error. */
-export class GitHubApiError extends Schema.TaggedError<GitHubApiError>()(
- "GitHubApiError",
- {
-  operation: NonEmptyString,
-  statusCode: Schema.optional(Schema.Number.pipe(Schema.between(100, 599))),
-  message: NonEmptyString,
- },
-) {
- get isRetryable(): boolean {
-  return this.isRateLimited || this.isServerError;
- }
+/** A single devEngines.runtime entry (extra keys preserved on write). */
+export interface RuntimeEntry {
+ name?: string;
+ version?: string;
+ onFail?: string;
+ [key: string]: unknown;
 }
-
-/** Git command execution error. */
-export class GitError extends Schema.TaggedError<GitError>()(
- "GitError",
- {
-  operation: Schema.Literal("status", "diff", "commit", "push", "rebase", "checkout", "fetch", "branch"),
-  exitCode: Schema.Number.pipe(Schema.int()),
-  stderr: Schema.String,
- },
-) {}
-
-/** pnpm command execution error. */
-export class PnpmError extends Schema.TaggedError<PnpmError>()(
- "PnpmError",
- {
-  command: NonEmptyString,
-  dependency: Schema.optional(Schema.String),
-  exitCode: Schema.Number.pipe(Schema.int()),
-  stderr: Schema.String,
- },
-) {}
-
-/** Changeset creation error. */
-export class ChangesetError extends Schema.TaggedError<ChangesetError>()(
- "ChangesetError",
- { reason: NonEmptyString, packages: Schema.optional(Schema.Array(Schema.String)) },
-) {}
-
-/** File system operation error. */
-export class FileSystemError extends Schema.TaggedError<FileSystemError>()(
- "FileSystemError",
- {
-  operation: Schema.Literal("read", "write", "delete", "exists"),
-  path: NonEmptyString,
-  reason: NonEmptyString,
- },
-) {}
-
-/** Lockfile parsing/comparison error. */
-export class LockfileError extends Schema.TaggedError<LockfileError>()(
- "LockfileError",
- {
-  operation: Schema.Literal("read", "parse", "compare"),
-  reason: NonEmptyString,
- },
-) {}
-
-/** Aggregate error for collecting multiple dependency update failures. */
-export class DependencyUpdateFailures extends Schema.TaggedError<DependencyUpdateFailures>()(
- "DependencyUpdateFailures",
- {
-  failures: Schema.Array(Schema.Struct({
-   dependency: NonEmptyString,
-   error: Schema.Struct({ command: Schema.String, dependency: Schema.optional(Schema.String), exitCode: Schema.Number, stderr: Schema.String }),
-  })),
-  successful: Schema.Array(DependencyUpdateResult),
- },
-) {}
-
-/** Union type of all expected errors. */
-export type ActionError =
- | InvalidInputError
- | GitHubApiError
- | GitError
- | PnpmError
- | ChangesetError
- | FileSystemError
- | LockfileError
- | DependencyUpdateFailures;
 ```
+
+## Effect Error Types (src/errors/errors.ts)
+
+Errors use Effect's `Schema.TaggedError` for typed error handling with rich
+metadata. See `src/errors/errors.ts` for the full definitions. The local
+`ActionError` union covers:
+
+- `InvalidInputError` — `{ field, value, reason }`.
+- `GitHubApiError` — `{ operation, statusCode?, message }`. Exposes
+  `isRateLimited` (429), `isServerError` (>= 500) and `isRetryable`
+  (rate-limited or server error).
+- `GitError` — `{ operation, exitCode, stderr }`; `isRetryable` for `fetch`/`push`.
+- `PnpmError` — `{ command, dependency?, exitCode, stderr }`; `isRetryable` for `install`.
+- `ChangesetError` — `{ reason, packages? }`.
+- `FileSystemError` — `{ operation, path, reason }`.
+- `LockfileError` — `{ operation, reason }`.
+- `DependencyUpdateFailures` — aggregate `{ failures, successful }` for
+  partial-success batch updates; exposes `partialSuccess`.
+
+`isRetryableError(error)` and `getErrorMessage(error)` are exported helpers
+over the union.
+
+Input validation inside `program.ts` raises the library `ActionInputError`
+(from `@savvy-web/github-action-effects`), not the local `InvalidInputError`.

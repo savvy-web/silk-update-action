@@ -1,13 +1,10 @@
 # pnpm Config Dependency Action
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github)](https://github.com/savvy-web/pnpm-config-dependency-action)
 [![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-green?logo=node.js)](https://nodejs.org)
 
-Automates updates to pnpm config dependencies, workspace dependencies, and peer
-dependency ranges with automated PR creation. Unlike Dependabot, this action
-supports [pnpm config dependencies](https://pnpm.io/config-dependencies),
-enabling centralized version management across monorepos.
+A GitHub Action that updates pnpm config dependencies, workspace dependencies and peer dependency ranges, then opens a pull request with the changes. Dependabot does not understand [pnpm config dependencies](https://pnpm.io/config-dependencies), which is where this action fills the gap — it keeps versions centralized across a monorepo.
 
 ## Features
 
@@ -20,7 +17,7 @@ enabling centralized version management across monorepos.
 - Runs custom post-update commands (linting, testing, building)
 - Produces detailed per-package PR summaries with dependency change tables
 
-## Quick Start
+## Quick start
 
 ```yaml
 name: Update Dependencies
@@ -67,6 +64,10 @@ jobs:
 | `peer-lock` | No | `""` | Peer ranges that sync on every version bump (one per line) |
 | `peer-minor` | No | `""` | Peer ranges that sync on minor+ bumps only (one per line) |
 | `update-pnpm` | No | `true` | Update pnpm version |
+| `upgrade-runtime-node` | No | `false` | Upgrade the Node.js entry in `devEngines.runtime`: `false`, `auto`, or a semver range (e.g. `^22`) |
+| `upgrade-runtime-deno` | No | `false` | Upgrade the Deno entry in `devEngines.runtime`: `false`, `auto`, or a semver range (e.g. `^2`) |
+| `upgrade-runtime-bun` | No | `false` | Upgrade the Bun entry in `devEngines.runtime`: `false`, `auto`, or a semver range (e.g. `^1`) |
+| `runtime-data` | No | `offline` | Runtime version data source: `offline` (bundled cache) or `live` (fetch latest, fall back to cache) |
 | `run` | No | `""` | Commands to run after updates (one per line) |
 | `changesets` | No | `true` | Create changesets when `.changeset/` exists |
 | `dry-run` | No | `false` | Detect changes without committing |
@@ -94,7 +95,12 @@ The App needs `contents: write`, `pull-requests: write` and `checks: write` perm
 
 ## Documentation
 
-For configuration, architecture, and advanced usage, see [docs](./docs/).
+- [Getting started](./docs/01-getting-started.md) — Set up the action in your repository from scratch.
+- [Configuration](./docs/02-configuration.md) — Every input, output and usage pattern.
+- [GitHub App setup](./docs/03-github-app-setup.md) — Create and configure the required GitHub App.
+- [Architecture overview](./docs/04-architecture.md) — The three phases and what the main update workflow does.
+- [Execution phases](./docs/05-execution-phases.md) — Step-by-step breakdown of the main-phase workflow.
+- [Troubleshooting](./docs/06-troubleshooting.md) — Common issues and their solutions.
 
 ## License
 

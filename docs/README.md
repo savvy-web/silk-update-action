@@ -2,24 +2,19 @@
 
 User and developer documentation for the pnpm Config Dependency Action.
 
-## Table of Contents
+## Table of contents
 
 ### Guides
 
-- [Getting Started](./getting-started.md) -- Set up the action in your
-  repository from scratch
-- [Configuration](./configuration.md) -- All input options, outputs, and
-  advanced patterns
-- [GitHub App Setup](./github-app-setup.md) -- Create and configure the
-  required GitHub App
+- [Getting started](./01-getting-started.md) — Set up the action in your repository from scratch
+- [Configuration](./02-configuration.md) — All input options, outputs and advanced patterns
+- [GitHub App setup](./03-github-app-setup.md) — Create and configure the required GitHub App
 
 ### Architecture
 
-- [Architecture Overview](./architecture.md) -- How the action works: phases,
-  data flow, and module structure
-- [Execution Phases](./execution-phases.md) -- Detailed breakdown of the
-  14-step workflow
+- [Architecture overview](./04-architecture.md) — The three phases and what the main update workflow does
+- [Execution phases](./05-execution-phases.md) — Detailed breakdown of the 14-step workflow
 
 ### Reference
 
-- [Troubleshooting](./troubleshooting.md) -- Common issues and solutions
+- [Troubleshooting](./06-troubleshooting.md) — Common issues and solutions

@@ -196,6 +196,25 @@ describe("createOrUpdatePR", () => {
 	});
 });
 
+describe("generateCommitMessage", () => {
+	it("counts and lists a runtime update", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const msg = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return report.generateCommitMessage([
+					{ dependency: "node", from: "^24.0.0", to: "^24.16.0", type: "runtime", package: null },
+				]);
+			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		);
+
+		expect(msg).toContain("1 runtime");
+		expect(msg).toContain("- node: ^24.0.0 -> ^24.16.0");
+	});
+});
+
 describe("generatePRBody", () => {
 	it("includes pnpm upgrade in root workspace table", async () => {
 		const state = PullRequestTest.empty();

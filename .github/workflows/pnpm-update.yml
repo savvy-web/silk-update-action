@@ -57,6 +57,7 @@ jobs:
             @savvy-web/*
             semver-effect
             workspaces-effect
+            runtime-resolver
             yaml
           run: |
             pnpm savvy-commit init

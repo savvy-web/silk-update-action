@@ -3,8 +3,8 @@ status: current
 module: pnpm-config-dependency-action
 category: architecture
 created: 2026-02-06
-updated: 2026-05-22
-last-synced: 2026-05-22
+updated: 2026-05-26
+last-synced: 2026-05-26
 completeness: 95
 related: []
 dependencies: []
@@ -24,6 +24,7 @@ dependency ranges across workspace packages to keep them consistent.
 **Key Features:**
 
 - Upgrades pnpm itself to the latest version within the `^` semver range via `corepack use`
+- Upgrades `devEngines.runtime` engines (node/deno/bun) via `runtime-resolver` (`RuntimeUpgrade` service), with `auto`/explicit-range modes and offline/live data sources
 - Updates config dependencies via direct npm queries and YAML editing
 - Updates regular dependencies via direct npm registry queries (avoids `catalogMode: strict` issues)
 - Syncs peer dependency ranges across workspace packages (`syncPeers` helper) with configurable lock/minor strategies
