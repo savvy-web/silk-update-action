@@ -1,5 +1,50 @@
 # pnpm-config-dependency-action
 
+## 1.1.0
+
+### Features
+
+* [`3eff0ab`](https://github.com/savvy-web/pnpm-config-dependency-action/commit/3eff0abe855961357470ca61a82a02195adba95a) ### devEngines Runtime Upgrade
+
+Adds optional automatic upgrading of `devEngines.runtime` entries (`node`, `deno`, `bun`) in the root `package.json` via a new `RuntimeUpgrade` service backed by the `runtime-resolver` package.
+
+Four new action inputs control the feature:
+
+| Input                  | Default   | Behavior                                                                                                                                                                                                                                                                                     |
+| :--------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `upgrade-runtime-node` | `false`   | `false` disables; `auto` bumps within the existing range preserving the operator; a semver range (e.g. `^22`) selects which line to resolve but preserves the existing entry's operator on write (an exact pin stays exact), using the range's own operator only when adding a missing entry |
+| `upgrade-runtime-deno` | `false`   | Same semantics as `upgrade-runtime-node`                                                                                                                                                                                                                                                     |
+| `upgrade-runtime-bun`  | `false`   | Same semantics as `upgrade-runtime-node`                                                                                                                                                                                                                                                     |
+| `runtime-data`         | `offline` | `offline` uses the bundled release cache only; `live` fetches current data with fallback to the bundled cache                                                                                                                                                                                |
+
+Resolution is limited to currently-maintained (non-end-of-life) major lines. `auto` mode is a no-op when the field is a static pin or already current. Runtime bumps appear in the PR body, commit message, and Actions summary but never trigger `pnpm install` and never create a changeset — consistent with how pnpm tooling upgrades are handled.
+
+**Example — bump Node.js within its existing range:**
+
+```yaml
+- uses: savvy-web/pnpm-config-dependency-action@v1
+  with:
+    upgrade-runtime-node: auto
+```
+
+**Example — move Node.js to a specific major line with live data:**
+
+```yaml
+- uses: savvy-web/pnpm-config-dependency-action@v1
+  with:
+    upgrade-runtime-node: "^22"
+    runtime-data: live
+```
+
+### Dependencies
+
+* | [`54aa2b0`](https://github.com/savvy-web/pnpm-config-dependency-action/commit/54aa2b00d0ecc505aa1d78be8153cac722d3a575) | Dependency    | Type    | Action | From   | To |
+  | :---------------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/silk-effects                                                                                                 | dependency    | updated | ^0.4.0 | ^0.4.1 |    |
+  | workspaces-effect                                                                                                       | dependency    | updated | ^1.0.0 | ^1.1.0 |    |
+  | yaml                                                                                                                    | dependency    | updated | ^2.8.3 | ^2.9.0 |    |
+  | @savvy-web/lint-staged                                                                                                  | devDependency | updated | ^1.0.1 | ^1.1.0 |    |
+
 ## 1.0.0
 
 ### Breaking Changes
