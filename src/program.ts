@@ -447,9 +447,21 @@ const innerProgram = (
 							`Total updates: ${allUpdates.length} (config: ${configUpdates.length + configUpdatesFromPnpm.length}, dev: ${regularUpdates.length}, peer: ${peerUpdates.length})`,
 						);
 
-						// Check if there are any changes via git status
+						// Check if there are any changes via git status.
+						//
+						// Use core.fileMode=false so executable-bit-only flips (e.g. husky
+						// chmod-ing .husky hooks during a `run` command) are not counted as
+						// changes. They don't survive the content-based GitHub API commit
+						// (mode 100644), so treating them as changes would otherwise produce
+						// an empty commit and a spurious PR. This must stay consistent with
+						// BranchManager.commitChanges, which queries status the same way.
 						const runner = yield* CommandRunner;
-						const statusResult = yield* runner.execCapture("git", ["status", "--porcelain"]);
+						const statusResult = yield* runner.execCapture("git", [
+							"-c",
+							"core.fileMode=false",
+							"status",
+							"--porcelain",
+						]);
 						const hasChanges = statusResult.stdout.trim().length > 0;
 						yield* Effect.logDebug(`Git status has changes: ${hasChanges}`);
 
