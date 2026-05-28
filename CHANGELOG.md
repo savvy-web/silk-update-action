@@ -1,5 +1,16 @@
 # pnpm-config-dependency-action
 
+## 1.1.2
+
+### Dependencies
+
+* | [`a07cf34`](https://github.com/savvy-web/pnpm-config-dependency-action/commit/a07cf34b708f0054c13473b504635f511cf333fc) | Dependency    | Type    | Action | From    | To |
+  | :---------------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :------ | -- |
+  | @savvy-web/github-action-effects                                                                                        | dependency    | updated | ^2.0.0 | ^2.0.1  |    |
+  | @savvy-web/silk-effects                                                                                                 | dependency    | updated | ^0.4.1 | ^0.5.0  |    |
+  | @savvy-web/commitlint                                                                                                   | devDependency | updated | ^0.9.1 | ^0.10.0 |    |
+  | @savvy-web/lint-staged                                                                                                  | devDependency | updated | ^1.1.0 | ^1.2.0  |    |
+
 ## 1.1.1
 
 ### Bug Fixes
