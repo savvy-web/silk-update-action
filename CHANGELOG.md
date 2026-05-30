@@ -1,5 +1,13 @@
 # pnpm-config-dependency-action
 
+## 1.1.4
+
+### Dependencies
+
+* | [`fe89d45`](https://github.com/savvy-web/pnpm-config-dependency-action/commit/fe89d4521ca4b92df4910dbf08caf8cbedd02760) | Dependency | Type    | Action  | From    | To |
+  | :---------------------------------------------------------------------------------------------------------------------- | :--------- | :------ | :------ | :------ | -- |
+  | runtime-resolver                                                                                                        | dependency | updated | ^0.3.10 | ^0.3.11 |    |
+
 ## 1.1.3
 
 ### Dependencies
