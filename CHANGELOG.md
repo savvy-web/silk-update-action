@@ -1,5 +1,14 @@
 # pnpm-config-dependency-action
 
+## 1.1.3
+
+### Dependencies
+
+* | [`19f5115`](https://github.com/savvy-web/pnpm-config-dependency-action/commit/19f5115f3b26207f57fef2d4e0745cb0978ab570) | Dependency    | Type    | Action | From   | To |
+  | :---------------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/github-action-effects                                                                                        | dependency    | updated | ^2.0.1 | ^2.0.2 |    |
+  | @savvy-web/github-action-builder                                                                                        | devDependency | updated | ^0.7.1 | ^0.7.2 |    |
+
 ## 1.1.2
 
 ### Dependencies
