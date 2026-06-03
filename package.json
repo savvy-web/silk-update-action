@@ -24,7 +24,7 @@
 		"build:prod": "github-action-builder build",
 		"ci:build": "CI=\"true\" turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
 		"ci:test": "CI=\"true\" vitest run --coverage",
-		"ci:version": "savvy-changesets version && biome format --write .",
+		"ci:version": "savvy changeset version && biome format --write .",
 		"commit:check": "savvy-commit check",
 		"commit:init": "savvy-commit init",
 		"lint": "biome check --max-diagnostics=none",
