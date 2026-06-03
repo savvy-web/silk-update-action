@@ -40,7 +40,7 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 ### Parse inputs
 
 - Parses and validates all action inputs
-- Validates that at least one update type is active — `config-dependencies`, `dependencies`, `update-pnpm` or an `upgrade-runtime-*` input
+- Validates that at least one update type is active — `config-dependencies`, `dependencies`, `upgrade-package-manager` or an `upgrade-runtime-*` input
 - Validates that `peer-lock` and `peer-minor` do not list the same package
 - Warns if a `peer-lock` or `peer-minor` entry does not match any `dependencies` pattern
 - Creates a GitHub check run for status visibility in the UI
@@ -59,7 +59,7 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 
 ### Upgrade pnpm
 
-- Runs when the `update-pnpm` input is `true` (the default)
+- Runs when the `upgrade-package-manager` input is non-`false` (the default is `true`)
 - Detects the current pnpm version from `packageManager` in `package.json`
 - Checks for the latest available pnpm version within range
 - Updates the `packageManager` and `devEngines` fields when a newer version is available

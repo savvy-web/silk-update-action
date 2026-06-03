@@ -80,7 +80,7 @@ const createOrUpdatePRImpl = (
 	autoMerge?: "merge" | "squash" | "rebase",
 ): Effect.Effect<PullRequestResult, PullRequestError> =>
 	Effect.gen(function* () {
-		const title = "chore(deps): update pnpm config dependencies";
+		const title = "chore(deps): Update Silk Dependencies";
 		const body = generatePRBodyImpl(updates, changesets);
 
 		const result = yield* pr.getOrCreate({
@@ -191,7 +191,7 @@ const generatePRBodyImpl = (
 	// Footer
 	sections.push(rule());
 	sections.push(
-		`_This PR was automatically created by ${link("pnpm-config-dependency-action", "https://github.com/savvy-web/pnpm-config-dependency-action")}_`,
+		`_This PR was automatically created by ${link("silk-update-action", "https://github.com/savvy-web/silk-update-action")}_`,
 	);
 
 	return sections.join("\n\n");

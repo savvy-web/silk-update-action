@@ -21,7 +21,7 @@ layer composition in `src/layers/app.ts`
 `RuntimeUpgrade`).
 
 For architecture and implementation details, load sections as needed:
--> @./.claude/design/pnpm-config-dependency-action/_index.md
+-> @./.claude/design/silk-update-action/_index.md
 
 Load the index first, then follow its navigation guide to load specific
 sections based on what you are working on. Do not load all sections at once.
@@ -179,7 +179,7 @@ The shared release workflow at `savvy-web/.github/.github/workflows/release.yml`
 
 Because the action ships as a bundled `dist`, testing dev work means pointing a consumer workflow at a `@dev` ref. There are **two independent switch points**:
 
-- **This action's dev `dist`** — a workflow that *uses* the action pins it by tag. `.github/workflows/pnpm-update.yml` in this repo runs `uses: savvy-web/pnpm-config-dependency-action@v1`; change `@v1` → `@dev` to run the committed dev-branch `dist` (including any locally-linked library changes baked into it) against this very repo. The same flip works in any other repo whose caller invokes this action.
+- **This action's dev `dist`** — a workflow that *uses* the action pins it by tag. `.github/workflows/pnpm-update.yml` in this repo runs `uses: savvy-web/silk-update-action@v1`; change `@v1` → `@dev` to run the committed dev-branch `dist` (including any locally-linked library changes baked into it) against this very repo. The same flip works in any other repo whose caller invokes this action.
 - **The shared release workflow** — `.github/workflows/release.yml` is a thin caller: `uses: savvy-web/.github/.github/workflows/release.yml@main`; change `@main` → `@dev` to exercise the shared workflow's dev branch.
 
 Flip the relevant switch, run the workflow (`workflow_dispatch` or its normal trigger), watch with `gh run watch`, then revert the switch (`@dev` → `@v1` / `@main`) once the released version is cut. `release-sync.yml` (below) hard-resets `dev` to `main` on each release, so `dev` is disposable between cycles.
@@ -258,9 +258,28 @@ Packages publish to both GitHub Packages and npm with provenance.
   check, so it is never versioned even when `privatePackages.version` is set
 - `action.config.ts` declares pre/main/post entries and `build.ignore`s
   cyclonedx optional plugins (xmlbuilder2/libxmljs2/ajv-formats-draft2019)
+- `upgrade-package-manager` is a **string** input (`false` | `true` | `auto` | a semver
+  range), validated like the `upgrade-runtime-*` inputs — not a boolean.
+  Default `"true"`. It currently upgrades **pnpm only** (support for other
+  package managers is planned); the implementing service is still `PnpmUpgrade`.
+  This input was renamed from `update-pnpm` in the v2 rebrand. `true`/`auto`
+  resolve the latest pnpm within the **current
+  major** (favoring the `devEngines.packageManager` version); an explicit range
+  (e.g. `^11`) may cross majors and can add a `packageManager` field when none
+  exists. `PnpmUpgrade` no longer runs `corepack use` — it edits root
+  `package.json` directly, writing the resolved version with the corepack-
+  canonical `+sha512.<hex>` hash (derived from the npm registry integrity via
+  `corepackHashFromIntegrity` in `src/utils/pnpm.ts`) into **both**
+  `packageManager` and `devEngines.packageManager.version`. The corepack switch
+  happens via the existing `runInstall`
+  (`pnpm install --frozen-lockfile=false --fix-lockfile`), which reads the
+  rewritten fields. Unlike the runtime bump, the pnpm bump **does** trigger
+  `runInstall` (gated on `configUpdatesFromPnpm.length > 0`); like the runtime
+  bump it never creates a changeset.
 - Runtime engine bumps (`upgrade-runtime-*`) edit root `package.json`
-  `devEngines.runtime` and flow into the PR/commit/summary, but — like the pnpm
-  bump — never create a changeset and never trigger `pnpm install`. `auto` is
+  `devEngines.runtime` and flow into the PR/commit/summary, but never create a
+  changeset and never trigger `pnpm install` (unlike the pnpm bump, which does
+  trigger install). `auto` is
   modify-only (no-op on static pins and no-op when no entry exists); an explicit
   semver range can add a missing entry. An explicit range only selects which
   line to resolve — the written value **preserves the existing entry's operator**

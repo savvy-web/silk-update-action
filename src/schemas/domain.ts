@@ -1,5 +1,5 @@
 /**
- * Effect Schema definitions for pnpm-config-dependency-action.
+ * Effect Schema definitions for silk-update-action.
  *
  * Uses Schema for type inference, validation, and encoding/decoding.
  * Types are derived from schemas, eliminating duplication.

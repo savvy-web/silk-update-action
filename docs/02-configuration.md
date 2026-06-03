@@ -60,8 +60,8 @@ If a package lists the same dependency in multiple sections (for example, both
 `dependencies` and `devDependencies`), each section is updated independently
 and reported as a separate row in the PR summary.
 
-At least one of `config-dependencies`, `dependencies` or `update-pnpm: true`
-must be active.
+At least one of `config-dependencies`, `dependencies`, a non-`false`
+`upgrade-package-manager`, or an `upgrade-runtime-*` input must be active.
 
 #### `peer-lock`
 
@@ -125,14 +125,18 @@ run: |
   pnpm build
 ```
 
-#### `update-pnpm`
+#### `upgrade-package-manager`
 
-When set to `true`, the action checks for a newer pnpm version and updates the
-`packageManager` and `devEngines` fields in `package.json` if one is available.
-The version change is tracked as a config dependency update. Default: `true`.
+Upgrades the project's package manager declared in the `packageManager` and
+`devEngines.packageManager` fields of the root `package.json`. **Currently
+supports pnpm only** — support for other package managers is planned. Values:
+`false` (skip), `true`/`auto` (latest within the current major, favoring the
+`devEngines` version), or a semver range (e.g. `^11`, which may cross majors and
+adds a `packageManager` field when none exists). The version change is tracked
+as a config dependency update. Default: `true`.
 
 ```yaml
-update-pnpm: false # Disable automatic pnpm upgrades
+upgrade-package-manager: false # Disable automatic package-manager upgrades
 ```
 
 #### `upgrade-runtime-node`
@@ -288,7 +292,7 @@ Whether any dependency changes were detected (`"true"` or `"false"`).
 ### Using outputs
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@v1
+- uses: savvy-web/silk-update-action@v1
   id: update-deps
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
@@ -402,8 +406,8 @@ pass:
    when a sibling trigger exists, but never trigger a changeset on their own
    (dev dependencies are stripped from published packages).
 
-   `devEngines.runtime` upgrades (from `upgrade-runtime-*`) and pnpm self-upgrades
-   (from `update-pnpm`) are tooling-level changes that appear in the PR summary
+   `devEngines.runtime` upgrades (from `upgrade-runtime-*`) and package-manager
+   self-upgrades (from `upgrade-package-manager`) are tooling-level changes that appear in the PR summary
    and commit message but never create a changeset and never run `pnpm install`.
 
 2. **Versionable gate** — the package must be versionable:
@@ -427,7 +431,7 @@ do not produce a changeset.
 Run the action twice in the same workflow with different branches:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@v1
+- uses: savvy-web/silk-update-action@v1
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -436,7 +440,7 @@ Run the action twice in the same workflow with different branches:
       typescript
       @biomejs/biome
 
-- uses: savvy-web/pnpm-config-dependency-action@v1
+- uses: savvy-web/silk-update-action@v1
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -451,7 +455,7 @@ Run the action twice in the same workflow with different branches:
 Automatically merge the dependency PR once status checks pass:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@v1
+- uses: savvy-web/silk-update-action@v1
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -465,7 +469,7 @@ Automatically merge the dependency PR once status checks pass:
 Use outputs to gate subsequent steps:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@v1
+- uses: savvy-web/silk-update-action@v1
   id: deps
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}

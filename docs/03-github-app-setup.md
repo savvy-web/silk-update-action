@@ -1,7 +1,7 @@
 # GitHub App setup
 
 This guide explains how to create and configure the GitHub App required by the
-pnpm Config Dependency Action.
+Silk Update Action.
 
 ## Table of contents
 
@@ -88,7 +88,7 @@ Add the App credentials as GitHub Actions secrets:
 Run the action with `dry-run: true` to verify authentication works:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@v1
+- uses: savvy-web/silk-update-action@v1
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}

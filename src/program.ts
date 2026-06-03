@@ -110,7 +110,7 @@ export const runInstall = (): Effect.Effect<void, CommandRunnerError, CommandRun
 /* v8 ignore start -- orchestration code tested via integration */
 export const program = Effect.gen(function* () {
 	// Parse inputs via Config API
-	yield* Effect.logInfo("Starting pnpm config dependency action");
+	yield* Effect.logInfo("Starting Silk Update Action");
 
 	const branch = yield* Config.string("branch").pipe(Config.withDefault("pnpm/config-deps"));
 	const rawConfigDeps = yield* Config.string("config-dependencies").pipe(Config.withDefault(""));
@@ -123,7 +123,7 @@ export const program = Effect.gen(function* () {
 	const peerMinor = parseMultiValueInput(rawPeerMinor);
 	const rawRun = yield* Config.string("run").pipe(Config.withDefault(""));
 	const run = parseMultiValueInput(rawRun);
-	const updatePnpm = yield* Config.boolean("update-pnpm").pipe(Config.withDefault(true));
+	const upgradePackageManager = yield* Config.string("upgrade-package-manager").pipe(Config.withDefault("true"));
 	const changesets = yield* Config.boolean("changesets").pipe(Config.withDefault(true));
 	const autoMerge = yield* Config.string("auto-merge").pipe(Config.withDefault(""));
 	const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
@@ -138,13 +138,15 @@ export const program = Effect.gen(function* () {
 	}
 	const runtimeLive = runtimeData === "live";
 
-	// Validate each runtime input: must be "auto", "false", or a parseable semver range.
-	for (const [inputName, value] of [
-		["upgrade-runtime-node", rawRuntimeNode],
-		["upgrade-runtime-deno", rawRuntimeDeno],
-		["upgrade-runtime-bun", rawRuntimeBun],
+	// Validate upgrade-package-manager and each runtime input: must be an allowed keyword
+	// or a parseable semver range.
+	for (const [inputName, value, keywords] of [
+		["upgrade-runtime-node", rawRuntimeNode, ["auto", "false"]],
+		["upgrade-runtime-deno", rawRuntimeDeno, ["auto", "false"]],
+		["upgrade-runtime-bun", rawRuntimeBun, ["auto", "false"]],
+		["upgrade-package-manager", upgradePackageManager, ["true", "false", "auto"]],
 	] as const) {
-		if (value !== "auto" && value !== "false") {
+		if (!(keywords as ReadonlyArray<string>).includes(value)) {
 			yield* Range.parse(value).pipe(
 				Effect.mapError(
 					(e) =>
@@ -164,7 +166,12 @@ export const program = Effect.gen(function* () {
 	}
 
 	// Cross-validate: at least one update type must be active
-	if (configDependencies.length === 0 && dependencies.length === 0 && !updatePnpm && !anyRuntime) {
+	if (
+		configDependencies.length === 0 &&
+		dependencies.length === 0 &&
+		upgradePackageManager === "false" &&
+		!anyRuntime
+	) {
 		yield* Effect.fail(
 			new ActionInputError({
 				inputName: "config-dependencies",
@@ -211,7 +218,7 @@ export const program = Effect.gen(function* () {
 			dependencies,
 			peerLock,
 			peerMinor,
-			updatePnpm,
+			upgradePackageManager,
 			dryRun,
 		})}`,
 	);
@@ -235,7 +242,7 @@ export const program = Effect.gen(function* () {
 			dependencies,
 			"peer-lock": peerLock,
 			"peer-minor": peerMinor,
-			"update-pnpm": updatePnpm,
+			"upgrade-package-manager": upgradePackageManager,
 			changesets,
 			"auto-merge": autoMerge as "" | "merge" | "squash" | "rebase",
 			run,
@@ -264,7 +271,7 @@ const innerProgram = (
 		dependencies: ReadonlyArray<string>;
 		"peer-lock": ReadonlyArray<string>;
 		"peer-minor": ReadonlyArray<string>;
-		"update-pnpm": boolean;
+		"upgrade-package-manager": string;
 		changesets: boolean;
 		"auto-merge": "" | "merge" | "squash" | "rebase";
 		run: ReadonlyArray<string>;
@@ -306,10 +313,10 @@ const innerProgram = (
 
 						// Upgrade pnpm (if enabled)
 						const configUpdatesFromPnpm: DependencyUpdateResult[] = [];
-						if (inputs["update-pnpm"]) {
+						if (inputs["upgrade-package-manager"] !== "false") {
 							yield* Effect.logInfo("Step 3: Upgrading pnpm");
 							const pnpmUpgradeService = yield* PnpmUpgrade;
-							const pnpmUpgrade = yield* pnpmUpgradeService.upgrade().pipe(
+							const pnpmUpgrade = yield* pnpmUpgradeService.upgrade(inputs["upgrade-package-manager"]).pipe(
 								Effect.catchAll((error) => {
 									return Effect.gen(function* () {
 										yield* Effect.logWarning(`Failed to upgrade pnpm: ${error.reason}`);
@@ -319,7 +326,7 @@ const innerProgram = (
 							);
 
 							if (pnpmUpgrade) {
-								yield* Effect.logInfo(`pnpm: ${pnpmUpgrade.from} -> ${pnpmUpgrade.to}`);
+								yield* Effect.logInfo(`pnpm: ${pnpmUpgrade.from ?? "added"} -> ${pnpmUpgrade.to}`);
 								configUpdatesFromPnpm.push({
 									dependency: "pnpm",
 									from: pnpmUpgrade.from,

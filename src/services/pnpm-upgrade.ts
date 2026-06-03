@@ -1,20 +1,27 @@
 /**
  * PnpmUpgrade service for pnpm self-upgrade operations.
  *
- * Detects the current pnpm version from `packageManager` and `devEngines.packageManager`
- * fields in root `package.json`, resolves the latest version within the `^` range,
- * and upgrades via `corepack use`.
+ * Reads the pnpm version from the `packageManager` and
+ * `devEngines.packageManager` fields (favoring devEngines) and upgrades it
+ * according to the `upgrade-package-manager` mode: "false" (skip), "true"/"auto" (latest
+ * within the current major), or a semver range (may cross majors, and adds a
+ * `packageManager` field when none exists). The resolved version is written
+ * directly into both fields as a pinned `version+sha512.<hex>` string (derived
+ * from the npm registry integrity) — no `corepack use` is invoked. The
+ * subsequent `pnpm install --fix-lockfile` activates the new version via
+ * corepack reading the updated fields. No range operator is written because a
+ * hash-pinned value is inherently exact.
  *
  * @module services/pnpm-upgrade
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { CommandRunner, SemverResolver } from "@savvy-web/github-action-effects";
+import { CommandRunner } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
-import { detectIndent, formatPnpmVersion, parsePnpmVersion } from "../utils/pnpm.js";
-import { resolveLatestInRange } from "../utils/semver.js";
+import { corepackHashFromIntegrity, detectIndent, parsePnpmVersion } from "../utils/pnpm.js";
+import { resolveLatestSatisfying } from "../utils/semver.js";
 
 type CommandRunnerShape = Context.Tag.Service<typeof CommandRunner>;
 
@@ -26,10 +33,11 @@ type CommandRunnerShape = Context.Tag.Service<typeof CommandRunner>;
  * Result of a pnpm upgrade operation.
  */
 export interface PnpmUpgradeResult {
-	readonly from: string;
+	readonly from: string | null;
 	readonly to: string;
 	readonly packageManagerUpdated: boolean;
 	readonly devEnginesUpdated: boolean;
+	readonly added: boolean;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -39,7 +47,10 @@ export interface PnpmUpgradeResult {
 export class PnpmUpgrade extends Context.Tag("PnpmUpgrade")<
 	PnpmUpgrade,
 	{
-		readonly upgrade: (workspaceRoot?: string) => Effect.Effect<PnpmUpgradeResult | null, FileSystemError>;
+		readonly upgrade: (
+			mode: string,
+			workspaceRoot?: string,
+		) => Effect.Effect<PnpmUpgradeResult | null, FileSystemError>;
 	}
 >() {}
 
@@ -48,7 +59,7 @@ export const PnpmUpgradeLive = Layer.effect(
 	Effect.gen(function* () {
 		const runner = yield* CommandRunner;
 		return {
-			upgrade: (workspaceRoot = process.cwd()) => upgradePnpmImpl(runner, workspaceRoot),
+			upgrade: (mode, workspaceRoot = process.cwd()) => upgradePnpmImpl(runner, mode, workspaceRoot),
 		};
 	}),
 );
@@ -67,141 +78,124 @@ const fsWriteError = (path: string, e: unknown) => new FileSystemError({ operati
 
 /**
  * Core upgrade implementation that accepts a runner directly.
+ *
+ * `mode` is the parsed `upgrade-package-manager` value: "false" (skip), "true"/"auto"
+ * (latest within the current major, favoring the devEngines version), or a
+ * semver range string (may cross majors; adds a packageManager field when no
+ * pnpm field exists).
+ *
+ * The resolved version is written directly into `packageManager` and
+ * `devEngines.packageManager.version` as a pinned `version+sha512.<hex>`
+ * string. `corepack use` is NOT invoked — the subsequent `pnpm install`
+ * activates the new version via corepack reading the updated fields.
  */
 const upgradePnpmImpl = (
 	runner: CommandRunnerShape,
+	mode: string,
 	workspaceRoot: string,
 ): Effect.Effect<PnpmUpgradeResult | null, FileSystemError> =>
 	Effect.gen(function* () {
+		if (mode === "false") return null;
+
 		const packageJsonPath = `${workspaceRoot}/package.json`;
 
-		// Step 1: Read and parse package.json
 		const packageJsonRaw = yield* Effect.try({
 			try: () => readFileSync(packageJsonPath, "utf-8"),
 			catch: (e) => fsReadError(packageJsonPath, e),
 		});
-
 		const packageJson = yield* Effect.try({
 			try: () => JSON.parse(packageJsonRaw) as Record<string, unknown>,
 			catch: (e) => fsReadError(packageJsonPath, `Invalid JSON: ${e}`),
 		});
+		const indent = detectIndent(packageJsonRaw);
 
-		// Step 2: Parse packageManager field
+		// Detect pnpm version fields.
 		const packageManagerRaw = typeof packageJson.packageManager === "string" ? packageJson.packageManager : null;
-		const packageManagerParsed = packageManagerRaw ? parsePnpmVersion(packageManagerRaw, true) : null;
+		const pmParsed = packageManagerRaw ? parsePnpmVersion(packageManagerRaw, true) : null;
 
-		// Step 3: Parse devEngines.packageManager field
 		const devEngines = packageJson.devEngines as { packageManager?: { name?: string; version?: string } } | undefined;
 		const devEnginesPm = devEngines?.packageManager;
-		const devEnginesParsed =
-			devEnginesPm?.name === "pnpm" && typeof devEnginesPm.version === "string"
-				? parsePnpmVersion(devEnginesPm.version)
-				: null;
+		const devEnginesVersionRaw =
+			devEnginesPm?.name === "pnpm" && typeof devEnginesPm.version === "string" ? devEnginesPm.version : null;
+		const deParsed = devEnginesVersionRaw ? parsePnpmVersion(devEnginesVersionRaw) : null;
 
-		// If neither field found, nothing to do
-		if (!packageManagerParsed && !devEnginesParsed) {
-			yield* Effect.logInfo("No pnpm version fields found in package.json, skipping upgrade");
-			return null;
+		// Reference version favors devEngines, then packageManager.
+		const reference = deParsed?.version ?? pmParsed?.version ?? null;
+		const isAuto = mode === "true" || mode === "auto";
+
+		let targetRange: string;
+		if (isAuto) {
+			if (reference === null) {
+				yield* Effect.logWarning(
+					"upgrade-package-manager: true/auto requested but no pnpm version field found, skipping",
+				);
+				return null;
+			}
+			targetRange = `^${reference}`;
+		} else {
+			targetRange = mode;
 		}
 
-		// Step 4: Query available pnpm versions
+		// Query available pnpm versions.
 		const versionsResult = yield* runner
 			.execCapture("sh", ["-c", "npm view pnpm versions --json"])
 			.pipe(Effect.mapError((e) => fsReadError("npm registry", `Failed to query pnpm versions: ${e.stderr}`)));
-
 		const allVersions = yield* Effect.try({
 			try: () => JSON.parse(versionsResult.stdout) as string[],
 			catch: (e) => fsReadError("npm registry", `Failed to parse pnpm versions: ${e}`),
 		});
 
-		// Step 5: Resolve latest version for each field
-		const pmResolved = packageManagerParsed
-			? yield* resolveLatestInRange(allVersions, packageManagerParsed.version)
-			: null;
-		const deResolved = devEnginesParsed ? yield* resolveLatestInRange(allVersions, devEnginesParsed.version) : null;
-
-		// Determine the highest resolved version across both fields
-		let resolved: string | null = null;
-		if (pmResolved && deResolved) {
-			const cmp = yield* SemverResolver.compare(pmResolved, deResolved).pipe(
-				Effect.catchAll(() => Effect.succeed(0 as -1 | 0 | 1)),
-			);
-			resolved = cmp > 0 ? pmResolved : deResolved;
-		} else {
-			resolved = pmResolved ?? deResolved;
-		}
-
+		const resolved = yield* resolveLatestSatisfying(allVersions, targetRange);
 		if (!resolved) {
-			yield* Effect.logInfo("No newer pnpm version found in range");
+			yield* Effect.logInfo(`No pnpm version found satisfying "${targetRange}"`);
+			return null;
+		}
+		if (reference !== null && resolved === reference) {
+			yield* Effect.logInfo(`pnpm ${reference} is already the latest for "${targetRange}"`);
 			return null;
 		}
 
-		// Determine the current version (the highest between the two fields)
-		const currentVersion = yield* Effect.gen(function* () {
-			const pmVersion = packageManagerParsed?.version;
-			const deVersion = devEnginesParsed?.version;
-			if (pmVersion && deVersion) {
-				const cmp = yield* SemverResolver.compare(pmVersion, deVersion).pipe(
-					Effect.catchAll(() => Effect.succeed(0 as -1 | 0 | 1)),
-				);
-				return cmp > 0 ? pmVersion : deVersion;
-			}
-			return pmVersion ?? deVersion ?? resolved;
+		// Derive the corepack-canonical packageManager hash from the npm registry
+		// integrity for the resolved version. corepack is NOT invoked — pnpm
+		// install activates the new version via corepack reading these fields.
+		const integrity = yield* runner.execCapture("sh", ["-c", `npm view pnpm@${resolved} dist.integrity`]).pipe(
+			Effect.map((r) => r.stdout.trim()),
+			Effect.catchAll(() => Effect.succeed("")),
+		);
+		const hash = corepackHashFromIntegrity(integrity);
+		if (hash === null) {
+			yield* Effect.logWarning(`Could not derive integrity hash for pnpm@${resolved}; writing version without hash`);
+		}
+		const pinnedSuffix = hash === null ? "" : `+${hash}`;
+		const packageManagerSpec = `pnpm@${resolved}${pinnedSuffix}`;
+		const devEnginesSpec = `${resolved}${pinnedSuffix}`;
+
+		// Write fields directly. Write packageManager when one exists, or (range
+		// mode only — auto returns early on a null reference) when NO pnpm field
+		// exists at all, creating it.
+		const hasPackageManager = pmParsed !== null;
+		const hasDevEngines = deParsed !== null;
+		const shouldWritePackageManager = hasPackageManager || (!hasPackageManager && !hasDevEngines);
+
+		let packageManagerUpdated = false;
+		let added = false;
+		if (shouldWritePackageManager) {
+			packageJson.packageManager = packageManagerSpec;
+			packageManagerUpdated = true;
+			added = !hasPackageManager;
+		}
+
+		let devEnginesUpdated = false;
+		if (hasDevEngines) {
+			(packageJson.devEngines as { packageManager: { version?: string } }).packageManager.version = devEnginesSpec;
+			devEnginesUpdated = true;
+		}
+
+		yield* Effect.try({
+			try: () => writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, indent)}\n`, "utf-8"),
+			catch: (e) => fsWriteError(packageJsonPath, e),
 		});
 
-		// Check if already up-to-date
-		if (resolved === currentVersion) {
-			yield* Effect.logInfo(`pnpm ${currentVersion} is already the latest in range`);
-			return null;
-		}
-
-		// Step 6: Run corepack use to update packageManager field
-		let packageManagerUpdated = false;
-		if (packageManagerParsed) {
-			yield* Effect.logInfo(`Running corepack use pnpm@${resolved}`);
-			yield* runner
-				.execCapture("sh", ["-c", `corepack use pnpm@${resolved}`])
-				.pipe(Effect.mapError((e) => fsWriteError(packageJsonPath, `corepack use failed: ${e.stderr}`)));
-			packageManagerUpdated = true;
-		}
-
-		// Step 7: Update devEngines.packageManager.version if present
-		let devEnginesUpdated = false;
-		if (devEnginesParsed) {
-			// Re-read package.json since corepack may have modified it
-			const updatedRaw = yield* Effect.try({
-				try: () => readFileSync(packageJsonPath, "utf-8"),
-				catch: (e) => fsReadError(packageJsonPath, e),
-			});
-
-			// Detect indentation from file
-			const indent = detectIndent(updatedRaw);
-
-			const updatedJson = yield* Effect.try({
-				try: () => JSON.parse(updatedRaw) as Record<string, unknown>,
-				catch: (e) => fsReadError(packageJsonPath, `Invalid JSON: ${e}`),
-			});
-
-			const updatedDevEngines = updatedJson.devEngines as
-				| { packageManager?: { name?: string; version?: string } }
-				| undefined;
-
-			if (updatedDevEngines?.packageManager) {
-				updatedDevEngines.packageManager.version = formatPnpmVersion(resolved, devEnginesParsed.hasCaret);
-
-				yield* Effect.try({
-					try: () => writeFileSync(packageJsonPath, `${JSON.stringify(updatedJson, null, indent)}\n`, "utf-8"),
-					catch: (e) => fsWriteError(packageJsonPath, e),
-				});
-
-				devEnginesUpdated = true;
-			}
-		}
-
-		return {
-			from: currentVersion,
-			to: resolved,
-			packageManagerUpdated,
-			devEnginesUpdated,
-		};
+		yield* Effect.logInfo(`Updated pnpm: ${reference ?? "added"} -> ${resolved}`);
+		return { from: reference, to: resolved, packageManagerUpdated, devEnginesUpdated, added };
 	});

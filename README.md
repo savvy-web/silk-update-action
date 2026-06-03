@@ -1,7 +1,7 @@
-# pnpm Config Dependency Action
+# Silk Update Action
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
-[![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github)](https://github.com/savvy-web/pnpm-config-dependency-action)
+[![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github)](https://github.com/savvy-web/silk-update-action)
 [![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-green?logo=node.js)](https://nodejs.org)
 
 A GitHub Action that updates pnpm config dependencies, workspace dependencies and peer dependency ranges, then opens a pull request with the changes. Dependabot does not understand [pnpm config dependencies](https://pnpm.io/config-dependencies), which is where this action fills the gap — it keeps versions centralized across a monorepo.
@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
-      - uses: savvy-web/pnpm-config-dependency-action@v1
+      - uses: savvy-web/silk-update-action@v1
         with:
           app-client-id: ${{ secrets.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -63,7 +63,7 @@ jobs:
 | `dependencies` | No | `""` | Workspace dependencies to update across `dependencies`, `devDependencies`, and `optionalDependencies` (one per line, supports globs) |
 | `peer-lock` | No | `""` | Peer ranges that sync on every version bump (one per line) |
 | `peer-minor` | No | `""` | Peer ranges that sync on minor+ bumps only (one per line) |
-| `update-pnpm` | No | `true` | Update pnpm version |
+| `upgrade-package-manager` | No | `true` | Upgrade the package manager (pnpm only for now): `false`, `true`/`auto`, or a semver range (e.g. `^11`) |
 | `upgrade-runtime-node` | No | `false` | Upgrade the Node.js entry in `devEngines.runtime`: `false`, `auto`, or a semver range (e.g. `^22`) |
 | `upgrade-runtime-deno` | No | `false` | Upgrade the Deno entry in `devEngines.runtime`: `false`, `auto`, or a semver range (e.g. `^2`) |
 | `upgrade-runtime-bun` | No | `false` | Upgrade the Bun entry in `devEngines.runtime`: `false`, `auto`, or a semver range (e.g. `^1`) |

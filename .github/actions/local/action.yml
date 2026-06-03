@@ -1,4 +1,4 @@
-name: PNPM Config Dependency Action
+name: Silk Update Action
 description: Updates pnpm config dependencies, dev dependencies, and peer dependency ranges, creating PRs with changesets
 branding:
   icon: package
@@ -54,8 +54,14 @@ inputs:
         @vitest/coverage-v8
     required: false
     default: ""
-  update-pnpm:
-    description: Update pnpm version in packageManager and devEngines fields
+  upgrade-package-manager:
+    description: |
+      Upgrade the project's package manager in the packageManager and
+      devEngines.packageManager fields. Currently supports pnpm only; support
+      for other package managers is planned.
+      Values: false (skip), true/auto (latest within the current major,
+      favoring the devEngines version), or a semver range (e.g. ^11) to move
+      to and add when no pnpm field exists.
     required: false
     default: "true"
   upgrade-runtime-node:

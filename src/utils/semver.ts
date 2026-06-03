@@ -12,15 +12,15 @@ import { SemverResolver } from "@savvy-web/github-action-effects";
 import { Effect } from "effect";
 
 /**
- * Resolve the latest version within a `^` range from available versions.
+ * Resolve the latest stable version satisfying an arbitrary semver range.
  *
  * @param versions - Available versions to choose from
- * @param current - The current version (used to construct `^current` range)
- * @returns The highest version satisfying `^current`, or null if none found
+ * @param range - A semver range string (e.g. "^10.28.0", "^11", ">=11")
+ * @returns The highest stable version satisfying the range, or null if none found
  */
-export const resolveLatestInRange = (
+export const resolveLatestSatisfying = (
 	versions: ReadonlyArray<string>,
-	current: string,
+	range: string,
 ): Effect.Effect<string | null, never, never> =>
 	Effect.gen(function* () {
 		// Filter out pre-release versions
@@ -34,8 +34,20 @@ export const resolveLatestInRange = (
 
 		if (stableVersions.length === 0) return null;
 
-		const result = yield* SemverResolver.latestInRange(stableVersions, `^${current}`).pipe(
+		const result = yield* SemverResolver.latestInRange(stableVersions, range).pipe(
 			Effect.catchAll(() => Effect.succeed(null as string | null)),
 		);
 		return result;
 	});
+
+/**
+ * Resolve the latest version within a `^` range from available versions.
+ *
+ * @param versions - Available versions to choose from
+ * @param current - The current version (used to construct `^current` range)
+ * @returns The highest version satisfying `^current`, or null if none found
+ */
+export const resolveLatestInRange = (
+	versions: ReadonlyArray<string>,
+	current: string,
+): Effect.Effect<string | null, never, never> => resolveLatestSatisfying(versions, `^${current}`);

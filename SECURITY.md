@@ -15,7 +15,7 @@ If you discover a security vulnerability, please report it through one of these
 channels:
 
 1. **GitHub Security Advisories** (preferred):
-   [Report a vulnerability](https://github.com/savvy-web/pnpm-config-dependency-action/security/advisories/new)
+   [Report a vulnerability](https://github.com/savvy-web/silk-update-action/security/advisories/new)
 2. **Email**:
    [security@savvyweb.systems](mailto:security@savvyweb.systems)
 

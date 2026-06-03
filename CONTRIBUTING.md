@@ -13,8 +13,8 @@ and instructions for development.
 
 ```bash
 # Clone the repository
-git clone https://github.com/savvy-web/pnpm-config-dependency-action.git
-cd pnpm-config-dependency-action
+git clone https://github.com/savvy-web/silk-update-action.git
+cd silk-update-action
 
 # Install dependencies
 pnpm install
@@ -29,7 +29,7 @@ pnpm run test
 ## Project Structure
 
 ```text
-pnpm-config-dependency-action/
+silk-update-action/
 ├── src/
 │   ├── pre.ts                  # Token generation phase
 │   ├── main.ts                 # Main orchestration logic

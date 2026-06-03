@@ -139,7 +139,7 @@ describe("generatePRBody", () => {
 		const body = await withReport((r) => r.generatePRBody(configUpdates, []));
 
 		expect(body).toContain("---");
-		expect(body).toContain("pnpm-config-dependency-action");
+		expect(body).toContain("silk-update-action");
 	});
 
 	it("shows added action for new dependencies", async () => {

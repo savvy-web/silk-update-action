@@ -3,7 +3,7 @@
 	"changelog": [
 		"@savvy-web/changesets/changelog",
 		{
-			"repo": "savvy-web/pnpm-config-dependency-action"
+			"repo": "savvy-web/silk-update-action"
 		}
 	],
 	"commit": false,
