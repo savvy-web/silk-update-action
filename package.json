@@ -3,7 +3,14 @@
 	"version": "1.1.4",
 	"private": true,
 	"description": "GitHub Action for updating pnpm config dependencies and regular dependencies with automated PR creation",
-	"keywords": ["github-action", "pnpm", "config-dependencies", "dependency-updates", "monorepo", "changesets"],
+	"keywords": [
+		"github-action",
+		"pnpm",
+		"config-dependencies",
+		"dependency-updates",
+		"monorepo",
+		"changesets"
+	],
 	"homepage": "https://github.com/savvy-web/silk-update-action#readme",
 	"bugs": {
 		"url": "https://github.com/savvy-web/silk-update-action/issues"
@@ -71,7 +78,7 @@
 		"runtime": [
 			{
 				"name": "node",
-				"version": "26.2.0",
+				"version": "26.3.0",
 				"onFail": "ignore"
 			}
 		]
