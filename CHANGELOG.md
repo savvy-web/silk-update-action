@@ -10,12 +10,12 @@ The pnpm self-upgrade input has been renamed from `update-pnpm` to `upgrade-pack
 
 ```yaml
 # Before
-- uses: savvy-web/silk-update-action@v1
+- uses: savvy-web/silk-update-action@v2
   with:
     update-pnpm: true
 
 # After
-- uses: savvy-web/silk-update-action@v1
+- uses: savvy-web/silk-update-action@v2
   with:
     upgrade-package-manager: true
 ```
@@ -39,7 +39,7 @@ The input also accepts explicit semver ranges (e.g. `^11`) that may cross majors
 uses: savvy-web/pnpm-config-dependency-action@v1
 
 # After
-uses: savvy-web/silk-update-action@v1
+uses: savvy-web/silk-update-action@v2
 ```
 
 ## 1.1.4
@@ -101,7 +101,7 @@ Resolution is limited to currently-maintained (non-end-of-life) major lines. `au
 **Example — bump Node.js within its existing range:**
 
 ```yaml
-- uses: savvy-web/silk-update-action@v1
+- uses: savvy-web/silk-update-action@v2
   with:
     upgrade-runtime-node: auto
 ```
@@ -109,7 +109,7 @@ Resolution is limited to currently-maintained (non-end-of-life) major lines. `au
 **Example — move Node.js to a specific major line with live data:**
 
 ```yaml
-- uses: savvy-web/silk-update-action@v1
+- uses: savvy-web/silk-update-action@v2
   with:
     upgrade-runtime-node: "^22"
     runtime-data: live
