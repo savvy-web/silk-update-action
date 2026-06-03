@@ -1,32 +1,74 @@
 # silk-update-action
 
+## 2.0.0
+
+### Breaking Changes
+
+* [`acbe9c7`](https://github.com/savvy-web/silk-update-action/commit/acbe9c797f33592f0b90c5a7464c8d7db89669bd) ### Input renamed: `update-pnpm` → `upgrade-package-manager`
+
+The pnpm self-upgrade input has been renamed from `update-pnpm` to `upgrade-package-manager` for consistency with the `upgrade-runtime-*` inputs. The old name is no longer recognized — consumers must rename the input in their workflow files.
+
+```yaml
+# Before
+- uses: savvy-web/silk-update-action@v1
+  with:
+    update-pnpm: true
+
+# After
+- uses: savvy-web/silk-update-action@v1
+  with:
+    upgrade-package-manager: true
+```
+
+The input accepts `false` | `true` | `auto` | a semver range (default `true`). It currently upgrades pnpm only; support for other package managers is planned.
+
+### Features
+
+* [`acbe9c7`](https://github.com/savvy-web/silk-update-action/commit/acbe9c797f33592f0b90c5a7464c8d7db89669bd) ### Direct-edit pnpm upgrade with hash pinning and range support
+
+`PnpmUpgrade` now edits the root `package.json` `packageManager` and `devEngines.packageManager` fields directly instead of running `corepack use` (which errors when both fields are present). The resolved version is written as a corepack-canonical `version+sha512.<hex>` hash derived from the npm registry integrity, so the committed fields are identical to what `corepack use` would produce.
+
+The input also accepts explicit semver ranges (e.g. `^11`) that may cross majors and can add a `packageManager` field when none exists. `true`/`auto` resolve the latest within the current major, favoring the `devEngines.packageManager` version as the reference. The pnpm upgrade now triggers `pnpm install --fix-lockfile` to activate the new version via corepack reading the updated fields.
+
+### Maintenance
+
+* [`acbe9c7`](https://github.com/savvy-web/silk-update-action/commit/acbe9c797f33592f0b90c5a7464c8d7db89669bd) Action and package renamed from `pnpm-config-dependency-action` to `silk-update-action` to align with the Silk Suite. Update `uses:` references accordingly:
+
+```yaml
+# Before
+uses: savvy-web/pnpm-config-dependency-action@v1
+
+# After
+uses: savvy-web/silk-update-action@v1
+```
+
 ## 1.1.4
 
 ### Dependencies
 
 * | [`fe89d45`](https://github.com/savvy-web/silk-update-action/commit/fe89d4521ca4b92df4910dbf08caf8cbedd02760) | Dependency | Type    | Action  | From    | To |
-  | :---------------------------------------------------------------------------------------------------------------------- | :--------- | :------ | :------ | :------ | -- |
-  | runtime-resolver                                                                                                        | dependency | updated | ^0.3.10 | ^0.3.11 |    |
+  | :----------------------------------------------------------------------------------------------------------- | :--------- | :------ | :------ | :------ | -- |
+  | runtime-resolver                                                                                             | dependency | updated | ^0.3.10 | ^0.3.11 |    |
 
 ## 1.1.3
 
 ### Dependencies
 
 * | [`19f5115`](https://github.com/savvy-web/silk-update-action/commit/19f5115f3b26207f57fef2d4e0745cb0978ab570) | Dependency    | Type    | Action | From   | To |
-  | :---------------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
-  | @savvy-web/github-action-effects                                                                                        | dependency    | updated | ^2.0.1 | ^2.0.2 |    |
-  | @savvy-web/github-action-builder                                                                                        | devDependency | updated | ^0.7.1 | ^0.7.2 |    |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/github-action-effects                                                                             | dependency    | updated | ^2.0.1 | ^2.0.2 |    |
+  | @savvy-web/github-action-builder                                                                             | devDependency | updated | ^0.7.1 | ^0.7.2 |    |
 
 ## 1.1.2
 
 ### Dependencies
 
 * | [`a07cf34`](https://github.com/savvy-web/silk-update-action/commit/a07cf34b708f0054c13473b504635f511cf333fc) | Dependency    | Type    | Action | From    | To |
-  | :---------------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :------ | -- |
-  | @savvy-web/github-action-effects                                                                                        | dependency    | updated | ^2.0.0 | ^2.0.1  |    |
-  | @savvy-web/silk-effects                                                                                                 | dependency    | updated | ^0.4.1 | ^0.5.0  |    |
-  | @savvy-web/commitlint                                                                                                   | devDependency | updated | ^0.9.1 | ^0.10.0 |    |
-  | @savvy-web/lint-staged                                                                                                  | devDependency | updated | ^1.1.0 | ^1.2.0  |    |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :------ | -- |
+  | @savvy-web/github-action-effects                                                                             | dependency    | updated | ^2.0.0 | ^2.0.1  |    |
+  | @savvy-web/silk-effects                                                                                      | dependency    | updated | ^0.4.1 | ^0.5.0  |    |
+  | @savvy-web/commitlint                                                                                        | devDependency | updated | ^0.9.1 | ^0.10.0 |    |
+  | @savvy-web/lint-staged                                                                                       | devDependency | updated | ^1.1.0 | ^1.2.0  |    |
 
 ## 1.1.1
 
@@ -76,11 +118,11 @@ Resolution is limited to currently-maintained (non-end-of-life) major lines. `au
 ### Dependencies
 
 * | [`54aa2b0`](https://github.com/savvy-web/silk-update-action/commit/54aa2b00d0ecc505aa1d78be8153cac722d3a575) | Dependency    | Type    | Action | From   | To |
-  | :---------------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
-  | @savvy-web/silk-effects                                                                                                 | dependency    | updated | ^0.4.0 | ^0.4.1 |    |
-  | workspaces-effect                                                                                                       | dependency    | updated | ^1.0.0 | ^1.1.0 |    |
-  | yaml                                                                                                                    | dependency    | updated | ^2.8.3 | ^2.9.0 |    |
-  | @savvy-web/lint-staged                                                                                                  | devDependency | updated | ^1.0.1 | ^1.1.0 |    |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/silk-effects                                                                                      | dependency    | updated | ^0.4.0 | ^0.4.1 |    |
+  | workspaces-effect                                                                                            | dependency    | updated | ^1.0.0 | ^1.1.0 |    |
+  | yaml                                                                                                         | dependency    | updated | ^2.8.3 | ^2.9.0 |    |
+  | @savvy-web/lint-staged                                                                                       | devDependency | updated | ^1.0.1 | ^1.1.0 |    |
 
 ## 1.0.0
 
@@ -192,9 +234,9 @@ The `--frozen-lockfile=false` flag is required because pnpm auto-enables `--froz
 ### Dependencies
 
 * | [`1ece353`](https://github.com/savvy-web/silk-update-action/commit/1ece3531032449542e86fc8cb074c3919a9e768b) | Dependency    | Type    | Action | From   | To |
-  | :---------------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
-  | @savvy-web/commitlint                                                                                                   | devDependency | updated | ^0.4.1 | ^0.4.3 |    |
-  | @savvy-web/lint-staged                                                                                                  | devDependency | updated | ^0.6.2 | ^0.6.4 |    |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/commitlint                                                                                        | devDependency | updated | ^0.4.1 | ^0.4.3 |    |
+  | @savvy-web/lint-staged                                                                                       | devDependency | updated | ^0.6.2 | ^0.6.4 |    |
 
 ## 0.11.0
 
