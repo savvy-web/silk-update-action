@@ -5,8 +5,8 @@ and instructions for development.
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org) 24.11.0+
-- [pnpm](https://pnpm.io) 10.28.2+
+- [Node.js](https://nodejs.org) — see `devEngines.runtime` in `package.json` for the pinned version
+- [pnpm](https://pnpm.io) — see `devEngines.packageManager` in `package.json` for the pinned version
 - A GitHub account for pull requests
 
 ## Development Setup
@@ -31,21 +31,17 @@ pnpm run test
 ```text
 silk-update-action/
 ├── src/
-│   ├── pre.ts                  # Token generation phase
-│   ├── main.ts                 # Main orchestration logic
-│   ├── post.ts                 # Cleanup and token revocation
-│   ├── lib/
-│   │   ├── inputs.ts           # Action input parsing
-│   │   ├── logging.ts          # Structured logging
-│   │   ├── errors/             # Typed error definitions
-│   │   ├── schemas/            # Effect Schema definitions
-│   │   ├── services/           # Effect service layers
-│   │   ├── github/             # GitHub API integration
-│   │   ├── pnpm/               # pnpm command execution
-│   │   ├── changeset/          # Changeset creation
-│   │   └── lockfile/           # Lockfile comparison
-│   └── types/                  # Shared type definitions
-├── dist/                       # Built action output
+│   ├── pre.ts                  # Pre phase — provision GitHub App token
+│   ├── main.ts                 # Main phase — thin Action.run(program) wrapper
+│   ├── post.ts                 # Post phase — report duration, revoke token
+│   ├── program.ts              # Effect program + runCommands/runInstall helpers
+│   ├── state.ts                # Cross-phase state (StartTimeState, STATE_KEYS)
+│   ├── errors/                 # Schema.TaggedError definitions
+│   ├── schemas/                # Effect Schema domain definitions
+│   ├── layers/                 # Layer composition (makeAppLayer)
+│   ├── services/               # Domain services (Context.Tag + Layer)
+│   └── utils/                  # Pure helpers (deps, input, markdown, pnpm, runtime, semver)
+├── dist/                       # Built action output (bundled)
 ├── action.yml                  # GitHub Action metadata
 └── docs/                       # User documentation
 ```

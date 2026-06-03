@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-This project is pre-release (`0.x`). Only the latest version receives security
-updates.
+Only the latest `1.x` release receives security updates.
 
 | Version | Supported |
 | --- | --- |
-| Latest | Yes |
+| `1.x` (latest) | Yes |
+| `< 1.0` | No |
 
 ## Reporting a Vulnerability
 
