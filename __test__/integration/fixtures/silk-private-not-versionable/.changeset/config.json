@@ -1,5 +1,5 @@
 {
-	"changelog": ["@savvy-web/changesets/changelog", { "repo": "test/test" }],
+	"changelog": ["@savvy-web/silk/changesets/changelog", { "repo": "test/test" }],
 	"commit": false,
 	"access": "public",
 	"baseBranch": "main",

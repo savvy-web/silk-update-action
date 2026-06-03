@@ -1,9 +1,9 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
 	"changelog": [
-		"@savvy-web/changesets/changelog",
+		"@savvy-web/silk/changesets/changelog",
 		{
-			"repo": "savvy-web/pnpm-config-dependency-action"
+			"repo": "savvy-web/silk-update-action"
 		}
 	],
 	"commit": false,

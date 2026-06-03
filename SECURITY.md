@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-This project is pre-release (`0.x`). Only the latest version receives security
-updates.
+Only the latest `1.x` release receives security updates.
 
 | Version | Supported |
 | --- | --- |
-| Latest | Yes |
+| `1.x` (latest) | Yes |
+| `< 1.0` | No |
 
 ## Reporting a Vulnerability
 
@@ -15,7 +15,7 @@ If you discover a security vulnerability, please report it through one of these
 channels:
 
 1. **GitHub Security Advisories** (preferred):
-   [Report a vulnerability](https://github.com/savvy-web/pnpm-config-dependency-action/security/advisories/new)
+   [Report a vulnerability](https://github.com/savvy-web/silk-update-action/security/advisories/new)
 2. **Email**:
    [security@savvyweb.systems](mailto:security@savvyweb.systems)
 

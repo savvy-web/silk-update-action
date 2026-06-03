@@ -1,6 +1,6 @@
 # Architecture overview
 
-How the pnpm Config Dependency Action works, at the level you need to run it: the three phases it executes, why the token lifecycle is split across them and what the main update workflow does in order.
+How the Silk Update Action works, at the level you need to run it: the three phases it executes, why the token lifecycle is split across them and what the main update workflow does in order.
 
 ## Table of contents
 
@@ -29,7 +29,7 @@ The main phase runs these steps in order. Most steps are conditional on the inpu
 
 1. Manage the dedicated update branch (default `pnpm/config-deps`). If the branch exists it is deleted and recreated from the default branch, so each run starts from a clean baseline and the PR diff shows only the dependency changes.
 2. Capture the current `pnpm-lock.yaml` state for later comparison.
-3. Upgrade pnpm itself if `update-pnpm` is set, bumping the `packageManager` and `devEngines` fields when a newer version is available within range.
+3. Upgrade the package manager (pnpm, for now) if `upgrade-package-manager` is non-`false`, bumping the `packageManager` and `devEngines.packageManager` fields when a newer version is available within range.
 4. Upgrade the `devEngines.runtime` entries (Node.js, Deno, Bun) when any `upgrade-runtime-*` input is set. See [runtime upgrades](#runtime-upgrades) below.
 5. Update config dependencies. The action queries the npm registry directly for the latest version and edits the `configDependencies` entry in `pnpm-workspace.yaml` in place. It does not run `pnpm add --config`, which would promote the dependency into a catalog.
 6. Update regular dependencies across `dependencies`, `devDependencies` and `optionalDependencies` in every workspace `package.json`, querying the npm registry directly and matching the `dependencies` input patterns (globs supported).

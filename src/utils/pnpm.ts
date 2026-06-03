@@ -85,3 +85,16 @@ export const detectIndent = (content: string): string | number => {
 	}
 	return "\t";
 };
+
+/**
+ * Convert an npm registry integrity (`sha512-<base64>`) to the corepack
+ * `packageManager` hash form (`sha512.<hex>`) — the exact string `corepack use`
+ * would write. Returns null when the value is missing or not a sha512 integrity.
+ */
+export const corepackHashFromIntegrity = (integrity: string): string | null => {
+	const value = integrity.trim().replace(/^"(.*)"$/, "$1");
+	const match = value.match(/^sha512-(.+)$/);
+	if (!match) return null;
+	const hex = Buffer.from(match[1], "base64").toString("hex");
+	return `sha512.${hex}`;
+};

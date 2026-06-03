@@ -1,6 +1,6 @@
 # Getting started
 
-Set up the pnpm Config Dependency Action in your repository in four steps: create a GitHub App, store its credentials as secrets, add the workflow and run it once to confirm it works.
+Set up the Silk Update Action in your repository in four steps: create a GitHub App, store its credentials as secrets, add the workflow and run it once to confirm it works.
 
 ## Table of contents
 
@@ -69,7 +69,7 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: savvy-web/pnpm-config-dependency-action@v1
+      - uses: savvy-web/silk-update-action@v1
         with:
           app-client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -138,7 +138,7 @@ To test the action without creating commits or pull requests, enable dry-run
 mode:
 
 ```yaml
-- uses: savvy-web/pnpm-config-dependency-action@v1
+- uses: savvy-web/silk-update-action@v1
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}

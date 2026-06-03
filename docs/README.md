@@ -1,6 +1,6 @@
 # Documentation
 
-User and developer documentation for the pnpm Config Dependency Action.
+User and developer documentation for the Silk Update Action.
 
 ## Table of contents
 
