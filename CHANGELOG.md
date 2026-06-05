@@ -1,5 +1,17 @@
 # silk-update-action
 
+## 2.0.1
+
+### Dependencies
+
+* | [`eddac0f`](https://github.com/savvy-web/silk-update-action/commit/eddac0f3d778f3c4d2ed67c3cee15f7219995960) | Dependency    | Type    | Action | From   | To |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/github-action-effects                                                                             | dependency    | updated | ^2.1.0 | ^2.1.1 |    |
+  | @savvy-web/silk-effects                                                                                      | dependency    | updated | ^0.6.0 | ^0.6.1 |    |
+  | @savvy-web/github-action-builder                                                                             | devDependency | updated | ^0.7.3 | ^0.7.4 |    |
+  | @savvy-web/silk                                                                                              | devDependency | updated | ^0.3.0 | ^0.3.1 |    |
+  | @savvy-web/vitest                                                                                            | devDependency | updated | ^1.3.2 | ^1.4.0 |    |
+
 ## 2.0.0
 
 ### Breaking Changes
