@@ -6,12 +6,8 @@
 		"lodash": "^4.17.20"
 	},
 	"publishConfig": {
-		"targets": [
-			{
-				"protocol": "npm",
-				"registry": "https://registry.npmjs.org/",
-				"access": "public"
-			}
-		]
+		"targets": {
+			"npm": true
+		}
 	}
 }
