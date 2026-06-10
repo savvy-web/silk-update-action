@@ -1,5 +1,11 @@
 # silk-update-action
 
+## 3.0.0
+
+### Build System
+
+* [`cd35626`](https://github.com/savvy-web/silk-update-action/commit/cd356264c19248eb7d853f29a21b4bada2aa9216) Upgrades to release workflow v2
+
 ## 2.0.1
 
 ### Dependencies
