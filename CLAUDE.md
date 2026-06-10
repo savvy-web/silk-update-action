@@ -179,7 +179,7 @@ The shared release workflow at `savvy-web/.github/.github/workflows/release.yml`
 
 Because the action ships as a bundled `dist`, testing dev work means pointing a consumer workflow at a `@dev` ref. There are **two independent switch points**:
 
-- **This action's dev `dist`** — a workflow that *uses* the action pins it by tag. `.github/workflows/pnpm-update.yml` in this repo runs `uses: savvy-web/silk-update-action@v2`; change `@v2` → `@dev` to run the committed dev-branch `dist` (including any locally-linked library changes baked into it) against this very repo. The same flip works in any other repo whose caller invokes this action.
+- **This action's dev `dist`** — a workflow that *uses* the action pins it by tag. `.github/workflows/pnpm-update.yml` in this repo runs `uses: savvy-web/silk-update-action@v3`; change `@v2` → `@dev` to run the committed dev-branch `dist` (including any locally-linked library changes baked into it) against this very repo. The same flip works in any other repo whose caller invokes this action.
 - **The shared release workflow** — `.github/workflows/release.yml` is a thin caller: `uses: savvy-web/.github/.github/workflows/release.yml@main`; change `@main` → `@dev` to exercise the shared workflow's dev branch.
 
 Flip the relevant switch, run the workflow (`workflow_dispatch` or its normal trigger), watch with `gh run watch`, then revert the switch (`@dev` → `@v2` / `@main`) once the released version is cut. `release-sync.yml` (below) hard-resets `dev` to `main` on each release, so `dev` is disposable between cycles.

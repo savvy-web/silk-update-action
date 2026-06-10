@@ -292,7 +292,7 @@ Whether any dependency changes were detected (`"true"` or `"false"`).
 ### Using outputs
 
 ```yaml
-- uses: savvy-web/silk-update-action@v2
+- uses: savvy-web/silk-update-action@v3
   id: update-deps
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
@@ -431,7 +431,7 @@ do not produce a changeset.
 Run the action twice in the same workflow with different branches:
 
 ```yaml
-- uses: savvy-web/silk-update-action@v2
+- uses: savvy-web/silk-update-action@v3
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -440,7 +440,7 @@ Run the action twice in the same workflow with different branches:
       typescript
       @biomejs/biome
 
-- uses: savvy-web/silk-update-action@v2
+- uses: savvy-web/silk-update-action@v3
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -455,7 +455,7 @@ Run the action twice in the same workflow with different branches:
 Automatically merge the dependency PR once status checks pass:
 
 ```yaml
-- uses: savvy-web/silk-update-action@v2
+- uses: savvy-web/silk-update-action@v3
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -469,7 +469,7 @@ Automatically merge the dependency PR once status checks pass:
 Use outputs to gate subsequent steps:
 
 ```yaml
-- uses: savvy-web/silk-update-action@v2
+- uses: savvy-web/silk-update-action@v3
   id: deps
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
