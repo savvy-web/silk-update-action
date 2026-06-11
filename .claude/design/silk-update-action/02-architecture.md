@@ -281,12 +281,24 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 ### Step 7: Update Config Dependencies
 
 - `ConfigDeps.updateConfigDeps()` queries npm via `NpmRegistry` service.
+- Config dependencies are hash-pinned exact versions with no declared range, so
+  it derives a conservative upgrade range from the current version's major via
+  `configDepUpgradeRange` (`src/utils/semver.ts`) — `>=1.0.0` stays within the
+  current major, a `<1.0.0` dep may advance across `0.x` and adopt the first
+  stable major but never crosses two majors — then resolves the highest in-range
+  version via `resolveLatestSatisfying` and fetches that resolved version's
+  integrity. It does **not** jump to npm's absolute `latest`.
 - Edits `pnpm-workspace.yaml` in place (avoids `pnpm add --config` catalog promotion).
 - Tracks version changes (from/to).
 
 ### Step 8: Update Regular Dependencies
 
-- `RegularDeps.updateRegularDeps()` queries npm via `NpmRegistry` service.
+- `RegularDeps.updateRegularDeps()` queries every published version via
+  `NpmRegistry.getVersions` and resolves the highest version **satisfying the
+  current specifier treated as a range** via `resolveLatestSatisfying`, then
+  re-applies the operator verbatim. It does **not** jump to npm's absolute
+  `latest` dist-tag — `^4.0.0` stays within major 4, `~3.0.0` stays within the
+  minor, `>=4.0.0` may advance across a major, and an exact pin never bumps.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
   `workspaces-effect`.
 - Matches patterns and updates specifiers.

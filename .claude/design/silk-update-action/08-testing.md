@@ -21,11 +21,13 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
   matching and the `isRetryable` / `getErrorMessage` helpers.
 - **Dependency services** (`config-deps.test.ts`, `regular-deps.test.ts`,
   `peer-sync.test.ts`, `pnpm-upgrade.test.ts`, `runtime-upgrade.test.ts`) —
-  npm-registry querying, multi-section RegularDeps scanning with accurate per-
-  section `type` reporting, `peer-lock`/`peer-minor` range computation, pnpm
-  self-upgrade, and per-runtime `devEngines.runtime` rewriting (including `auto`
-  no-op on static pins, missing-entry insertion, shape promotion and per-runtime
-  resolver-failure resilience).
+  npm-registry querying, range-respecting resolution (RegularDeps resolving
+  within the current specifier's range, ConfigDeps within the synthesized
+  major range, neither jumping to absolute `latest`), multi-section RegularDeps
+  scanning with accurate per-section `type` reporting, `peer-lock`/`peer-minor`
+  range computation, pnpm self-upgrade, and per-runtime `devEngines.runtime`
+  rewriting (including `auto` no-op on static pins, missing-entry insertion,
+  shape promotion and per-runtime resolver-failure resilience).
 - **Lockfile and changesets** (`lockfile.test.ts`, `changesets.test.ts`) —
   catalog and importer comparison emitting per-importer, per-section triples;
   trigger-vs-informational classification, `regularUpdates` routing by
@@ -34,8 +36,9 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
   creation/update, commit-message and summary generation, and YAML sorting/round
   -tripping.
 - **Pure helpers** (`utils/input.test.ts`, `utils/runtime.test.ts`,
-  `utils/fixtures.test.ts`, `services/branch.test.ts`) — multi-value input
-  parsing, `devEngines.runtime` helper functions, shared fixtures, and branch
+  `utils/semver.test.ts`, `utils/fixtures.test.ts`, `services/branch.test.ts`) —
+  multi-value input parsing, `devEngines.runtime` helper functions,
+  `configDepUpgradeRange` / range-resolution helpers, shared fixtures, and branch
   lifecycle via the `GitBranch` / `GitCommit` library services.
 
 `changeset-config.ts` and `publishability.ts` are re-export shims with no unit

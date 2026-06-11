@@ -8,9 +8,8 @@ A GitHub Action that updates pnpm config dependencies, workspace dependencies an
 
 ## Features
 
-- Updates config dependencies via direct npm queries and YAML editing
-- Updates workspace dependencies (across `dependencies`, `devDependencies`, and
-  `optionalDependencies`) via direct npm registry queries with glob pattern support
+- Updates config dependencies via direct npm queries and YAML editing, staying within a conservative range of the current major
+- Updates workspace dependencies (across `dependencies`, `devDependencies`, and `optionalDependencies`) within the semver ranges declared in `package.json`, with glob pattern support
 - Syncs peer dependency ranges with configurable lock/minor strategies
 - Creates verified, signed commits through GitHub App authentication
 - Integrates with Changesets for automated versioning of affected packages

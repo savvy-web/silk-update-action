@@ -71,8 +71,9 @@
   `services/peer-sync.ts` (`SemVer.parse`) for bump-classification under the
   `peer-minor` strategy, and directly in `program.ts` (`Range.parse`) for
   validating explicit-range `upgrade-runtime-*` and `upgrade-package-manager` input values.
-  (Version resolution in `utils/semver.ts` uses `SemverResolver` from
-  `@savvy-web/github-action-effects`, not `semver-effect`.)
+  (Version resolution in `utils/semver.ts` — including the in-range resolution
+  for `ConfigDeps`/`RegularDeps` and `configDepUpgradeRange` — uses
+  `SemverResolver` from `@savvy-web/github-action-effects`, not `semver-effect`.)
 - `workspaces-effect` (^1.1.0) - Effect-native workspace + publishability layer.
   Consumed directly by domain services (`RegularDeps`, `PeerSync`, `Lockfile`,
   `Changesets`) via the upstream `WorkspaceDiscovery` Tag. Provides:

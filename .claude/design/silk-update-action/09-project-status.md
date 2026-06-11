@@ -58,11 +58,19 @@ publishability detection plus changeset-config reading come from
 - Branch management with delete-and-recreate strategy via `BranchManager`
   service.
 - Config dependency updates via `ConfigDeps` service (uses `NpmRegistry`).
+  Config deps carry no declared range, so it synthesizes a conservative one from
+  the current version's major via `configDepUpgradeRange` and resolves the
+  highest in-range version with `resolveLatestSatisfying` rather than jumping to
+  npm's absolute latest (`>=1.0.0` stays within the major; `<1.0.0` may adopt the
+  first stable major but never crosses two majors at once).
 - Regular dependency updates via `RegularDeps` service (uses `NpmRegistry`
-  and `WorkspaceDiscovery` from `workspaces-effect`). Iterates
-  `dependencies`, `devDependencies`, and `optionalDependencies`
-  independently and reports the real section type per update —
-  `peerDependencies` are managed by `syncPeers`.
+  and `WorkspaceDiscovery` from `workspaces-effect`). Resolves the highest
+  published version **satisfying the current specifier treated as a range** via
+  `resolveLatestSatisfying` rather than npm's absolute `latest` dist-tag, so
+  `^4.0.0` stays within major 4, `>=4.0.0` may advance across a major, and an
+  exact pin never bumps. Iterates `dependencies`, `devDependencies`, and
+  `optionalDependencies` independently and reports the real section type per
+  update — `peerDependencies` are managed by `syncPeers`.
 - Peer dependency range syncing via `syncPeers` (`peer-lock` and
   `peer-minor` strategies, powered by `semver-effect`).
 - pnpm self-upgrade via `PnpmUpgrade` service, driven by the `upgrade-package-manager`

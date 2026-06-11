@@ -32,5 +32,6 @@ pnpm-release.json
 .claude/settings.local.json
 .claude/plans/
 .claude/plugins-debug.log
+.claude/cache/
 .playwright-mcp
 docs/superpowers/

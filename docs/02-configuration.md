@@ -318,10 +318,14 @@ The token is masked in workflow logs, so it does not appear in build output even
 ### Config dependencies
 
 [Config dependencies](https://pnpm.io/config-dependencies) are declared in
-`pnpm-workspace.yaml` and provide workspace-level tooling. The action queries
-the npm registry directly for the latest version and edits the
-`configDependencies` entry in `pnpm-workspace.yaml` in place, which avoids the
-catalog promotion that `pnpm add --config` would introduce.
+`pnpm-workspace.yaml` and provide workspace-level tooling. They are hash-pinned
+with no explicit range, so the action upgrades each one within a conservative
+range derived from its current major. A config dependency at `>=1.0.0` stays
+within its current major; one below `1.0.0` may advance across the `0.x` line
+and adopt the first stable major (`1.x`), but never crosses two majors at once.
+The action edits the `configDependencies` entry in `pnpm-workspace.yaml` in
+place, which avoids the catalog promotion that `pnpm add --config` would
+introduce.
 
 ```yaml
 # pnpm-workspace.yaml
@@ -337,9 +341,14 @@ Workspace dependencies are matched against the `dependencies`,
 files. `peerDependencies` are intentionally excluded — peer ranges are
 managed by the `peer-lock` and `peer-minor` inputs.
 
-The action queries the npm registry directly for latest versions (avoids
-`pnpm up --latest` which promotes deps to catalogs when `catalogMode: strict`
-is enabled). Glob patterns follow Node's `path.matchesGlob`:
+The action resolves each dependency within the semver range already declared in
+`package.json`, rather than jumping to npm's absolute latest. A `^4.0.0`
+specifier resolves to the highest `4.x` and will not cross to `5.x`; a `~3.0.0`
+specifier stays within `3.0.x`; a wider range like `>=4.0.0` may advance across
+a major. An exact pin (e.g. `4.0.0`, no operator) is a single-version range and
+is left untouched. Prereleases are excluded. Querying the npm registry directly
+this way also avoids `pnpm up --latest`, which promotes deps to catalogs when
+`catalogMode: strict` is enabled. Glob patterns follow Node's `path.matchesGlob`:
 
 | Pattern | Matches |
 | --- | --- |
@@ -363,8 +372,9 @@ Published packages list peer dependencies to declare compatibility. When you upd
 | `peer-minor` | Sync on minor+ only | `3.1.0` to `3.1.2` leaves peer at `^3.1.0`; `3.1.0` to `3.2.0` updates to `^3.2.0` |
 
 Version resolution follows semver naturally. If the workspace dependency
-specifier is `^3.1.0`, the action resolves the latest version satisfying that
-range. There is no special major-version skip rule.
+specifier is `^3.1.0`, the action resolves the highest version satisfying that
+range — the highest `3.x`, never crossing into `4.x`. The peer range then syncs
+to the resolved version per the chosen strategy.
 
 ## Post-update commands
 

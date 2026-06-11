@@ -18,6 +18,7 @@ import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
 import { matchesPattern, parseSpecifier } from "../utils/deps.js";
 import { detectIndent } from "../utils/pnpm.js";
+import { resolveLatestSatisfying } from "../utils/semver.js";
 
 type NpmRegistryShape = Context.Tag.Service<typeof NpmRegistry>;
 type WorkspaceDiscoveryShape = Context.Tag.Service<typeof WorkspaceDiscovery>;
@@ -53,15 +54,12 @@ export const RegularDepsLive = Layer.effect(
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Query npm for the latest published version of a package.
+ * Query npm for every published version of a package. Returns an empty array
+ * (rather than failing) when the registry query errors, so a single bad
+ * package never aborts the whole batch.
  */
-const queryLatestVersion = (packageName: string, registry: NpmRegistryShape): Effect.Effect<string | null> =>
-	Effect.gen(function* () {
-		const version = yield* registry
-			.getLatestVersion(packageName)
-			.pipe(Effect.catchAll(() => Effect.succeed(null as string | null)));
-		return version;
-	});
+const queryVersions = (packageName: string, registry: NpmRegistryShape): Effect.Effect<ReadonlyArray<string>> =>
+	registry.getVersions(packageName).pipe(Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)));
 
 /**
  * Writable dependency sections, in priority order. peerDependencies are
@@ -242,10 +240,10 @@ const updateRegularDepsImpl = (
 		const fileUpdates = new Map<string, Map<DepSectionField, Map<string, string>>>();
 
 		for (const [depName, entries] of depMap) {
-			const latest = yield* queryLatestVersion(depName, registry);
+			const versions = yield* queryVersions(depName, registry);
 
-			if (!latest) {
-				yield* Effect.logWarning(`Could not query latest version for ${depName}`);
+			if (versions.length === 0) {
+				yield* Effect.logWarning(`Could not query versions for ${depName}`);
 				continue;
 			}
 
@@ -253,9 +251,18 @@ const updateRegularDepsImpl = (
 				const parsed = parseSpecifier(entry.currentSpecifier);
 				if (!parsed) continue;
 
-				if (parsed.version === latest) continue;
+				// Resolve the highest published version that still satisfies the
+				// user's declared range — the current specifier IS the range
+				// (e.g. "^4.0.0", ">=4.0.0", "~3.0.0", or an exact "3.0.0"). This
+				// keeps caret/tilde updates inside their major/minor and never
+				// jumps an exact pin. The operator is re-applied verbatim, so a
+				// ">=" range advances past a major while a "^" range does not.
+				const resolved = yield* resolveLatestSatisfying(versions, entry.currentSpecifier);
+				if (!resolved) continue;
 
-				const newSpecifier = `${parsed.prefix}${latest}`;
+				const newSpecifier = `${parsed.prefix}${resolved}`;
+
+				if (newSpecifier === entry.currentSpecifier) continue;
 
 				const sections = fileUpdates.get(entry.path) ?? new Map<DepSectionField, Map<string, string>>();
 				const fieldUpdates = sections.get(entry.field) ?? new Map<string, string>();

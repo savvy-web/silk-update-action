@@ -17,6 +17,7 @@ import { stringify } from "yaml";
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
 import { parseConfigEntry } from "../utils/deps.js";
+import { configDepUpgradeRange, resolveLatestSatisfying } from "../utils/semver.js";
 import { STRINGIFY_OPTIONS, readWorkspaceYaml, sortContent } from "./workspace-yaml.js";
 
 type NpmRegistryShape = Context.Tag.Service<typeof NpmRegistry>;
@@ -50,40 +51,39 @@ export const ConfigDepsLive = Layer.effect(
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Query npm for the latest version and integrity hash of a package.
- *
- * Returns `{ version, integrity }` or `null` on failure.
+ * Query npm for every published version of a package. Returns an empty array
+ * (rather than failing) when the registry query errors.
  */
-const queryConfigVersion = (
+const queryVersions = (packageName: string, registry: NpmRegistryShape): Effect.Effect<ReadonlyArray<string>> =>
+	registry.getVersions(packageName).pipe(Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)));
+
+/**
+ * Query npm for the integrity hash of a specific package version.
+ *
+ * Returns the `sha512-...` integrity string, or `null` when the registry query
+ * fails or the version has no published integrity.
+ */
+const queryIntegrity = (
 	packageName: string,
+	version: string,
 	registry: NpmRegistryShape,
-): Effect.Effect<{ version: string; integrity: string } | null> =>
+): Effect.Effect<string | null> =>
 	Effect.gen(function* () {
-		yield* Effect.logDebug(`queryConfigVersion: fetching package info for ${packageName}`);
-		const info = yield* registry.getPackageInfo(packageName).pipe(
+		const info = yield* registry.getPackageInfo(packageName, version).pipe(
 			Effect.catchAll((error) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(
-						`queryConfigVersion: npm registry query failed for ${packageName}: ${JSON.stringify({ pkg: error.pkg, operation: error.operation, reason: error.reason })}`,
+						`queryIntegrity: npm registry query failed for ${packageName}@${version}: ${JSON.stringify({ pkg: error.pkg, operation: error.operation, reason: error.reason })}`,
 					);
 					return null;
 				}),
 			),
 		);
-		if (!info) {
-			yield* Effect.logDebug(`queryConfigVersion: no package info returned for ${packageName}`);
+		if (!info?.integrity) {
+			yield* Effect.logWarning(`queryIntegrity: no integrity for ${packageName}@${version}`);
 			return null;
 		}
-		if (!info.integrity) {
-			yield* Effect.logWarning(
-				`queryConfigVersion: package info missing integrity for ${packageName} (version: ${info.version})`,
-			);
-			return null;
-		}
-		yield* Effect.logDebug(
-			`queryConfigVersion: found ${packageName}@${info.version} (integrity: ${info.integrity.slice(0, 20)}...)`,
-		);
-		return { version: info.version, integrity: info.integrity };
+		return info.integrity;
 	});
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -145,35 +145,56 @@ const updateConfigDepsImpl = (
 			}
 			yield* Effect.logDebug(`Parsed ${dep}: version=${parsed.version}, hasHash=${!!parsed.hash}`);
 
-			// Query npm for latest version + integrity
-			yield* Effect.logInfo(`Querying npm for latest version of ${dep}`);
-			const latest = yield* queryConfigVersion(dep, registry);
+			// Derive a conservative upgrade range from the current version's
+			// major: stay within the major for >=1.0.0, allow advancing across
+			// 0.x and into the first stable major (never two majors) for <1.0.0.
+			const range = configDepUpgradeRange(parsed.version);
+			if (!range) {
+				yield* Effect.logWarning(`Could not derive an upgrade range for ${dep} from version ${parsed.version}`);
+				continue;
+			}
 
-			if (!latest) {
-				yield* Effect.logWarning(`Could not query latest version for ${dep}`);
+			// Query npm for all versions and resolve the highest one in range.
+			yield* Effect.logInfo(`Querying npm versions for ${dep} (range ${range})`);
+			const versions = yield* queryVersions(dep, registry);
+			if (versions.length === 0) {
+				yield* Effect.logWarning(`Could not query versions for ${dep}`);
+				continue;
+			}
+
+			const resolved = yield* resolveLatestSatisfying(versions, range);
+			if (!resolved) {
+				yield* Effect.logInfo(`No version of ${dep} satisfies ${range}`);
 				continue;
 			}
 
 			// Compare versions
-			if (parsed.version === latest.version) {
+			if (parsed.version === resolved) {
 				yield* Effect.logInfo(`${dep} is already up-to-date at ${parsed.version}`);
 				continue;
 			}
 
+			// Fetch the integrity hash for the resolved version specifically.
+			const integrity = yield* queryIntegrity(dep, resolved, registry);
+			if (!integrity) {
+				yield* Effect.logWarning(`Could not resolve integrity for ${dep}@${resolved}, skipping`);
+				continue;
+			}
+
 			// Construct new entry: version+integrity
-			const newEntry = `${latest.version}+${latest.integrity}`;
+			const newEntry = `${resolved}+${integrity}`;
 			content.configDependencies[dep] = newEntry;
 			changed = true;
 
 			results.push({
 				dependency: dep,
 				from: parsed.version,
-				to: latest.version,
+				to: resolved,
 				type: "config",
 				package: null,
 			});
 
-			yield* Effect.logInfo(`Updated ${dep}: ${parsed.version} -> ${latest.version}`);
+			yield* Effect.logInfo(`Updated ${dep}: ${parsed.version} -> ${resolved}`);
 		}
 
 		// Write back if changed

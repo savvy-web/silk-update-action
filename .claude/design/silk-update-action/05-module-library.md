@@ -155,9 +155,18 @@ export class ConfigDeps extends Context.Tag("ConfigDeps")<ConfigDeps, {
 **Algorithm:**
 
 1. Read `pnpm-workspace.yaml` via `readWorkspaceYaml()`
-2. For each dep, query `NpmRegistry` for latest version + integrity
-3. Compare current with latest; skip if up-to-date
+2. For each dep, parse its hash-pinned version, derive a conservative upgrade
+   range from the major via `configDepUpgradeRange` (`src/utils/semver.ts`),
+   query `NpmRegistry.getVersions`, and resolve the highest in-range version via
+   `resolveLatestSatisfying` — config deps carry no declared range, so the range
+   is synthesized rather than reading npm's absolute latest
+3. Compare current with the resolved version; skip if up-to-date, otherwise fetch
+   the integrity for **that** resolved version via `getPackageInfo(dep, resolved)`
 4. Write back via `sortContent()` + `stringify()`
+
+The range keeps a `>=1.0.0` dep within its current major; a `<1.0.0` dep may
+advance across `0.x` and adopt the first stable major but never crosses two
+majors in one step.
 
 ### src/services/regular-deps.ts - RegularDeps
 
@@ -175,11 +184,16 @@ export class RegularDeps extends Context.Tag("RegularDeps")<RegularDeps, {
 
 **Key Design Decisions:**
 
-- Queries npm registry directly via `NpmRegistry` service.
+- Queries every published version via `NpmRegistry.getVersions` and resolves the
+  highest version **satisfying the current specifier treated as a range** via
+  `resolveLatestSatisfying` — it does not read npm's absolute `latest` dist-tag.
+  So `^4.0.0` stays within major 4, `~3.0.0` stays within the minor, `>=4.0.0`
+  may advance across a major, and an exact pin (a one-version range) never bumps.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
   `workspaces-effect`.
 - Uses `matchesPattern` from `src/utils/deps.ts` for glob matching.
-- Preserves specifier prefix (`^`, `~`, or exact) from `package.json`.
+- Preserves specifier prefix (`^`, `~`, or exact) from `package.json`, re-applied
+  verbatim to the resolved version.
 - Skips `catalog:` and `workspace:` specifiers.
 - Iterates `dependencies`, `devDependencies`, and `optionalDependencies`
   via `DEP_SECTIONS` (a typed array of `{ field, type }` records).
@@ -543,5 +557,6 @@ service dependencies — mirrors `src/utils/pnpm.ts`.
 
 ### src/utils/semver.ts
 
-- `resolveLatestSatisfying(versions, range)` - Find the highest stable version satisfying an arbitrary semver range (e.g. `^11`, `>=11`).
+- `resolveLatestSatisfying(versions, range)` - Find the highest stable version satisfying an arbitrary semver range (e.g. `^11`, `>=11`). Used by `RegularDeps` (current specifier as range) and `ConfigDeps` (synthesized range).
 - `resolveLatestInRange(versions, current)` - Find highest stable version satisfying `^current` (delegates to `resolveLatestSatisfying`).
+- `configDepUpgradeRange(version)` - Synthesize a conservative upgrade range from a hash-pinned config-dep version's major: `>=version <(major+1).0.0` for `>=1.0.0`, `>=version <2.0.0` for `<1.0.0`. Returns `null` for a version with no numeric major. Used by `ConfigDeps`, which has no declared range to read.
