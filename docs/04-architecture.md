@@ -31,8 +31,8 @@ The main phase runs these steps in order. Most steps are conditional on the inpu
 2. Capture the current `pnpm-lock.yaml` state for later comparison.
 3. Upgrade the package manager (pnpm, for now) if `upgrade-package-manager` is non-`false`, bumping the `packageManager` and `devEngines.packageManager` fields when a newer version is available within range.
 4. Upgrade the `devEngines.runtime` entries (Node.js, Deno, Bun) when any `upgrade-runtime-*` input is set. See [runtime upgrades](#runtime-upgrades) below.
-5. Update config dependencies. The action queries the npm registry directly for the latest version and edits the `configDependencies` entry in `pnpm-workspace.yaml` in place. It does not run `pnpm add --config`, which would promote the dependency into a catalog.
-6. Update regular dependencies across `dependencies`, `devDependencies` and `optionalDependencies` in every workspace `package.json`, querying the npm registry directly and matching the `dependencies` input patterns (globs supported).
+5. Update config dependencies. The action resolves each one within a conservative range derived from its current major (hash-pinned config deps carry no explicit range) and edits the `configDependencies` entry in `pnpm-workspace.yaml` in place. It does not run `pnpm add --config`, which would promote the dependency into a catalog.
+6. Update regular dependencies across `dependencies`, `devDependencies` and `optionalDependencies` in every workspace `package.json`, resolving each within the semver range already declared in `package.json` (so a `^4.0.0` specifier stays on `4.x`) and matching the `dependencies` input patterns (globs supported).
 7. Sync peer-dependency ranges for packages listed in `peer-lock` or `peer-minor`, following each package's strategy.
 8. Reconcile the lockfile with `pnpm install --frozen-lockfile=false --fix-lockfile`, which writes the lockfile changes while leaving unrelated transitive versions pinned.
 9. Format `pnpm-workspace.yaml` so the result matches the repository's lint-staged formatting and does not churn after commit.

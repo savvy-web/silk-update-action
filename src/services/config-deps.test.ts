@@ -14,7 +14,7 @@ import { ConfigDeps, ConfigDepsLive } from "./config-deps.js";
 // ══════════════════════════════════════════════════════════════════════════════
 
 const makeRegistryState = (
-	packages: Record<string, { version: string; integrity?: string }>,
+	packages: Record<string, { version: string; integrity?: string; versions?: string[] }>,
 ): Map<
 	string,
 	{
@@ -36,8 +36,11 @@ const makeRegistryState = (
 		}
 	>();
 	for (const [name, info] of Object.entries(packages)) {
+		// `versions` (ascending) controls range resolution; `version` is the
+		// dist-tag latest. Default to a single-version registry when not given.
+		const versions = info.versions ?? [info.version];
 		map.set(name, {
-			versions: [info.version],
+			versions,
 			latest: info.version,
 			distTags: { latest: info.version },
 			...(info.integrity != null && { integrity: info.integrity }),
@@ -48,7 +51,7 @@ const makeRegistryState = (
 
 const runWithService = <A, E>(
 	fn: (service: Context.Tag.Service<typeof ConfigDeps>) => Effect.Effect<A, E>,
-	packages?: Record<string, { version: string; integrity?: string }>,
+	packages?: Record<string, { version: string; integrity?: string; versions?: string[] }>,
 ) => {
 	const registryLayer = packages
 		? NpmRegistryTest.layer({ packages: makeRegistryState(packages) })
@@ -185,9 +188,10 @@ describe("ConfigDeps.updateConfigDeps", () => {
 	it("continues when npm query fails for one dep", async () => {
 		writeWorkspaceYaml(`configDependencies:\n  "bad-pkg": "1.0.0"\n  "good-pkg": "1.0.0"\n`);
 
-		// Only provide "good-pkg" in registry; "bad-pkg" will fail automatically
+		// Only provide "good-pkg" in registry; "bad-pkg" will fail automatically.
+		// 1.5.0 stays within good-pkg's major (>=1.0.0 <2.0.0).
 		const result = await runWithService((s) => s.updateConfigDeps(["bad-pkg", "good-pkg"], tempDir), {
-			"good-pkg": { version: "2.0.0", integrity: "sha512-goodHash==" },
+			"good-pkg": { version: "1.5.0", integrity: "sha512-goodHash==" },
 		});
 
 		expect(result).toHaveLength(1);
@@ -248,6 +252,64 @@ describe("ConfigDeps.updateConfigDeps", () => {
 
 		const result = await runWithService((s) => s.updateConfigDeps(["typescript"], tempDir));
 		expect(result).toHaveLength(0);
+	});
+
+	it("caps a >=1.0.0 config dep within its current major", async () => {
+		writeWorkspaceYaml(`configDependencies:\n  "@savvy-web/silk": "1.14.5+sha512-oldHash=="\n`);
+
+		// Latest is 2.3.0 but a post-1.0 dep must stay within major 1 — the
+		// highest in-range version is 1.20.0.
+		const result = await runWithService((s) => s.updateConfigDeps(["@savvy-web/silk"], tempDir), {
+			"@savvy-web/silk": {
+				version: "2.3.0",
+				integrity: "sha512-resolvedHash==",
+				versions: ["1.14.5", "1.20.0", "2.0.0", "2.3.0"],
+			},
+		});
+
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ from: "1.14.5", to: "1.20.0", type: "config" });
+
+		const yaml = readWorkspaceYaml();
+		expect(yaml.configDependencies["@savvy-web/silk"]).toBe("1.20.0+sha512-resolvedHash==");
+	});
+
+	it("advances a sub-1.0.0 config dep across 0.x minors when no stable major exists", async () => {
+		writeWorkspaceYaml(`configDependencies:\n  "@savvy-web/pnpm-plugin-silk": "0.14.5+sha512-oldHash=="\n`);
+
+		const result = await runWithService((s) => s.updateConfigDeps(["@savvy-web/pnpm-plugin-silk"], tempDir), {
+			"@savvy-web/pnpm-plugin-silk": {
+				version: "0.20.0",
+				integrity: "sha512-resolvedHash==",
+				versions: ["0.14.5", "0.18.0", "0.20.0"],
+			},
+		});
+
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ from: "0.14.5", to: "0.20.0", type: "config" });
+
+		const yaml = readWorkspaceYaml();
+		expect(yaml.configDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("0.20.0+sha512-resolvedHash==");
+	});
+
+	it("adopts the latest 1.x for a sub-1.0.0 config dep but never crosses into 2.x", async () => {
+		writeWorkspaceYaml(`configDependencies:\n  "@savvy-web/pnpm-plugin-silk": "0.14.5+sha512-oldHash=="\n`);
+
+		// 0.14.5 may jump to the first stable major (1.x → latest 1.5.0), but a
+		// single run must not reach 2.0.0.
+		const result = await runWithService((s) => s.updateConfigDeps(["@savvy-web/pnpm-plugin-silk"], tempDir), {
+			"@savvy-web/pnpm-plugin-silk": {
+				version: "2.0.0",
+				integrity: "sha512-resolvedHash==",
+				versions: ["0.14.5", "0.20.0", "1.2.0", "1.5.0", "2.0.0"],
+			},
+		});
+
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ from: "0.14.5", to: "1.5.0", type: "config" });
+
+		const yaml = readWorkspaceYaml();
+		expect(yaml.configDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("1.5.0+sha512-resolvedHash==");
 	});
 
 	it("handles config dep without hash suffix", async () => {

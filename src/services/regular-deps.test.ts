@@ -25,7 +25,7 @@ const readPackageJson = (dir: string) => {
 };
 
 const makeRegistryState = (
-	packages: Record<string, string>,
+	packages: Record<string, string | string[]>,
 ): Map<
 	string,
 	{
@@ -42,11 +42,15 @@ const makeRegistryState = (
 			distTags: Record<string, string>;
 		}
 	>();
-	for (const [name, version] of Object.entries(packages)) {
+	for (const [name, spec] of Object.entries(packages)) {
+		const versions = Array.isArray(spec) ? spec : [spec];
+		// Treat the highest-listed version as the dist-tag `latest`. Tests pass
+		// versions in ascending order, so the last entry is the newest.
+		const latest = versions[versions.length - 1];
 		map.set(name, {
-			versions: [version],
-			latest: version,
-			distTags: { latest: version },
+			versions,
+			latest,
+			distTags: { latest },
 		});
 	}
 	return map;
@@ -84,7 +88,7 @@ const failingWorkspaces = (): Layer.Layer<WorkspaceDiscovery> =>
 
 const runWithService = <A, E>(
 	fn: (service: Context.Tag.Service<typeof RegularDeps>) => Effect.Effect<A, E>,
-	packages?: Record<string, string>,
+	packages?: Record<string, string | string[]>,
 	workspacesLayer?: Layer.Layer<WorkspaceDiscovery>,
 ) => {
 	const registryLayer = packages
@@ -275,7 +279,8 @@ describe("RegularDeps.updateRegularDeps", () => {
 
 		const result = await runWithService(
 			(s) => s.updateRegularDeps(["effect", "@effect/*"], dir),
-			{ "@effect/schema": "0.61.0" },
+			// 0.60.5 stays within ^0.60.0 (caret on a 0.x version locks the minor)
+			{ "@effect/schema": ["0.60.0", "0.60.5"] },
 			mockWorkspaces([{ name: "root", path: dir }]),
 		);
 
@@ -331,10 +336,11 @@ describe("RegularDeps.updateRegularDeps", () => {
 			},
 		});
 
-		// Only provide "good-pkg" in registry; "bad-pkg" will fail automatically
+		// Only provide "good-pkg" in registry; "bad-pkg" will fail automatically.
+		// 1.5.0 stays within good-pkg's ^1.0.0 range.
 		const result = await runWithService(
 			(s) => s.updateRegularDeps(["bad-pkg", "good-pkg"], dir),
-			{ "good-pkg": "2.0.0" },
+			{ "good-pkg": ["1.0.0", "1.5.0"] },
 			mockWorkspaces([{ name: "root", path: dir }]),
 		);
 
@@ -343,24 +349,26 @@ describe("RegularDeps.updateRegularDeps", () => {
 		expect(result[0].dependency).toBe("good-pkg");
 	});
 
-	it("preserves tilde prefix", async () => {
+	it("preserves tilde prefix and stays within the tilde range", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, {
 			name: "root",
 			devDependencies: { effect: "~3.0.0" },
 		});
 
+		// ~3.0.0 allows >=3.0.0 <3.1.0 — 3.1.0 is outside the range and must
+		// not be selected; the highest in-range version is 3.0.5.
 		const result = await runWithService(
 			(s) => s.updateRegularDeps(["effect"], dir),
-			{ effect: "3.1.0" },
+			{ effect: ["3.0.0", "3.0.5", "3.1.0"] },
 			mockWorkspaces([{ name: "root", path: dir }]),
 		);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].to).toBe("~3.1.0");
+		expect(result[0].to).toBe("~3.0.5");
 
 		const pkg = readPackageJson(dir);
-		expect(pkg.devDependencies.effect).toBe("~3.1.0");
+		expect(pkg.devDependencies.effect).toBe("~3.0.5");
 	});
 
 	it("finds dep in devDependencies field", async () => {
@@ -529,23 +537,86 @@ describe("RegularDeps.updateRegularDeps", () => {
 		expect(pkg.devDependencies.effect).toBe("^3.1.0");
 	});
 
-	it("preserves exact version (no prefix)", async () => {
+	it("never bumps an exact pin (an exact version is a one-version range)", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, {
 			name: "root",
 			devDependencies: { effect: "3.0.0" },
 		});
 
+		// An exact pin "3.0.0" only satisfies 3.0.0, so newer versions must be
+		// left untouched — respecting the range the user pinned.
 		const result = await runWithService(
 			(s) => s.updateRegularDeps(["effect"], dir),
-			{ effect: "3.1.0" },
+			{ effect: ["3.0.0", "3.1.0", "4.0.0"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(0);
+
+		const pkg = readPackageJson(dir);
+		expect(pkg.devDependencies.effect).toBe("3.0.0");
+	});
+
+	it("respects a caret range and does not cross the major boundary", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { "@sigstore/bundle": "^4.0.0" },
+		});
+
+		// Latest is 5.2.0 but ^4.0.0 caps at the 4.x line — the highest
+		// satisfying version is 4.5.0.
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["@sigstore/bundle"], dir),
+			{ "@sigstore/bundle": ["4.0.0", "4.5.0", "5.0.0", "5.2.0"] },
 			mockWorkspaces([{ name: "root", path: dir }]),
 		);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].to).toBe("3.1.0");
+		expect(result[0].to).toBe("^4.5.0");
 
 		const pkg = readPackageJson(dir);
-		expect(pkg.devDependencies.effect).toBe("3.1.0");
+		expect(pkg.dependencies["@sigstore/bundle"]).toBe("^4.5.0");
+	});
+
+	it("follows a >= range across a major boundary", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { "some-lib": ">=4.0.0" },
+		});
+
+		// >=4.0.0 admits any newer version, so it should advance to 5.0.1.
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["some-lib"], dir),
+			{ "some-lib": ["4.0.0", "4.5.0", "5.0.1"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].to).toBe(">=5.0.1");
+
+		const pkg = readPackageJson(dir);
+		expect(pkg.dependencies["some-lib"]).toBe(">=5.0.1");
+	});
+
+	it("ignores prereleases when resolving within a range", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { effect: "^3.0.0" },
+		});
+
+		// 3.3.0-beta.1 is the highest in-range version but is a prerelease, so
+		// the stable 3.2.0 should be selected.
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["effect"], dir),
+			{ effect: ["3.0.0", "3.2.0", "3.3.0-beta.1"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].to).toBe("^3.2.0");
 	});
 });
