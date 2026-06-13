@@ -299,6 +299,10 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   re-applies the operator verbatim. It does **not** jump to npm's absolute
   `latest` dist-tag — `^4.0.0` stays within major 4, `~3.0.0` stays within the
   minor, `>=4.0.0` may advance across a major, and an exact pin never bumps.
+  The sole exception is caret-on-zero (`^0.y.z`), widened to the config-dep range
+  (`>=version <2.0.0`) via `resolutionRangeForSpecifier`, so a `^0.5.0` dep rolls
+  forward across `0.x` and adopts the first stable `1.x` rather than being
+  trapped in `0.5.x`.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
   `workspaces-effect`.
 - Matches patterns and updates specifiers.

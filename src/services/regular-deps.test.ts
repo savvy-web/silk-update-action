@@ -279,7 +279,7 @@ describe("RegularDeps.updateRegularDeps", () => {
 
 		const result = await runWithService(
 			(s) => s.updateRegularDeps(["effect", "@effect/*"], dir),
-			// 0.60.5 stays within ^0.60.0 (caret on a 0.x version locks the minor)
+			// 0.60.5 is the highest in-range version for ^0.60.0 (widened to >=0.60.0 <2.0.0)
 			{ "@effect/schema": ["0.60.0", "0.60.5"] },
 			mockWorkspaces([{ name: "root", path: dir }]),
 		);
@@ -618,5 +618,100 @@ describe("RegularDeps.updateRegularDeps", () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].to).toBe("^3.2.0");
+	});
+
+	it("rolls a caret-on-zero dep forward to the first stable major", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { "pre-stable": "^0.5.0" },
+		});
+
+		// ^0.5.0 would normally lock to 0.5.x; with config-parity roll-forward it
+		// resolves within >=0.5.0 <2.0.0 and adopts the highest 1.x.
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["pre-stable"], dir),
+			{ "pre-stable": ["0.5.0", "0.9.4", "1.3.0"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].to).toBe("^1.3.0");
+
+		const pkg = readPackageJson(dir);
+		expect(pkg.dependencies["pre-stable"]).toBe("^1.3.0");
+	});
+
+	it("rolls a caret-on-zero dep across 0.x when no stable major exists", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { "pre-stable": "^0.5.0" },
+		});
+
+		// No 1.x published, so it advances to the highest 0.x (0.9.4), which plain
+		// caret semantics would not allow (they would cap at 0.5.x).
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["pre-stable"], dir),
+			{ "pre-stable": ["0.5.0", "0.9.4"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].to).toBe("^0.9.4");
+	});
+
+	it("rolls a caret-on-0.0.x dep forward across 0.0.x", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { "pre-stable": "^0.0.3" },
+		});
+
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["pre-stable"], dir),
+			{ "pre-stable": ["0.0.3", "0.0.9"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].to).toBe("^0.0.9");
+	});
+
+	it("keeps a tilde-on-zero dep within its minor (no roll-forward)", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { "pre-stable": "~0.5.0" },
+		});
+
+		// ~0.5.0 allows >=0.5.0 <0.6.0 — it stays in 0.5.x and never reaches 0.9.4.
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["pre-stable"], dir),
+			{ "pre-stable": ["0.5.0", "0.5.5", "0.9.4"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].to).toBe("~0.5.5");
+	});
+
+	it("never bumps an exact-on-zero pin", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			dependencies: { "pre-stable": "0.5.0" },
+		});
+
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["pre-stable"], dir),
+			{ "pre-stable": ["0.5.0", "0.9.4", "1.3.0"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(0);
+
+		const pkg = readPackageJson(dir);
+		expect(pkg.dependencies["pre-stable"]).toBe("0.5.0");
 	});
 });

@@ -68,7 +68,10 @@ publishability detection plus changeset-config reading come from
   published version **satisfying the current specifier treated as a range** via
   `resolveLatestSatisfying` rather than npm's absolute `latest` dist-tag, so
   `^4.0.0` stays within major 4, `>=4.0.0` may advance across a major, and an
-  exact pin never bumps. Iterates `dependencies`, `devDependencies`, and
+  exact pin never bumps. Caret-on-zero (`^0.y.z`) is the one exception — it
+  resolves within the config-dep range (`>=version <2.0.0`) so a pre-stable dep
+  rolls forward across `0.x` and into the first stable `1.x` instead of being
+  locked to `0.y.x`. Iterates `dependencies`, `devDependencies`, and
   `optionalDependencies` independently and reports the real section type per
   update — `peerDependencies` are managed by `syncPeers`.
 - Peer dependency range syncing via `syncPeers` (`peer-lock` and

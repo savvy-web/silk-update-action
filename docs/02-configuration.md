@@ -346,7 +346,11 @@ The action resolves each dependency within the semver range already declared in
 specifier resolves to the highest `4.x` and will not cross to `5.x`; a `~3.0.0`
 specifier stays within `3.0.x`; a wider range like `>=4.0.0` may advance across
 a major. An exact pin (e.g. `4.0.0`, no operator) is a single-version range and
-is left untouched. Prereleases are excluded. Querying the npm registry directly
+is left untouched. A caret on a pre-1.0 version is the one exception to plain
+caret semantics: `^0.5.2` rolls forward across the `0.x` line and adopts the
+first stable `1.x` (resolving within `>=0.5.2 <2.0.0`) rather than being trapped
+in `0.5.x` by npm's caret-on-zero rule, mirroring how config dependencies advance
+out of `0.x`. A tilde on a pre-1.0 version is unaffected. Prereleases are excluded. Querying the npm registry directly
 this way also avoids `pnpm up --latest`, which promotes deps to catalogs when
 `catalogMode: strict` is enabled. Glob patterns follow Node's `path.matchesGlob`:
 

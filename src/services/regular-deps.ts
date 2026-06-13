@@ -18,7 +18,7 @@ import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
 import { matchesPattern, parseSpecifier } from "../utils/deps.js";
 import { detectIndent } from "../utils/pnpm.js";
-import { resolveLatestSatisfying } from "../utils/semver.js";
+import { resolutionRangeForSpecifier, resolveLatestSatisfying } from "../utils/semver.js";
 
 type NpmRegistryShape = Context.Tag.Service<typeof NpmRegistry>;
 type WorkspaceDiscoveryShape = Context.Tag.Service<typeof WorkspaceDiscovery>;
@@ -251,13 +251,17 @@ const updateRegularDepsImpl = (
 				const parsed = parseSpecifier(entry.currentSpecifier);
 				if (!parsed) continue;
 
-				// Resolve the highest published version that still satisfies the
-				// user's declared range — the current specifier IS the range
-				// (e.g. "^4.0.0", ">=4.0.0", "~3.0.0", or an exact "3.0.0"). This
-				// keeps caret/tilde updates inside their major/minor and never
-				// jumps an exact pin. The operator is re-applied verbatim, so a
-				// ">=" range advances past a major while a "^" range does not.
-				const resolved = yield* resolveLatestSatisfying(versions, entry.currentSpecifier);
+				// Resolve the highest published version within the dep's resolution
+				// range. For most specifiers the declared specifier IS the range
+				// (e.g. "^4.0.0", ">=4.0.0", "~3.0.0", or an exact "3.0.0"), so
+				// caret/tilde updates stay inside their major/minor and exact pins
+				// never move. The one exception is caret-on-zero (`^0.y.z`): caret
+				// semantics would trap it in 0.y.x, so resolutionRangeForSpecifier
+				// widens it to the config-dep range (>=version <2.0.0), letting a
+				// pre-stable dep roll forward across 0.x and adopt the first stable
+				// major. The original operator is re-applied verbatim below.
+				const range = resolutionRangeForSpecifier(parsed.prefix, parsed.version);
+				const resolved = yield* resolveLatestSatisfying(versions, range);
 				if (!resolved) continue;
 
 				const newSpecifier = `${parsed.prefix}${resolved}`;

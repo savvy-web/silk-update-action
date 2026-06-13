@@ -76,3 +76,26 @@ export const configDepUpgradeRange = (version: string): string | null => {
 	const ceiling = major === 0 ? 2 : major + 1;
 	return `>=${version} <${ceiling}.0.0`;
 };
+
+/**
+ * Pick the semver range `RegularDeps` should resolve a specifier within.
+ *
+ * A caret on a `0.x` version (`^0.y.z`) is widened to the config-dep range
+ * (`>=version <2.0.0`) so a pre-stable dependency can roll forward across `0.x`
+ * and adopt the first stable major, instead of being trapped in `0.y.x` by
+ * caret-on-zero semantics. Every other operator (tilde, exact, comparator
+ * ranges) and every `>= 1.0.0` version resolves within the literal specifier,
+ * exactly as before. Falls back to the literal specifier when no conservative
+ * range can be synthesized (a version with no numeric major).
+ *
+ * @param prefix - The parsed operator (`^`, `~`, `>=`, `<`, or `""`).
+ * @param version - The bare version (no operator, no integrity hash).
+ * @returns The range string to resolve within.
+ */
+export const resolutionRangeForSpecifier = (prefix: string, version: string): string => {
+	if (prefix === "^" && /^0\./.test(version)) {
+		const widened = configDepUpgradeRange(version);
+		if (widened) return widened;
+	}
+	return `${prefix}${version}`;
+};

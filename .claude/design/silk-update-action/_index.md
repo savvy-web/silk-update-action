@@ -3,8 +3,8 @@ status: current
 module: silk-update-action
 category: architecture
 created: 2026-02-06
-updated: 2026-06-03
-last-synced: 2026-06-03
+updated: 2026-06-12
+last-synced: 2026-06-12
 completeness: 95
 related: []
 dependencies: []
