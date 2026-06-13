@@ -32,6 +32,7 @@ import { RegularDeps } from "./services/regular-deps.js";
 import { Report } from "./services/report.js";
 import { RuntimeUpgrade } from "./services/runtime-upgrade.js";
 import { formatWorkspaceYaml, readWorkspaceYaml } from "./services/workspace-yaml.js";
+import { resolveTargetBranch } from "./utils/branch.js";
 import { matchesPattern } from "./utils/deps.js";
 import { parseMultiValueInput } from "./utils/input.js";
 
@@ -113,6 +114,9 @@ export const program = Effect.gen(function* () {
 	yield* Effect.logInfo("Starting Silk Update Action");
 
 	const branch = yield* Config.string("branch").pipe(Config.withDefault("pnpm/config-deps"));
+	const sourceBranch = yield* Config.string("source-branch").pipe(Config.withDefault("main"));
+	const rawTargetBranch = yield* Config.string("target-branch").pipe(Config.withDefault(""));
+	const targetBranch = resolveTargetBranch(rawTargetBranch, sourceBranch);
 	const rawConfigDeps = yield* Config.string("config-dependencies").pipe(Config.withDefault(""));
 	const configDependencies = parseMultiValueInput(rawConfigDeps);
 	const rawDeps = yield* Config.string("dependencies").pipe(Config.withDefault(""));
@@ -238,6 +242,8 @@ export const program = Effect.gen(function* () {
 	yield* innerProgram(
 		{
 			branch,
+			sourceBranch,
+			targetBranch,
 			"config-dependencies": configDependencies,
 			dependencies,
 			"peer-lock": peerLock,
@@ -267,6 +273,8 @@ export const program = Effect.gen(function* () {
 const innerProgram = (
 	inputs: {
 		branch: string;
+		sourceBranch: string;
+		targetBranch: string;
 		"config-dependencies": ReadonlyArray<string>;
 		dependencies: ReadonlyArray<string>;
 		"peer-lock": ReadonlyArray<string>;
@@ -295,10 +303,11 @@ const innerProgram = (
 			yield* checkRunService.withCheckRun(checkRunName, headSha, (checkRunId) =>
 				Effect.provide(
 					Effect.gen(function* () {
-						// Manage branch
+						// Validate refs before any destructive branch operation, then manage branch
 						yield* Effect.logInfo("Step 1: Managing branch");
 						const branchManager = yield* BranchManager;
-						const branchResult = yield* branchManager.manage(inputs.branch, "main");
+						yield* branchManager.validateBranches(inputs.sourceBranch, inputs.targetBranch);
+						const branchResult = yield* branchManager.manage(inputs.branch, inputs.sourceBranch);
 						yield* Effect.logInfo(`Branch: ${branchResult.branch} (created: ${branchResult.created})`);
 
 						// Capture lockfile state before updates
@@ -513,7 +522,13 @@ const innerProgram = (
 						} else {
 							yield* Effect.logInfo("Step 13: Creating/updating PR");
 							pr = yield* report
-								.createOrUpdatePR(inputs.branch, allUpdates, changesets, inputs["auto-merge"] || undefined)
+								.createOrUpdatePR(
+									inputs.branch,
+									inputs.targetBranch,
+									allUpdates,
+									changesets,
+									inputs["auto-merge"] || undefined,
+								)
 								.pipe(
 									Effect.catchAll((error) =>
 										Effect.gen(function* () {

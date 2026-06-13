@@ -27,6 +27,7 @@ export class Report extends Context.Tag("Report")<
 	{
 		readonly createOrUpdatePR: (
 			branch: string,
+			base: string,
 			updates: ReadonlyArray<DependencyUpdateResult>,
 			changesets: ReadonlyArray<ChangesetFile>,
 			autoMerge?: "merge" | "squash" | "rebase",
@@ -54,8 +55,8 @@ export const ReportLive = Layer.effect(
 	Effect.gen(function* () {
 		const pullRequest = yield* PullRequestTag;
 		return {
-			createOrUpdatePR: (branch, updates, changesets, autoMerge) =>
-				createOrUpdatePRImpl(pullRequest, branch, updates, changesets, autoMerge),
+			createOrUpdatePR: (branch, base, updates, changesets, autoMerge) =>
+				createOrUpdatePRImpl(pullRequest, branch, base, updates, changesets, autoMerge),
 			generatePRBody: generatePRBodyImpl,
 			generateSummary: generateSummaryImpl,
 			generateCommitMessage: generateCommitMessageImpl,
@@ -75,6 +76,7 @@ export const ReportLive = Layer.effect(
 const createOrUpdatePRImpl = (
 	pr: PullRequestShape,
 	branch: string,
+	base: string,
 	updates: ReadonlyArray<DependencyUpdateResult>,
 	changesets: ReadonlyArray<ChangesetFile>,
 	autoMerge?: "merge" | "squash" | "rebase",
@@ -85,7 +87,7 @@ const createOrUpdatePRImpl = (
 
 		const result = yield* pr.getOrCreate({
 			head: branch,
-			base: "main",
+			base,
 			title,
 			body,
 			autoMerge: autoMerge || false,

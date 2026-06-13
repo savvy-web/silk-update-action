@@ -27,7 +27,7 @@ describe("createOrUpdatePR", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const report = yield* Report;
-				return yield* report.createOrUpdatePR("pnpm/config", [], []);
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
@@ -58,7 +58,7 @@ describe("createOrUpdatePR", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const report = yield* Report;
-				return yield* report.createOrUpdatePR("pnpm/config", [], []);
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
@@ -74,7 +74,7 @@ describe("createOrUpdatePR", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const report = yield* Report;
-				return yield* report.createOrUpdatePR("pnpm/config", [], []);
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
@@ -105,7 +105,7 @@ describe("createOrUpdatePR", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const report = yield* Report;
-				return yield* report.createOrUpdatePR("pnpm/config", [], []);
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
@@ -120,7 +120,7 @@ describe("createOrUpdatePR", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const report = yield* Report;
-				return yield* report.createOrUpdatePR("pnpm/config", [], [], "squash");
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], [], "squash");
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
@@ -138,7 +138,7 @@ describe("createOrUpdatePR", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const report = yield* Report;
-				return yield* report.createOrUpdatePR("pnpm/config", [], []);
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
@@ -178,7 +178,7 @@ describe("createOrUpdatePR", () => {
 		const exit = await Effect.runPromiseExit(
 			Effect.gen(function* () {
 				const report = yield* Report;
-				return yield* report.createOrUpdatePR("pnpm/config", [], []);
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
@@ -193,6 +193,20 @@ describe("createOrUpdatePR", () => {
 				expect(failure.value.reason).toBe("API rate limit exceeded");
 			}
 		}
+	});
+	it("passes base to getOrCreate", async () => {
+		const state = PullRequestTest.empty();
+		state.nextNumber = 7;
+		const layer = makeReportLayer(state);
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return yield* report.createOrUpdatePR("pnpm/config", "dev", [], []);
+			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		);
+
+		expect(state.prs[0].base).toBe("dev");
 	});
 });
 
