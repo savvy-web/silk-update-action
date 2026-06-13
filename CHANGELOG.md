@@ -1,5 +1,45 @@
 # silk-update-action
 
+## 3.2.0
+
+### Features
+
+* [`a09bff1`](https://github.com/savvy-web/silk-update-action/commit/a09bff17389ebe2a6aa5c459f4441780b4a03364) Two new optional inputs let you control which branches the action operates against. With both unset, behavior is unchanged — the update branch is cut from `main` and the PR targets `main`.
+
+### Bug Fixes
+
+* [`a09bff1`](https://github.com/savvy-web/silk-update-action/commit/a09bff17389ebe2a6aa5c459f4441780b4a03364) `runInstall()` — the lockfile-reconciliation step that runs after pnpm, config dependency, runtime, and regular/peer range updates — now fully regenerates the lockfile instead of patching it. It runs `pnpm clean --lockfile` followed by `pnpm install --frozen-lockfile=false`, replacing the previous `pnpm install --frozen-lockfile=false --fix-lockfile`.
+
+`--fix-lockfile` only repaired broken entries against the existing lockfile and did not re-run resolution under the changed pnpm version, config, and dependency ranges. This could commit an internally inconsistent `pnpm-lock.yaml` — most visibly when an upstream peer range changed (for example, a transitive raising its required `@effect/cluster` peer) and the new required peer was left unfilled, causing a downstream command to fail with `ERR_MODULE_NOT_FOUND`.
+
+Regenerating the lockfile from scratch guarantees the committed `pnpm-lock.yaml` is correct and installable for the resolved pnpm version, config dependencies, and declared ranges.
+
+* Expect larger `pnpm-lock.yaml` diffs in update PRs than before. Because the action obeys declared ranges, lockfile regeneration will advance transitive dependencies within their ranges. This is intentional — the previous behavior was silently suppressing those advancements.
+* Requires pnpm 11+ for `pnpm clean`. If your root `package.json` defines a `clean` or `purge` script, pnpm will run that instead of the built-in lockfile cleanup; rename those scripts if they conflict.
+
+### Dependencies
+
+* | [`bd4a09e`](https://github.com/savvy-web/silk-update-action/commit/bd4a09ed693c2b06e84228bc7e88442aa17fb0af) | Dependency    | Type    | Action  | From    | To |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :------ | :------ | -- |
+  | runtime-resolver                                                                                             | dependency    | updated | ^0.3.12 | ^0.3.13 |    |
+  | @savvy-web/silk                                                                                              | devDependency | updated | ^0.5.0  | ^1.0.0  |    |
+
+### `source-branch` and `target-branch` inputs
+
+`source-branch` (default `main`) is the branch the dedicated dependency-update branch is created from and reset to on each run. The pull request targets this branch unless `target-branch` overrides it.
+
+`target-branch` (default empty) is the branch the pull request merges into. Leave it unset to follow `source-branch`; set it only when you want to cut the update from one branch but merge the PR into a different one.
+
+```yaml
+- uses: savvy-web/silk-update-action@v3
+  with:
+    # Cut the update branch from dev, PR into main
+    source-branch: dev
+    target-branch: main
+```
+
+Both refs are validated before the action performs its destructive delete-and-recreate of the update branch. If either ref does not exist, the action fails fast with a clear input error rather than mid-run.
+
 ## 3.1.0
 
 ### Features
