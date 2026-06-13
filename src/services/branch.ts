@@ -106,7 +106,7 @@ const manageBranchImpl = (
 		const baseSha = yield* branch.getSha(defaultBranch);
 		yield* Effect.logDebug(`Base SHA for ${defaultBranch}: ${baseSha}`);
 
-		// Delete the remote branch and recreate it from main
+		// Delete the remote branch and recreate it from the source branch
 		yield* branch.delete(branchName).pipe(
 			Effect.catchAll((error) =>
 				Effect.gen(function* () {
@@ -115,7 +115,7 @@ const manageBranchImpl = (
 			),
 		);
 
-		// Create the branch fresh from main
+		// Create the branch fresh from the source branch
 		yield* branch.create(branchName, baseSha);
 		yield* cmd.exec("git", ["fetch", "origin"]);
 		yield* cmd.exec("git", ["checkout", "-B", branchName, `origin/${branchName}`]);
