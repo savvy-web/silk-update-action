@@ -34,7 +34,7 @@ dependency ranges across workspace packages to keep them consistent.
   `versionPrivate`-aware gating via the `WorkspaceDiscovery` service (from
   `workspaces-effect`) and the `ChangesetConfig` + `PublishabilityDetector`
   override services (from `@savvy-web/silk-effects`)
-- Reconciles the lockfile via `pnpm install --frozen-lockfile=false --fix-lockfile`
+- Regenerates the lockfile via `pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false` so it reflects the changed pnpm version, config and ranges (advancing transitives is expected, not noise)
 - Uses GitHub App authentication across a three-phase (pre/main/post) token lifecycle coordinated by the `GitHubToken` namespace for secure, short-lived tokens
 - Manages dedicated update branch with delete-and-recreate strategy
 - Creates verified/signed commits via GitHub API (`GitCommit.commitFiles`)

@@ -285,11 +285,16 @@ Packages publish to both GitHub Packages and npm with provenance.
   canonical `+sha512.<hex>` hash (derived from the npm registry integrity via
   `corepackHashFromIntegrity` in `src/utils/pnpm.ts`) into **both**
   `packageManager` and `devEngines.packageManager.version`. The corepack switch
-  happens via the existing `runInstall`
-  (`pnpm install --frozen-lockfile=false --fix-lockfile`), which reads the
-  rewritten fields. Unlike the runtime bump, the pnpm bump **does** trigger
-  `runInstall` (gated on `configUpdatesFromPnpm.length > 0`); like the runtime
-  bump it never creates a changeset.
+  happens via the existing `runInstall`, which now **regenerates** the lockfile
+  (`pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`) rather
+  than `--fix-lockfile`: the action changes all three pnpm resolution inputs
+  (pnpm version, config deps + `pnpm-plugin-silk` hooks, dependency ranges), and
+  `--fix-lockfile` only repairs entries without re-resolving, so it could commit
+  an inconsistent lockfile (e.g. an unfilled peer → `ERR_MODULE_NOT_FOUND`).
+  `pnpm clean` needs **pnpm 11+** and runs a consumer's own `clean`/`purge`
+  script over the built-in if one exists. Unlike the runtime bump, the pnpm bump
+  **does** trigger `runInstall` (gated on `configUpdatesFromPnpm.length > 0`);
+  like the runtime bump it never creates a changeset.
 - Runtime engine bumps (`upgrade-runtime-*`) edit root `package.json`
   `devEngines.runtime` and flow into the PR/commit/summary, but never create a
   changeset and never trigger `pnpm install` (unlike the pnpm bump, which does

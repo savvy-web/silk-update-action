@@ -169,8 +169,12 @@ The module exports:
   base, ...)` as the PR base.
 - `runCommands(commands)` — execute custom commands sequentially via
   `CommandRunner` (`sh -c "<cmd>"`); returns `{ successful, failed }`.
-- `runInstall()` — runs `pnpm install --frozen-lockfile=false --fix-lockfile`
-  via `CommandRunner.exec`.
+- `runInstall()` — regenerates the lockfile via `CommandRunner.exec`:
+  `pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`. It does
+  not `--fix-lockfile` — the action changes the pnpm version, config and ranges,
+  so resolution is re-run from scratch rather than repairing the existing
+  lockfile (see the `runInstall` doc comment in `src/program.ts` for the full
+  rationale and the pnpm 11+ / consumer-`clean`-script caveats).
 
 `innerProgram` requires all domain services (`BranchManager`, `PnpmUpgrade`,
 `RuntimeUpgrade`, `ConfigDeps`, `RegularDeps`, `Changesets`, `Report`) and
@@ -190,7 +194,7 @@ configurable `timeout` input (default: 180 seconds).
 - `program` — Main Effect (exported for testability).
 - `runCommands(commands)` — Execute custom commands sequentially via
   `CommandRunner`.
-- `runInstall()` — Run `pnpm install --frozen-lockfile=false --fix-lockfile`.
+- `runInstall()` — Regenerate the lockfile: `pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`.
 
 Report-related functions (PR creation, commit messages, summaries) live in the
 `Report` service in `src/services/report.ts`.

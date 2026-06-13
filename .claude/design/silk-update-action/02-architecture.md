@@ -115,7 +115,7 @@ graph TD
     J5 --> K[ConfigDeps.updateConfigDeps]
     K --> L[RegularDeps.updateRegularDeps]
     L --> L2[syncPeers peer-lock + peer-minor]
-    L2 --> M[runInstall: pnpm install --frozen-lockfile=false --fix-lockfile]
+    L2 --> M[runInstall: pnpm clean --lockfile + install]
     M --> N[formatWorkspaceYaml]
     N --> O{Custom Commands?}
     O -->|Yes| P[runCommands]
@@ -261,7 +261,9 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   no operator preservation.
 - Unlike the runtime bump, a pnpm result **does** trigger `runInstall`
   (`configUpdatesFromPnpm` is in the install gate); the subsequent
-  `pnpm install` performs the corepack switch and reconciles the lockfile.
+  `pnpm install` performs the corepack switch (corepack reads the rewritten
+  `packageManager` / `devEngines.packageManager` fields independent of the
+  lockfile) as part of regenerating the lockfile.
 
 ### Step 6b: Upgrade Runtimes (conditional)
 
@@ -335,17 +337,33 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   flow into `allUpdates` for reporting and into `Changesets.create` as
   changeset triggers.
 
-### Step 9: Reconcile Lockfile and Install
+### Step 9: Regenerate Lockfile and Install
 
 - Triggered when any of `configUpdatesFromPnpm`, `configUpdates`,
   `regularUpdates`, or `peerUpdates` is non-empty.
-- Implemented as `runInstall()` in `program.ts`:
-  `pnpm install --frozen-lockfile=false --fix-lockfile`.
+- Implemented as `runInstall()` in `program.ts`, which **regenerates** the
+  lockfile rather than repairing it in place: `pnpm clean --lockfile` then
+  `pnpm install --frozen-lockfile=false`.
+  - The action mutates all three inputs to pnpm resolution — the pnpm version
+    (`upgrade-package-manager`), the pnpm config (config dependencies in
+    `pnpm-workspace.yaml` and the `pnpm-plugin-silk` hooks) and dependency
+    ranges. The previous `--fix-lockfile` only repaired broken entries against
+    the existing lockfile; it never re-ran resolution under the changed
+    pnpm/config/ranges, so it could silently carry a stale graph forward and
+    commit an inconsistent lockfile (e.g. an upstream peer range moving leaves
+    a required peer unfilled). Full regeneration is the only reliable way to
+    produce a correct, installable lockfile reflecting the new
+    pnpm/config/ranges.
+  - As a dependency updater obeying the declared ranges and rules, advancing
+    transitive versions is **expected** — larger lockfile diffs are intentional,
+    not noise.
+  - `pnpm clean --lockfile` removes the lockfile and `node_modules` via Node.js,
+    unlinking cleanly across platforms (including Windows junctions) — preferable
+    to `rm -rf`. It requires pnpm 11+, and runs a consumer's own `clean`/`purge`
+    package.json script in place of the built-in when one exists (see the
+    `runInstall` doc comment in `src/program.ts`).
   - `--frozen-lockfile=false` opts out of the CI default that refuses to write
     lockfile changes.
-  - `--fix-lockfile` reconciles the lockfile against the just-modified
-    manifests while leaving unrelated transitives at their currently-pinned
-    versions.
 
 ### Step 10: Format pnpm-workspace.yaml
 
