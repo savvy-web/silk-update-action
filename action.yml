@@ -18,6 +18,20 @@ inputs:
     description: Branch name for dependency update PR
     required: false
     default: pnpm/config-deps
+  source-branch:
+    description: |
+      Branch the dependency update branch is created from (and reset to on each
+      run). The pull request also targets this branch unless target-branch
+      overrides it.
+    required: false
+    default: main
+  target-branch:
+    description: |
+      Branch the pull request merges into. Leave empty to follow source-branch;
+      set it only to target a different branch than the one the update was cut
+      from (e.g. cut from dev but PR into main).
+    required: false
+    default: ""
   config-dependencies:
     description: |
       Config dependencies to update (one per line, exact match).
