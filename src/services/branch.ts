@@ -10,7 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import type { CommandRunnerError, FileChange, GitBranchError, GitCommitError } from "@savvy-web/github-action-effects";
-import { CommandRunner, GitBranch, GitCommit } from "@savvy-web/github-action-effects";
+import { ActionInputError, CommandRunner, GitBranch, GitCommit } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
 
 import type { BranchResult } from "../schemas/domain.js";
@@ -30,6 +30,10 @@ export class BranchManager extends Context.Tag("BranchManager")<
 			message: string,
 			branchName: string,
 		) => Effect.Effect<void, GitCommitError | CommandRunnerError>;
+		readonly validateBranches: (
+			source: string,
+			target: string,
+		) => Effect.Effect<void, GitBranchError | ActionInputError>;
 	}
 >() {}
 
@@ -46,6 +50,7 @@ export const BranchManagerLive = Layer.effect(
 		return {
 			manage: (branchName, defaultBranch = "main") => manageBranchImpl(branch, cmd, branchName, defaultBranch),
 			commitChanges: (message, branchName) => commitChangesImpl(commit, cmd, message, branchName),
+			validateBranches: (source, target) => validateBranchesImpl(branch, source, target),
 		};
 	}),
 );
@@ -123,6 +128,43 @@ const manageBranchImpl = (
 			upToDate: true,
 			baseRef: defaultBranch,
 		};
+	});
+
+/**
+ * Validate that the source and target branches exist before any branch
+ * mutation. Fails fast with `ActionInputError` so a bad ref never triggers the
+ * destructive delete-and-recreate. When `target === source`, the source check
+ * already covers it, so the second existence check is skipped.
+ */
+const validateBranchesImpl = (
+	branch: Context.Tag.Service<typeof GitBranch>,
+	source: string,
+	target: string,
+): Effect.Effect<void, GitBranchError | ActionInputError> =>
+	Effect.gen(function* () {
+		const sourceExists = yield* branch.exists(source);
+		if (!sourceExists) {
+			return yield* Effect.fail(
+				new ActionInputError({
+					inputName: "source-branch",
+					reason: `Source branch "${source}" does not exist`,
+					rawValue: source,
+				}),
+			);
+		}
+
+		if (target !== source) {
+			const targetExists = yield* branch.exists(target);
+			if (!targetExists) {
+				return yield* Effect.fail(
+					new ActionInputError({
+						inputName: "target-branch",
+						reason: `Target branch "${target}" does not exist`,
+						rawValue: target,
+					}),
+				);
+			}
+		}
 	});
 
 /**
