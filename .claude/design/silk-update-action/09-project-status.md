@@ -56,7 +56,10 @@ publishability detection plus changeset-config reading come from
   The envelope is persisted to `ActionState` (backed by `GITHUB_STATE`) — no
   `process.env.GITHUB_TOKEN` bridge.
 - Branch management with delete-and-recreate strategy via `BranchManager`
-  service.
+  service. The source ref and PR target are configurable via the
+  `source-branch` (default `main`) and `target-branch` (default `""` → follow
+  source) inputs, with `validateBranches` failing fast on a missing ref before
+  the destructive reset.
 - Config dependency updates via `ConfigDeps` service (uses `NpmRegistry`).
   Config deps carry no declared range, so it synthesizes a conservative one from
   the current version's major via `configDepUpgradeRange` and resolves the

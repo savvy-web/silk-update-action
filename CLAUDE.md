@@ -253,6 +253,10 @@ Packages publish to both GitHub Packages and npm with provenance.
   comes from `ActionEnvironment` (`env.github.sha`) in `program.ts`
 - Action input is `app-client-id` (not `app-id`); `skip-token-revoke` controls
   whether `post.ts` revokes the token
+- `source-branch` (default `main`) is the cut-from ref and default PR target;
+  `target-branch` (empty → follows `source-branch`, via `resolveTargetBranch`)
+  is the PR base. Both are validated by `BranchManager.validateBranches` early
+  in `program.ts` — before the destructive branch delete-and-recreate
 - `Changesets.create` ignore-gates the versionable cascade: a changeset-ignored
   package (`ChangesetConfig.isIgnored`) is skipped before the publishability
   check, so it is never versioned even when `privatePackages.version` is set

@@ -78,6 +78,10 @@ Inputs are parsed using Effect's `Config.*` API:
 
 ```typescript
 const branch = yield* Config.string("branch").pipe(Config.withDefault("pnpm/config-deps"));
+const sourceBranch = yield* Config.string("source-branch").pipe(Config.withDefault("main"));
+const rawTargetBranch = yield* Config.string("target-branch").pipe(Config.withDefault(""));
+// Empty target-branch follows source-branch (resolveTargetBranch in src/utils/branch.ts).
+const targetBranch = resolveTargetBranch(rawTargetBranch, sourceBranch);
 const rawConfigDeps = yield* Config.string("config-dependencies").pipe(Config.withDefault(""));
 const configDependencies = parseMultiValueInput(rawConfigDeps);
 const rawDeps = yield* Config.string("dependencies").pipe(Config.withDefault(""));
@@ -157,7 +161,12 @@ The module exports:
 - `program` — the main Effect (input parsing, layer composition, timeout).
 - `innerProgram(inputs, dryRun, headSha, appLayer)` — the orchestration body.
   Provides `appLayer` at two levels (outer + inside the `withCheckRun`
-  callback) because the callback signature requires `R = never`.
+  callback) because the callback signature requires `R = never`. Inside
+  `withCheckRun` it calls `BranchManager.validateBranches(sourceBranch,
+  targetBranch)` **before** `BranchManager.manage(branch, sourceBranch)`, so a
+  missing ref fails fast before the destructive delete-and-recreate. The
+  resolved `targetBranch` is threaded into `Report.createOrUpdatePR(branch,
+  base, ...)` as the PR base.
 - `runCommands(commands)` — execute custom commands sequentially via
   `CommandRunner` (`sh -c "<cmd>"`); returns `{ successful, failed }`.
 - `runInstall()` — runs `pnpm install --frozen-lockfile=false --fix-lockfile`

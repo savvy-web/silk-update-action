@@ -99,10 +99,11 @@ graph TD
     A[main.ts: Action.run] --> B[program.ts: Parse Inputs via Config]
     B --> D[makeAppLayer dryRun runtimeLive: Build All Layers, GitHubToken.client]
     D --> E[CheckRun.withCheckRun]
-    E --> F[BranchManager.manage]
+    E --> EV[BranchManager.validateBranches source/target: fail fast if missing]
+    EV --> F[BranchManager.manage]
     F --> G{Branch Exists?}
-    G -->|No| H[Create from main]
-    G -->|Yes| I[Delete + Recreate from main]
+    G -->|No| H[Create from source-branch]
+    G -->|Yes| I[Delete + Recreate from source-branch]
     H --> J[captureLockfileState Before]
     I --> J
     J --> J2{upgrade-package-manager?}
@@ -173,10 +174,14 @@ log messages.
   match the `dependencies` patterns.
 - The `main` phase does **not** parse `app-client-id` / `app-private-key` —
   those are consumed by `GitHubToken.provision` in `pre.ts`. `main`-phase
-  inputs: `branch`, `config-dependencies`, `dependencies`, `peer-lock`,
-  `peer-minor`, `run`, `upgrade-package-manager`, `upgrade-runtime-node`,
-  `upgrade-runtime-deno`, `upgrade-runtime-bun`, `runtime-data`, `changesets`,
-  `auto-merge`, `dry-run`, `log-level`, `timeout`.
+  inputs: `branch`, `source-branch`, `target-branch`, `config-dependencies`,
+  `dependencies`, `peer-lock`, `peer-minor`, `run`, `upgrade-package-manager`,
+  `upgrade-runtime-node`, `upgrade-runtime-deno`, `upgrade-runtime-bun`,
+  `runtime-data`, `changesets`, `auto-merge`, `dry-run`, `log-level`, `timeout`.
+- `source-branch` (default `main`) is the ref the update branch is cut from and
+  reset to. `target-branch` (default `""`) is the PR merge target; an empty
+  value follows `source-branch`, resolved by `resolveTargetBranch`
+  (`utils/branch.ts`).
 - The `upgrade-runtime-*` inputs (`false` | `auto` | a semver range) and the
   `upgrade-package-manager` input (`false` | `true` | `auto` | a semver range) are validated
   via `Range.parse` from `semver-effect` when an explicit range is provided
@@ -222,9 +227,13 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 
 ### Step 4: Branch Management
 
-- `BranchManager.manage()` handles branch lifecycle.
-- If not exists: create new branch from default branch.
-- If exists: delete and recreate from default branch (fresh start).
+- `BranchManager.validateBranches(sourceBranch, targetBranch)` runs **first**,
+  failing fast with `ActionInputError` if either ref is missing — before the
+  destructive `manage` step (the target check is skipped when `target ===
+  source`).
+- `BranchManager.manage(branch, sourceBranch)` handles branch lifecycle.
+- If not exists: create new branch from `source-branch`.
+- If exists: delete and recreate from `source-branch` (fresh start).
 - Fetch and checkout the branch via `CommandRunner`.
 
 ### Step 5: Capture Lockfile State (Before)
@@ -397,7 +406,8 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 ### Step 15: Commit, Push, and Create PR
 
 - `BranchManager.commitChanges()` commits via GitHub API (verified/signed).
-- `Report.createOrUpdatePR()` creates/updates PR with detailed summary.
+- `Report.createOrUpdatePR()` creates/updates PR with detailed summary, basing
+  it on the resolved `target-branch` (which defaults to `source-branch`).
 - Enables auto-merge if configured.
 - Updates check run with `success`.
 - Writes GitHub Actions summary via `ActionOutputs`.
