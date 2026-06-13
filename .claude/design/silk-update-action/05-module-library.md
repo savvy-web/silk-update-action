@@ -189,6 +189,10 @@ export class RegularDeps extends Context.Tag("RegularDeps")<RegularDeps, {
   `resolveLatestSatisfying` — it does not read npm's absolute `latest` dist-tag.
   So `^4.0.0` stays within major 4, `~3.0.0` stays within the minor, `>=4.0.0`
   may advance across a major, and an exact pin (a one-version range) never bumps.
+  The sole exception is caret-on-zero (`^0.y.z`): it is widened via
+  `resolutionRangeForSpecifier` to the config-dep range (`>=version <2.0.0`) so a
+  `^0.5.0` dep rolls forward across `0.x` and adopts the first stable `1.x`, with
+  the caret still re-applied verbatim on write-back.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
   `workspaces-effect`.
 - Uses `matchesPattern` from `src/utils/deps.ts` for glob matching.
@@ -558,5 +562,6 @@ service dependencies — mirrors `src/utils/pnpm.ts`.
 ### src/utils/semver.ts
 
 - `resolveLatestSatisfying(versions, range)` - Find the highest stable version satisfying an arbitrary semver range (e.g. `^11`, `>=11`). Used by `RegularDeps` (current specifier as range) and `ConfigDeps` (synthesized range).
+- `resolutionRangeForSpecifier(prefix, version)` - Decide the range `RegularDeps` resolves a specifier within: the config-dep range (`configDepUpgradeRange(version)`) for caret-on-zero (`^0.y.z`), the literal `prefix+version` otherwise. Falls back to the literal specifier when no numeric major is present.
 - `resolveLatestInRange(versions, current)` - Find highest stable version satisfying `^current` (delegates to `resolveLatestSatisfying`).
 - `configDepUpgradeRange(version)` - Synthesize a conservative upgrade range from a hash-pinned config-dep version's major: `>=version <(major+1).0.0` for `>=1.0.0`, `>=version <2.0.0` for `<1.0.0`. Returns `null` for a version with no numeric major. Used by `ConfigDeps`, which has no declared range to read.

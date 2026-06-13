@@ -1,12 +1,5 @@
 packages:
   - .
 autoInstallPeers: true
-catalogs:
-  silk:
-    "@effect/platform": ^0.96.1
-    "@effect/platform-node": ^0.106.0
-    effect: ^3.21.2
 configDependencies:
   "@savvy-web/pnpm-plugin-silk": 0.15.1+sha512-/YweRPSahFlUxa5P5sCspJ9VMyaICvZDEutIP3rPrjNEW7kJGg93lGXzJI2WMwvaTBRzOrjFGVRbTGkx6ZX30g==
-minimumReleaseAgeExclude:
-  - runtime-resolver@0.3.12

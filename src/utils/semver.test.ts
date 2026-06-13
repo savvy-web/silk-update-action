@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { configDepUpgradeRange, resolveLatestSatisfying } from "./semver.js";
+import { configDepUpgradeRange, resolutionRangeForSpecifier, resolveLatestSatisfying } from "./semver.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // configDepUpgradeRange
@@ -52,5 +52,43 @@ describe("configDepUpgradeRange", () => {
 			resolveLatestSatisfying(["1.14.5", "1.20.0", "2.0.0", "2.3.0"], range as string),
 		);
 		expect(resolved).toBe("1.20.0");
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// resolutionRangeForSpecifier
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("resolutionRangeForSpecifier", () => {
+	it("widens a caret-on-zero specifier to the config-dep range", () => {
+		// ^0.5.0 would be trapped in 0.5.x by caret semantics; instead it gets
+		// the config-dep roll-forward range so it can advance across 0.x and into 1.x.
+		expect(resolutionRangeForSpecifier("^", "0.5.0")).toBe(">=0.5.0 <2.0.0");
+	});
+
+	it("widens a caret-on-0.0.x specifier the same way", () => {
+		expect(resolutionRangeForSpecifier("^", "0.0.3")).toBe(">=0.0.3 <2.0.0");
+	});
+
+	it("leaves a caret on a >=1.0.0 version as the literal specifier", () => {
+		expect(resolutionRangeForSpecifier("^", "4.0.0")).toBe("^4.0.0");
+	});
+
+	it("leaves a tilde-on-zero specifier as the literal specifier", () => {
+		expect(resolutionRangeForSpecifier("~", "0.5.0")).toBe("~0.5.0");
+	});
+
+	it("leaves an exact-on-zero specifier as the literal specifier", () => {
+		expect(resolutionRangeForSpecifier("", "0.5.0")).toBe("0.5.0");
+	});
+
+	it("leaves a comparator-range-on-zero specifier as the literal specifier", () => {
+		expect(resolutionRangeForSpecifier(">=", "0.5.0")).toBe(">=0.5.0");
+	});
+
+	it("falls back to the literal specifier when the version has no numeric major", () => {
+		// Defensive: parseSpecifier guarantees a numeric major upstream, but the
+		// helper must not synthesize a range it cannot build.
+		expect(resolutionRangeForSpecifier("^", "x.y.z")).toBe("^x.y.z");
 	});
 });
