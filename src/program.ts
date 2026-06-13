@@ -32,6 +32,7 @@ import { RegularDeps } from "./services/regular-deps.js";
 import { Report } from "./services/report.js";
 import { RuntimeUpgrade } from "./services/runtime-upgrade.js";
 import { formatWorkspaceYaml, readWorkspaceYaml } from "./services/workspace-yaml.js";
+import { resolveTargetBranch } from "./utils/branch.js";
 import { matchesPattern } from "./utils/deps.js";
 import { parseMultiValueInput } from "./utils/input.js";
 
@@ -86,17 +87,33 @@ export const runCommands = (commands: ReadonlyArray<string>): Effect.Effect<RunC
 	});
 
 /**
- * Run `pnpm install --frozen-lockfile=false --fix-lockfile`.
+ * Regenerate the lockfile: `pnpm clean --lockfile` then
+ * `pnpm install --frozen-lockfile=false`.
  *
- * Uses `--frozen-lockfile=false` to opt out of the CI default that refuses to
- * write lockfile changes, and `--fix-lockfile` to reconcile the lockfile
- * against the just-modified manifests while leaving unrelated transitives at
- * their currently-pinned versions.
+ * This action mutates the three inputs to pnpm resolution — the pnpm version
+ * (`upgrade-package-manager`), the pnpm config (config dependencies in
+ * `pnpm-workspace.yaml` and the `pnpm-plugin-silk` hooks), and dependency
+ * ranges. `--fix-lockfile` only repairs broken entries against the existing
+ * lockfile; it does not re-run resolution under the changed pnpm/config/ranges,
+ * so it can silently carry a stale graph forward and commit an inconsistent
+ * lockfile (e.g. an upstream peer range moving leaves a required peer unfilled).
+ * A full regeneration is the only reliable way to produce a correct, installable
+ * lockfile that reflects the new pnpm version, config, and ranges. As a
+ * dependency updater obeying the declared ranges and rules, advancing
+ * transitives is expected, not noise.
+ *
+ * `pnpm clean --lockfile` removes the lockfile and node_modules via Node.js, so
+ * it unlinks cleanly across platforms (including Windows junctions) — preferable
+ * to `rm -rf`. Caveat: `pnpm clean` runs a consumer's own `clean`/`purge`
+ * package.json script instead of the built-in if one exists, and it requires
+ * pnpm 11+. `--frozen-lockfile=false` opts out of the CI default that refuses to
+ * write lockfile changes.
  */
 export const runInstall = (): Effect.Effect<void, CommandRunnerError, CommandRunner> =>
 	Effect.gen(function* () {
 		const runner = yield* CommandRunner;
-		yield* runner.exec("pnpm", ["install", "--frozen-lockfile=false", "--fix-lockfile"]);
+		yield* runner.exec("pnpm", ["clean", "--lockfile"]);
+		yield* runner.exec("pnpm", ["install", "--frozen-lockfile=false"]);
 	});
 
 /**
@@ -113,6 +130,9 @@ export const program = Effect.gen(function* () {
 	yield* Effect.logInfo("Starting Silk Update Action");
 
 	const branch = yield* Config.string("branch").pipe(Config.withDefault("pnpm/config-deps"));
+	const sourceBranch = yield* Config.string("source-branch").pipe(Config.withDefault("main"));
+	const rawTargetBranch = yield* Config.string("target-branch").pipe(Config.withDefault(""));
+	const targetBranch = resolveTargetBranch(rawTargetBranch, sourceBranch);
 	const rawConfigDeps = yield* Config.string("config-dependencies").pipe(Config.withDefault(""));
 	const configDependencies = parseMultiValueInput(rawConfigDeps);
 	const rawDeps = yield* Config.string("dependencies").pipe(Config.withDefault(""));
@@ -238,6 +258,8 @@ export const program = Effect.gen(function* () {
 	yield* innerProgram(
 		{
 			branch,
+			sourceBranch,
+			targetBranch,
 			"config-dependencies": configDependencies,
 			dependencies,
 			"peer-lock": peerLock,
@@ -267,6 +289,8 @@ export const program = Effect.gen(function* () {
 const innerProgram = (
 	inputs: {
 		branch: string;
+		sourceBranch: string;
+		targetBranch: string;
 		"config-dependencies": ReadonlyArray<string>;
 		dependencies: ReadonlyArray<string>;
 		"peer-lock": ReadonlyArray<string>;
@@ -295,10 +319,11 @@ const innerProgram = (
 			yield* checkRunService.withCheckRun(checkRunName, headSha, (checkRunId) =>
 				Effect.provide(
 					Effect.gen(function* () {
-						// Manage branch
+						// Validate refs before any destructive branch operation, then manage branch
 						yield* Effect.logInfo("Step 1: Managing branch");
 						const branchManager = yield* BranchManager;
-						const branchResult = yield* branchManager.manage(inputs.branch, "main");
+						yield* branchManager.validateBranches(inputs.sourceBranch, inputs.targetBranch);
+						const branchResult = yield* branchManager.manage(inputs.branch, inputs.sourceBranch);
 						yield* Effect.logInfo(`Branch: ${branchResult.branch} (created: ${branchResult.created})`);
 
 						// Capture lockfile state before updates
@@ -394,7 +419,7 @@ const innerProgram = (
 							configUpdatesFromPnpm.length > 0 ||
 							peerUpdates.length > 0
 						) {
-							yield* Effect.logInfo("Step 6: Reconciling lockfile and installing");
+							yield* Effect.logInfo("Step 6: Regenerating lockfile and installing");
 							yield* runInstall();
 						}
 
@@ -513,7 +538,13 @@ const innerProgram = (
 						} else {
 							yield* Effect.logInfo("Step 13: Creating/updating PR");
 							pr = yield* report
-								.createOrUpdatePR(inputs.branch, allUpdates, changesets, inputs["auto-merge"] || undefined)
+								.createOrUpdatePR(
+									inputs.branch,
+									inputs.targetBranch,
+									allUpdates,
+									changesets,
+									inputs["auto-merge"] || undefined,
+								)
 								.pipe(
 									Effect.catchAll((error) =>
 										Effect.gen(function* () {

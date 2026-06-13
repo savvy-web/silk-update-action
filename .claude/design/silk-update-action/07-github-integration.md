@@ -46,7 +46,10 @@ yield* GitHubToken.dispose();
 
 - Use dedicated branch (default: `pnpm/config-deps`)
 - Create if doesn't exist
-- Delete and recreate from main if exists (fresh start each run)
+- Delete and recreate from `source-branch` (default `main`) if exists (fresh start each run)
+- Validate `source-branch` and `target-branch` exist first (`BranchManager.validateBranches`), failing fast with `ActionInputError` before any destructive operation
+
+**Configurable refs:** the branch the update is cut from is the `source-branch` input (default `main`), and the PR target is the `target-branch` input (default `""`, which follows `source-branch`). This supports cutting from one branch and merging into another (e.g. cut from `dev`, PR into `main`).
 
 **Why Delete-and-Recreate Instead of Rebase:**
 

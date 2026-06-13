@@ -335,3 +335,66 @@ describe("BranchManager.commitChanges", () => {
 		expect(commitState.trees).toHaveLength(0);
 	});
 });
+
+describe("BranchManager.validateBranches", () => {
+	it("succeeds when both branches exist", async () => {
+		const branches = new Map([
+			["main", "main-sha"],
+			["dev", "dev-sha"],
+		]);
+		const { result } = runWithBranchManager(
+			Effect.gen(function* () {
+				const manager = yield* BranchManager;
+				return yield* manager.validateBranches("dev", "main");
+			}),
+			branches,
+		);
+		expect(Either.isRight(await result)).toBe(true);
+	});
+
+	it("succeeds when target equals source (skips redundant check)", async () => {
+		const branches = new Map([["dev", "dev-sha"]]);
+		const { result } = runWithBranchManager(
+			Effect.gen(function* () {
+				const manager = yield* BranchManager;
+				return yield* manager.validateBranches("dev", "dev");
+			}),
+			branches,
+		);
+		expect(Either.isRight(await result)).toBe(true);
+	});
+
+	it("fails with ActionInputError when source branch is missing", async () => {
+		const branches = new Map([["main", "main-sha"]]);
+		const { result } = runWithBranchManager(
+			Effect.gen(function* () {
+				const manager = yield* BranchManager;
+				return yield* manager.validateBranches("nope", "main");
+			}),
+			branches,
+		);
+		const either = await result;
+		expect(Either.isLeft(either)).toBe(true);
+		if (Either.isLeft(either)) {
+			expect(either.left._tag).toBe("ActionInputError");
+			expect((either.left as { inputName: string }).inputName).toBe("source-branch");
+		}
+	});
+
+	it("fails with ActionInputError when target branch is missing", async () => {
+		const branches = new Map([["dev", "dev-sha"]]);
+		const { result } = runWithBranchManager(
+			Effect.gen(function* () {
+				const manager = yield* BranchManager;
+				return yield* manager.validateBranches("dev", "main");
+			}),
+			branches,
+		);
+		const either = await result;
+		expect(Either.isLeft(either)).toBe(true);
+		if (Either.isLeft(either)) {
+			expect(either.left._tag).toBe("ActionInputError");
+			expect((either.left as { inputName: string }).inputName).toBe("target-branch");
+		}
+	});
+});

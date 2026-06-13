@@ -99,10 +99,11 @@ graph TD
     A[main.ts: Action.run] --> B[program.ts: Parse Inputs via Config]
     B --> D[makeAppLayer dryRun runtimeLive: Build All Layers, GitHubToken.client]
     D --> E[CheckRun.withCheckRun]
-    E --> F[BranchManager.manage]
+    E --> EV[BranchManager.validateBranches source/target: fail fast if missing]
+    EV --> F[BranchManager.manage]
     F --> G{Branch Exists?}
-    G -->|No| H[Create from main]
-    G -->|Yes| I[Delete + Recreate from main]
+    G -->|No| H[Create from source-branch]
+    G -->|Yes| I[Delete + Recreate from source-branch]
     H --> J[captureLockfileState Before]
     I --> J
     J --> J2{upgrade-package-manager?}
@@ -114,7 +115,7 @@ graph TD
     J5 --> K[ConfigDeps.updateConfigDeps]
     K --> L[RegularDeps.updateRegularDeps]
     L --> L2[syncPeers peer-lock + peer-minor]
-    L2 --> M[runInstall: pnpm install --frozen-lockfile=false --fix-lockfile]
+    L2 --> M[runInstall: pnpm clean --lockfile + install]
     M --> N[formatWorkspaceYaml]
     N --> O{Custom Commands?}
     O -->|Yes| P[runCommands]
@@ -173,10 +174,14 @@ log messages.
   match the `dependencies` patterns.
 - The `main` phase does **not** parse `app-client-id` / `app-private-key` —
   those are consumed by `GitHubToken.provision` in `pre.ts`. `main`-phase
-  inputs: `branch`, `config-dependencies`, `dependencies`, `peer-lock`,
-  `peer-minor`, `run`, `upgrade-package-manager`, `upgrade-runtime-node`,
-  `upgrade-runtime-deno`, `upgrade-runtime-bun`, `runtime-data`, `changesets`,
-  `auto-merge`, `dry-run`, `log-level`, `timeout`.
+  inputs: `branch`, `source-branch`, `target-branch`, `config-dependencies`,
+  `dependencies`, `peer-lock`, `peer-minor`, `run`, `upgrade-package-manager`,
+  `upgrade-runtime-node`, `upgrade-runtime-deno`, `upgrade-runtime-bun`,
+  `runtime-data`, `changesets`, `auto-merge`, `dry-run`, `log-level`, `timeout`.
+- `source-branch` (default `main`) is the ref the update branch is cut from and
+  reset to. `target-branch` (default `""`) is the PR merge target; an empty
+  value follows `source-branch`, resolved by `resolveTargetBranch`
+  (`utils/branch.ts`).
 - The `upgrade-runtime-*` inputs (`false` | `auto` | a semver range) and the
   `upgrade-package-manager` input (`false` | `true` | `auto` | a semver range) are validated
   via `Range.parse` from `semver-effect` when an explicit range is provided
@@ -222,9 +227,13 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 
 ### Step 4: Branch Management
 
-- `BranchManager.manage()` handles branch lifecycle.
-- If not exists: create new branch from default branch.
-- If exists: delete and recreate from default branch (fresh start).
+- `BranchManager.validateBranches(sourceBranch, targetBranch)` runs **first**,
+  failing fast with `ActionInputError` if either ref is missing — before the
+  destructive `manage` step (the target check is skipped when `target ===
+  source`).
+- `BranchManager.manage(branch, sourceBranch)` handles branch lifecycle.
+- If not exists: create new branch from `source-branch`.
+- If exists: delete and recreate from `source-branch` (fresh start).
 - Fetch and checkout the branch via `CommandRunner`.
 
 ### Step 5: Capture Lockfile State (Before)
@@ -252,7 +261,9 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   no operator preservation.
 - Unlike the runtime bump, a pnpm result **does** trigger `runInstall`
   (`configUpdatesFromPnpm` is in the install gate); the subsequent
-  `pnpm install` performs the corepack switch and reconciles the lockfile.
+  `pnpm install` performs the corepack switch (corepack reads the rewritten
+  `packageManager` / `devEngines.packageManager` fields independent of the
+  lockfile) as part of regenerating the lockfile.
 
 ### Step 6b: Upgrade Runtimes (conditional)
 
@@ -326,17 +337,33 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   flow into `allUpdates` for reporting and into `Changesets.create` as
   changeset triggers.
 
-### Step 9: Reconcile Lockfile and Install
+### Step 9: Regenerate Lockfile and Install
 
 - Triggered when any of `configUpdatesFromPnpm`, `configUpdates`,
   `regularUpdates`, or `peerUpdates` is non-empty.
-- Implemented as `runInstall()` in `program.ts`:
-  `pnpm install --frozen-lockfile=false --fix-lockfile`.
+- Implemented as `runInstall()` in `program.ts`, which **regenerates** the
+  lockfile rather than repairing it in place: `pnpm clean --lockfile` then
+  `pnpm install --frozen-lockfile=false`.
+  - The action mutates all three inputs to pnpm resolution — the pnpm version
+    (`upgrade-package-manager`), the pnpm config (config dependencies in
+    `pnpm-workspace.yaml` and the `pnpm-plugin-silk` hooks) and dependency
+    ranges. The previous `--fix-lockfile` only repaired broken entries against
+    the existing lockfile; it never re-ran resolution under the changed
+    pnpm/config/ranges, so it could silently carry a stale graph forward and
+    commit an inconsistent lockfile (e.g. an upstream peer range moving leaves
+    a required peer unfilled). Full regeneration is the only reliable way to
+    produce a correct, installable lockfile reflecting the new
+    pnpm/config/ranges.
+  - As a dependency updater obeying the declared ranges and rules, advancing
+    transitive versions is **expected** — larger lockfile diffs are intentional,
+    not noise.
+  - `pnpm clean --lockfile` removes the lockfile and `node_modules` via Node.js,
+    unlinking cleanly across platforms (including Windows junctions) — preferable
+    to `rm -rf`. It requires pnpm 11+, and runs a consumer's own `clean`/`purge`
+    package.json script in place of the built-in when one exists (see the
+    `runInstall` doc comment in `src/program.ts`).
   - `--frozen-lockfile=false` opts out of the CI default that refuses to write
     lockfile changes.
-  - `--fix-lockfile` reconciles the lockfile against the just-modified
-    manifests while leaving unrelated transitives at their currently-pinned
-    versions.
 
 ### Step 10: Format pnpm-workspace.yaml
 
@@ -397,7 +424,8 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 ### Step 15: Commit, Push, and Create PR
 
 - `BranchManager.commitChanges()` commits via GitHub API (verified/signed).
-- `Report.createOrUpdatePR()` creates/updates PR with detailed summary.
+- `Report.createOrUpdatePR()` creates/updates PR with detailed summary, basing
+  it on the resolved `target-branch` (which defaults to `source-branch`).
 - Enables auto-merge if configured.
 - Updates check run with `success`.
 - Writes GitHub Actions summary via `ActionOutputs`.

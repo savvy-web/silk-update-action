@@ -8,7 +8,7 @@
  * `packageManager` field when none exists). The resolved version is written
  * directly into both fields as a pinned `version+sha512.<hex>` string (derived
  * from the npm registry integrity) — no `corepack use` is invoked. The
- * subsequent `pnpm install --fix-lockfile` activates the new version via
+ * subsequent `runInstall` (`pnpm install`) activates the new version via
  * corepack reading the updated fields. No range operator is written because a
  * hash-pinned value is inherently exact.
  *

@@ -56,7 +56,10 @@ publishability detection plus changeset-config reading come from
   The envelope is persisted to `ActionState` (backed by `GITHUB_STATE`) — no
   `process.env.GITHUB_TOKEN` bridge.
 - Branch management with delete-and-recreate strategy via `BranchManager`
-  service.
+  service. The source ref and PR target are configurable via the
+  `source-branch` (default `main`) and `target-branch` (default `""` → follow
+  source) inputs, with `validateBranches` failing fast on a missing ref before
+  the destructive reset.
 - Config dependency updates via `ConfigDeps` service (uses `NpmRegistry`).
   Config deps carry no declared range, so it synthesizes a conservative one from
   the current version's major via `configDepUpgradeRange` and resolves the
@@ -98,8 +101,13 @@ publishability detection plus changeset-config reading come from
   bumps fold into `allUpdates` for reporting/commit/PR only — they never trigger
   `Changesets.create` and never trigger `runInstall` (unlike the pnpm bump,
   which does trigger `runInstall` to perform the corepack switch).
-- Lockfile reconciliation via `runInstall`:
-  `pnpm install --frozen-lockfile=false --fix-lockfile`.
+- Lockfile regeneration via `runInstall`: `pnpm clean --lockfile` then
+  `pnpm install --frozen-lockfile=false`. The action changes the pnpm version,
+  config and dependency ranges, so the lockfile is regenerated from a clean
+  slate rather than repaired in place with `--fix-lockfile` (which would not
+  re-run resolution under the new inputs and could commit a stale graph).
+  Advancing transitives is expected, not noise. `pnpm clean --lockfile`
+  requires pnpm 11+.
 - Workspace YAML formatting via `WorkspaceYaml` helpers.
 - Custom command execution via `runCommands` (`sh -c`) with error collection.
 - Lockfile comparison via `Lockfile` service. Catalog comparison emits one

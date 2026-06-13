@@ -179,14 +179,14 @@ The shared release workflow at `savvy-web/.github/.github/workflows/release.yml`
 
 Because the action ships as a bundled `dist`, testing dev work means pointing a consumer workflow at a `@dev` ref. There are **two independent switch points**:
 
-- **This action's dev `dist`** — a workflow that *uses* the action pins it by tag. `.github/workflows/pnpm-update.yml` in this repo runs `uses: savvy-web/silk-update-action@v3`; change `@v2` → `@dev` to run the committed dev-branch `dist` (including any locally-linked library changes baked into it) against this very repo. The same flip works in any other repo whose caller invokes this action.
+- **This action's dev `dist`** — a workflow that *uses* the action pins it by tag. `.github/workflows/silk-update.yml` in this repo runs `uses: savvy-web/silk-update-action@v3`; change `@v3` → `@dev` to run the committed dev-branch `dist` (including any locally-linked library changes baked into it) against this very repo. The same flip works in any other repo whose caller invokes this action.
 - **The shared release workflow** — `.github/workflows/release.yml` is a thin caller: `uses: savvy-web/.github/.github/workflows/release.yml@main`; change `@main` → `@dev` to exercise the shared workflow's dev branch.
 
 Flip the relevant switch, run the workflow (`workflow_dispatch` or its normal trigger), watch with `gh run watch`, then revert the switch (`@dev` → `@v2` / `@main`) once the released version is cut. `release-sync.yml` (below) hard-resets `dev` to `main` on each release, so `dev` is disposable between cycles.
 
 ### Flow: `dev` → `main` → release
 
-1. Feature work accumulates on `dev`; merge it into `main` when ready.
+1. Feature work accumulates on `dev`; merge it into `main` when ready. Dependency-update PRs reach `main` via `promote-deps-to-main.yml` (below) instead of a manual merge.
 2. The push to `main` triggers **Phase 1** — changeset detection creates/updates `changeset-release/main` and the release PR.
 3. Pushes to the release branch trigger **Phase 2** validation (build, publish dry-runs, release-notes preview, sticky comment).
 4. Merging the release PR triggers **Phase 3** — publishing, Git tags, and a published GitHub release.
@@ -200,6 +200,16 @@ Triggered by `release: [published]` (and `workflow_dispatch` with a `tag` input 
 2. **Hard-resets `dev` to `main` HEAD** — a genuine clobber, so any `dev` commit not yet in `main` is discarded. This is safe by design: `dev` work always lands in `main` before a release.
 
 Each push is guarded: if the remote `v<major>` tag or `dev` already points at its target commit, that push is skipped, so no ref-update events fire for listeners when there is nothing to change. Sub-`1.0.0`, prerelease, build-metadata, and non-SemVer tags are ignored (no-op).
+
+### `promote-deps-to-main.yml` — open the dependency-update release loop
+
+Entry point to the release loop (mirror of `release-sync.yml`, which closes it). `silk-update.yml` must run the action with `source-branch: dev` so its `pnpm/config-deps` PR is cut from and `auto-merge: squash`-merged into `dev`; that merge is what fires this workflow.
+
+Triggers on `pull_request: [closed]` with `branches: [dev]`, gated by `if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'pnpm/config-deps'` (plus a `workflow_dispatch` manual path). On a merged config-deps PR it opens a `dev -> main` PR.
+
+It mints a GitHub App token via `actions/create-github-app-token@v3` (`client-id: vars.APP_CLIENT_ID`, `private-key: secrets.APP_PRIVATE_KEY`, `owner: github.repository_owner`). The app token (not the default `GITHUB_TOKEN`) is what lets the created PR trigger required status checks and cloud reviewers / the action's smoke tests.
+
+The `dev -> main` PR is left open for review — **not** auto-merged; merging it starts the normal release cycle. Idempotent (no-op when a `dev -> main` PR is already open, since it auto-tracks new `dev` commits) and non-recursive (its PR has base `main`, head `dev`, which never matches the trigger gate).
 
 ### Code Quality
 
@@ -253,6 +263,10 @@ Packages publish to both GitHub Packages and npm with provenance.
   comes from `ActionEnvironment` (`env.github.sha`) in `program.ts`
 - Action input is `app-client-id` (not `app-id`); `skip-token-revoke` controls
   whether `post.ts` revokes the token
+- `source-branch` (default `main`) is the cut-from ref and default PR target;
+  `target-branch` (empty → follows `source-branch`, via `resolveTargetBranch`)
+  is the PR base. Both are validated by `BranchManager.validateBranches` early
+  in `program.ts` — before the destructive branch delete-and-recreate
 - `Changesets.create` ignore-gates the versionable cascade: a changeset-ignored
   package (`ChangesetConfig.isIgnored`) is skipped before the publishability
   check, so it is never versioned even when `privatePackages.version` is set
@@ -271,11 +285,16 @@ Packages publish to both GitHub Packages and npm with provenance.
   canonical `+sha512.<hex>` hash (derived from the npm registry integrity via
   `corepackHashFromIntegrity` in `src/utils/pnpm.ts`) into **both**
   `packageManager` and `devEngines.packageManager.version`. The corepack switch
-  happens via the existing `runInstall`
-  (`pnpm install --frozen-lockfile=false --fix-lockfile`), which reads the
-  rewritten fields. Unlike the runtime bump, the pnpm bump **does** trigger
-  `runInstall` (gated on `configUpdatesFromPnpm.length > 0`); like the runtime
-  bump it never creates a changeset.
+  happens via the existing `runInstall`, which now **regenerates** the lockfile
+  (`pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`) rather
+  than `--fix-lockfile`: the action changes all three pnpm resolution inputs
+  (pnpm version, config deps + `pnpm-plugin-silk` hooks, dependency ranges), and
+  `--fix-lockfile` only repairs entries without re-resolving, so it could commit
+  an inconsistent lockfile (e.g. an unfilled peer → `ERR_MODULE_NOT_FOUND`).
+  `pnpm clean` needs **pnpm 11+** and runs a consumer's own `clean`/`purge`
+  script over the built-in if one exists. Unlike the runtime bump, the pnpm bump
+  **does** trigger `runInstall` (gated on `configUpdatesFromPnpm.length > 0`);
+  like the runtime bump it never creates a changeset.
 - Runtime engine bumps (`upgrade-runtime-*`) edit root `package.json`
   `devEngines.runtime` and flow into the PR/commit/summary, but never create a
   changeset and never trigger `pnpm install` (unlike the pnpm bump, which does

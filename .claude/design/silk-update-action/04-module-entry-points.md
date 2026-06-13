@@ -78,6 +78,10 @@ Inputs are parsed using Effect's `Config.*` API:
 
 ```typescript
 const branch = yield* Config.string("branch").pipe(Config.withDefault("pnpm/config-deps"));
+const sourceBranch = yield* Config.string("source-branch").pipe(Config.withDefault("main"));
+const rawTargetBranch = yield* Config.string("target-branch").pipe(Config.withDefault(""));
+// Empty target-branch follows source-branch (resolveTargetBranch in src/utils/branch.ts).
+const targetBranch = resolveTargetBranch(rawTargetBranch, sourceBranch);
 const rawConfigDeps = yield* Config.string("config-dependencies").pipe(Config.withDefault(""));
 const configDependencies = parseMultiValueInput(rawConfigDeps);
 const rawDeps = yield* Config.string("dependencies").pipe(Config.withDefault(""));
@@ -157,11 +161,20 @@ The module exports:
 - `program` — the main Effect (input parsing, layer composition, timeout).
 - `innerProgram(inputs, dryRun, headSha, appLayer)` — the orchestration body.
   Provides `appLayer` at two levels (outer + inside the `withCheckRun`
-  callback) because the callback signature requires `R = never`.
+  callback) because the callback signature requires `R = never`. Inside
+  `withCheckRun` it calls `BranchManager.validateBranches(sourceBranch,
+  targetBranch)` **before** `BranchManager.manage(branch, sourceBranch)`, so a
+  missing ref fails fast before the destructive delete-and-recreate. The
+  resolved `targetBranch` is threaded into `Report.createOrUpdatePR(branch,
+  base, ...)` as the PR base.
 - `runCommands(commands)` — execute custom commands sequentially via
   `CommandRunner` (`sh -c "<cmd>"`); returns `{ successful, failed }`.
-- `runInstall()` — runs `pnpm install --frozen-lockfile=false --fix-lockfile`
-  via `CommandRunner.exec`.
+- `runInstall()` — regenerates the lockfile via `CommandRunner.exec`:
+  `pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`. It does
+  not `--fix-lockfile` — the action changes the pnpm version, config and ranges,
+  so resolution is re-run from scratch rather than repairing the existing
+  lockfile (see the `runInstall` doc comment in `src/program.ts` for the full
+  rationale and the pnpm 11+ / consumer-`clean`-script caveats).
 
 `innerProgram` requires all domain services (`BranchManager`, `PnpmUpgrade`,
 `RuntimeUpgrade`, `ConfigDeps`, `RegularDeps`, `Changesets`, `Report`) and
@@ -181,7 +194,7 @@ configurable `timeout` input (default: 180 seconds).
 - `program` — Main Effect (exported for testability).
 - `runCommands(commands)` — Execute custom commands sequentially via
   `CommandRunner`.
-- `runInstall()` — Run `pnpm install --frozen-lockfile=false --fix-lockfile`.
+- `runInstall()` — Regenerate the lockfile: `pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`.
 
 Report-related functions (PR creation, commit messages, summaries) live in the
 `Report` service in `src/services/report.ts`.

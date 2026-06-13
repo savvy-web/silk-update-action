@@ -60,12 +60,22 @@ export class BranchManager extends Context.Tag("BranchManager")<BranchManager, {
   Effect.Effect<BranchResult, GitBranchError | CommandRunnerError>;
  readonly commitChanges: (message: string, branchName: string) =>
   Effect.Effect<void, GitCommitError | CommandRunnerError>;
+ readonly validateBranches: (source: string, target: string) =>
+  Effect.Effect<void, GitBranchError | ActionInputError>;
 }>() {}
 ```
 
-**Branch Strategy:** Delete-and-recreate instead of rebase. When the branch
-already exists, it is deleted and recreated from the default branch for a
-fresh start.
+**Branch Strategy:** Delete-and-recreate instead of rebase. The update branch is
+created from (and reset to) the configurable `source-branch` (default `main`,
+passed as `manage`'s second argument). When the branch already exists, it is
+deleted and recreated from the source branch for a fresh start.
+
+**Pre-flight validation:** `validateBranches(source, target)` yields
+`GitBranch.exists` for both refs and fails fast with `ActionInputError`
+(`inputName` `"source-branch"` / `"target-branch"`) if either ref is missing
+(the target check is skipped when `target === source`). `program.ts` calls it
+inside `withCheckRun` **before** `manage`, so a typo'd ref aborts before the
+destructive delete-and-recreate.
 
 **Commit via GitHub API:** `commitChanges` reads changed files from
 `git status --porcelain` (handling `D`-marked deletions as `{ path, sha: null }`)
@@ -420,7 +430,7 @@ summaries.
 
 ```typescript
 export class Report extends Context.Tag("Report")<Report, {
- readonly createOrUpdatePR: (branch, updates, changesets, autoMerge?) =>
+ readonly createOrUpdatePR: (branch, base, updates, changesets, autoMerge?) =>
   Effect.Effect<PullRequestResult, PullRequestError>;
  readonly generatePRBody: (updates, changesets) => string;
  readonly generateSummary: (updates, changesets, pr, dryRun) => string;
@@ -428,7 +438,8 @@ export class Report extends Context.Tag("Report")<Report, {
 }>() {}
 ```
 
-PR creation failures propagate through the Effect error channel as
+`base` is the resolved `target-branch` (the PR merge target), threaded in from
+`program.ts`. PR creation failures propagate through the Effect error channel as
 `PullRequestError` rather than returning a sentinel result.
 
 ## Layer Composition (src/layers/app.ts)
@@ -515,6 +526,10 @@ satisfies their FileSystem/Path requirements.
 `ChangesetConfigLive` and `PublishabilityDetectorAdaptiveLive` (both re-exported from `@savvy-web/silk-effects`) are FileSystem-based — they read `.changeset/config.json` and package manifests via `@effect/platform` FileSystem rather than `node:fs`, so the same `platform` (`NodeContext.layer`) is provided to both. `ChangesetConfigLive` carries its own `ChangesetConfigReaderLive` (composed in the shim), leaving only the FileSystem requirement for `makeAppLayer` to satisfy.
 
 ## Pure Helpers (src/utils/)
+
+### src/utils/branch.ts
+
+- `resolveTargetBranch(rawTarget, source)` — Resolve the PR target branch. An empty (whitespace-only) `target-branch` input is the sentinel for "follow source-branch" (GitHub Actions input defaults cannot reference another input), so the fallback to `source` is resolved here in code.
 
 ### src/utils/deps.ts
 
