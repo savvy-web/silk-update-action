@@ -17,9 +17,10 @@ concurrency:
   group: promote-deps-to-main
   cancel-in-progress: false
 
+# All PR operations use the GitHub App token (see the generate step), not the
+# default GITHUB_TOKEN, so only read access to repo contents is needed here.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   promote:
@@ -38,6 +39,9 @@ jobs:
           client-id: ${{ vars.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+          # Scope the installation token to this repo only (least privilege);
+          # the workflow only opens a PR in its own repo.
+          repositories: ${{ github.event.repository.name }}
 
       - name: Open or update dev to main PR
         env:
