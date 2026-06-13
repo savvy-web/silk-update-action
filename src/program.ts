@@ -87,17 +87,33 @@ export const runCommands = (commands: ReadonlyArray<string>): Effect.Effect<RunC
 	});
 
 /**
- * Run `pnpm install --frozen-lockfile=false --fix-lockfile`.
+ * Regenerate the lockfile: `pnpm clean --lockfile` then
+ * `pnpm install --frozen-lockfile=false`.
  *
- * Uses `--frozen-lockfile=false` to opt out of the CI default that refuses to
- * write lockfile changes, and `--fix-lockfile` to reconcile the lockfile
- * against the just-modified manifests while leaving unrelated transitives at
- * their currently-pinned versions.
+ * This action mutates the three inputs to pnpm resolution — the pnpm version
+ * (`upgrade-package-manager`), the pnpm config (config dependencies in
+ * `pnpm-workspace.yaml` and the `pnpm-plugin-silk` hooks), and dependency
+ * ranges. `--fix-lockfile` only repairs broken entries against the existing
+ * lockfile; it does not re-run resolution under the changed pnpm/config/ranges,
+ * so it can silently carry a stale graph forward and commit an inconsistent
+ * lockfile (e.g. an upstream peer range moving leaves a required peer unfilled).
+ * A full regeneration is the only reliable way to produce a correct, installable
+ * lockfile that reflects the new pnpm version, config, and ranges. As a
+ * dependency updater obeying the declared ranges and rules, advancing
+ * transitives is expected, not noise.
+ *
+ * `pnpm clean --lockfile` removes the lockfile and node_modules via Node.js, so
+ * it unlinks cleanly across platforms (including Windows junctions) — preferable
+ * to `rm -rf`. Caveat: `pnpm clean` runs a consumer's own `clean`/`purge`
+ * package.json script instead of the built-in if one exists, and it requires
+ * pnpm 11+. `--frozen-lockfile=false` opts out of the CI default that refuses to
+ * write lockfile changes.
  */
 export const runInstall = (): Effect.Effect<void, CommandRunnerError, CommandRunner> =>
 	Effect.gen(function* () {
 		const runner = yield* CommandRunner;
-		yield* runner.exec("pnpm", ["install", "--frozen-lockfile=false", "--fix-lockfile"]);
+		yield* runner.exec("pnpm", ["clean", "--lockfile"]);
+		yield* runner.exec("pnpm", ["install", "--frozen-lockfile=false"]);
 	});
 
 /**
@@ -403,7 +419,7 @@ const innerProgram = (
 							configUpdatesFromPnpm.length > 0 ||
 							peerUpdates.length > 0
 						) {
-							yield* Effect.logInfo("Step 6: Reconciling lockfile and installing");
+							yield* Effect.logInfo("Step 6: Regenerating lockfile and installing");
 							yield* runInstall();
 						}
 

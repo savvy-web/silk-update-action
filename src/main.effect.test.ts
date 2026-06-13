@@ -37,7 +37,7 @@ const makeTestRunner = (
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("runInstall", () => {
-	it("issues exactly pnpm install --frozen-lockfile=false --fix-lockfile", async () => {
+	it("regenerates the lockfile: pnpm clean --lockfile then pnpm install --frozen-lockfile=false", async () => {
 		const issuedExec: Array<{ command: string; args: ReadonlyArray<string> }> = [];
 
 		const layer = makeTestRunner({
@@ -49,9 +49,9 @@ describe("runInstall", () => {
 
 		await Effect.runPromise(runInstall().pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)));
 
-		expect(issuedExec).toHaveLength(1);
-		expect(issuedExec[0].command).toBe("pnpm");
-		expect(issuedExec[0].args).toEqual(["install", "--frozen-lockfile=false", "--fix-lockfile"]);
+		expect(issuedExec).toHaveLength(2);
+		expect(issuedExec[0]).toEqual({ command: "pnpm", args: ["clean", "--lockfile"] });
+		expect(issuedExec[1]).toEqual({ command: "pnpm", args: ["install", "--frozen-lockfile=false"] });
 	});
 
 	it("does not issue any rm or execCapture calls", async () => {
