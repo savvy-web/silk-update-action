@@ -137,6 +137,8 @@ Commits are created via the `GitCommit` library service:
 - Works automatically with GitHub App tokens
 - Consistent with how GitHub's own bots work (Dependabot, etc.)
 
+**Title and commit subject:** Both the PR title and the commit subject (the first line of the commit message) are generated from the run's contents by `buildUpdateSubject(updates)` (`src/utils/commit-subject.ts`) — not a static `chore(deps): Update Silk Dependencies` constant. The helper names a single change (e.g. `chore(deps): bump effect to 3.1.0`), summarizes runtime- or config-only batches, scopes a single-workspace dependency batch, composes mixed runs (e.g. `chore(deps): upgrade pnpm and Node, update 4 config and 6 dependencies`) and falls back to `chore(deps): update dependencies` when the header would exceed its 72-char budget. See `src/utils/commit-subject.ts` for the full bucketing logic.
+
 **PR Description Template:**
 
 ```markdown

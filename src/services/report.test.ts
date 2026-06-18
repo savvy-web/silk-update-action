@@ -35,6 +35,63 @@ describe("createOrUpdatePR", () => {
 		expect(result.created).toBe(true);
 	});
 
+	it("titles the PR from the run contents", async () => {
+		const state = PullRequestTest.empty();
+		state.nextNumber = 7;
+		const layer = makeReportLayer(state);
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return yield* report.createOrUpdatePR(
+					"pnpm/config",
+					"main",
+					[{ dependency: "pnpm", from: "11.6.0", to: "11.7.0", type: "config", package: null }],
+					[],
+				);
+			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		);
+
+		const created = state.prs.find((p) => p.number === 7);
+		expect(created?.title).toBe("chore(deps): upgrade pnpm to 11.7.0");
+	});
+
+	it("refreshes the title of a reused PR to match the new contents", async () => {
+		const state = PullRequestTest.empty();
+		state.prs.push({
+			number: 10,
+			url: "https://github.com/test/pull/10",
+			nodeId: "PR_kwDOTest10",
+			title: "chore(deps): Update Silk Dependencies",
+			state: "open",
+			head: "pnpm/config",
+			base: "main",
+			draft: false,
+			merged: false,
+			labels: [],
+			reviewers: [],
+			teamReviewers: [],
+			autoMerge: undefined,
+			body: "old body",
+		});
+		const layer = makeReportLayer(state);
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return yield* report.createOrUpdatePR(
+					"pnpm/config",
+					"main",
+					[{ dependency: "node", from: "^24.0.0", to: "^26.1.0", type: "runtime", package: null }],
+					[],
+				);
+			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		);
+
+		const reused = state.prs.find((p) => p.number === 10);
+		expect(reused?.title).toBe("chore(deps): upgrade Node to 26.1.0");
+	});
+
 	it("updates existing PR when found", async () => {
 		const state = PullRequestTest.empty();
 		state.prs.push({
@@ -211,7 +268,7 @@ describe("createOrUpdatePR", () => {
 });
 
 describe("generateCommitMessage", () => {
-	it("counts and lists a runtime update", async () => {
+	it("uses the varied subject and lists each update in the body", async () => {
 		const state = PullRequestTest.empty();
 		const layer = makeReportLayer(state);
 
@@ -224,8 +281,27 @@ describe("generateCommitMessage", () => {
 			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
 		);
 
-		expect(msg).toContain("1 runtime");
+		// Subject is the contents-aware headline (rule 2), not a count summary.
+		// The range operator is stripped for a clean display version.
+		expect(msg.split("\n")[0]).toBe("chore(deps): upgrade Node to 24.16.0");
+		// Body still lists every update verbatim.
 		expect(msg).toContain("- node: ^24.0.0 -> ^24.16.0");
+		// Sign-off footer preserved.
+		expect(msg).toContain("Signed-off-by: github-actions[bot] <");
+	});
+
+	it("falls back to a generic subject when there are no updates", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const msg = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return report.generateCommitMessage([]);
+			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		);
+
+		expect(msg.split("\n")[0]).toBe("chore(deps): update dependencies");
 	});
 });
 

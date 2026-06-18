@@ -442,6 +442,8 @@ export class Report extends Context.Tag("Report")<Report, {
 `program.ts`. PR creation failures propagate through the Effect error channel as
 `PullRequestError` rather than returning a sentinel result.
 
+Both the PR title (`createOrUpdatePR`) and the commit subject (the first line of `generateCommitMessage`) are derived from the run's contents via `buildUpdateSubject(updates)` (`src/utils/commit-subject.ts`) — no static `chore(deps): …` constant. `generateCommitMessage`'s body bullets and `Signed-off-by` footer are unchanged.
+
 ## Layer Composition (src/layers/app.ts)
 
 `makeAppLayer(dryRun, { runtimeLive })` wires all library and domain layers.
@@ -530,6 +532,10 @@ satisfies their FileSystem/Path requirements.
 ### src/utils/branch.ts
 
 - `resolveTargetBranch(rawTarget, source)` — Resolve the PR target branch. An empty (whitespace-only) `target-branch` input is the sentinel for "follow source-branch" (GitHub Actions input defaults cannot reference another input), so the fallback to `source` is resolved here in code.
+
+### src/utils/commit-subject.ts
+
+- `buildUpdateSubject(updates)` — Derive the full conventional PR title / commit subject (`chore(deps): …`) from the run's `DependencyUpdateResult[]`. First-match-wins over four buckets (pnpm self-upgrade, runtimes, config deps, regular deps): names a single change, summarizes runtime-only or config-only batches, scopes a single-workspace dependency batch, composes mixed runs and falls back to `chore(deps): update dependencies` when nothing matches or the header would exceed 72 chars. Versions are shown clean (range operator and `+sha512` suffix stripped); runtime names are capitalized, pnpm stays lowercase. Consumed by `Report` for both the PR title and the commit subject.
 
 ### src/utils/deps.ts
 
