@@ -71,14 +71,14 @@ describe("generateCommitMessage", () => {
 	it("generates message for dev-only updates", async () => {
 		const message = await withReport((r) => r.generateCommitMessage(regularUpdates, "my-app"));
 
-		expect(message).toContain("chore(deps): update 2 dev dependencies");
+		expect(message).toContain("chore(deps): update 2 dependencies");
 		expect(message).toContain("- effect: 3.0.0 -> 3.1.0");
 	});
 
 	it("generates message for mixed updates", async () => {
 		const message = await withReport((r) => r.generateCommitMessage(mixedUpdates, "my-app"));
 
-		expect(message).toContain("chore(deps): update 2 config and 2 dev dependencies");
+		expect(message).toContain("chore(deps): update 2 config and 2 dependencies");
 	});
 
 	it("includes sign-off with app slug", async () => {

@@ -17,6 +17,7 @@ import { Context, Effect, Layer } from "effect";
 type PullRequestShape = Context.Tag.Service<typeof PullRequestTag>;
 
 import type { ChangesetFile, DependencyUpdateResult, PullRequestResult } from "../schemas/domain.js";
+import { buildUpdateSubject } from "../utils/commit-subject.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Service Interface
@@ -82,7 +83,7 @@ const createOrUpdatePRImpl = (
 	autoMerge?: "merge" | "squash" | "rebase",
 ): Effect.Effect<PullRequestResult, PullRequestError> =>
 	Effect.gen(function* () {
-		const title = "chore(deps): Update Silk Dependencies";
+		const title = buildUpdateSubject(updates);
 		const body = generatePRBodyImpl(updates, changesets);
 
 		const result = yield* pr.getOrCreate({
@@ -112,25 +113,14 @@ const createOrUpdatePRImpl = (
  * and include a matching sign-off footer, GitHub will verify/sign the commit.
  */
 const generateCommitMessageImpl = (updates: ReadonlyArray<DependencyUpdateResult>, appSlug?: string): string => {
-	const configCount = updates.filter((u) => u.type === "config").length;
-	const depCount = updates.filter((u) => u.type === "dependency").length;
-	const devCount = updates.filter((u) => u.type === "devDependency").length;
-	const peerCount = updates.filter((u) => u.type === "peerDependency").length;
-	const runtimeCount = updates.filter((u) => u.type === "runtime").length;
-
-	const parts: string[] = [];
-	if (configCount > 0) parts.push(`${configCount} config`);
-	if (depCount > 0) parts.push(`${depCount} dependency`);
-	if (devCount > 0) parts.push(`${devCount} dev`);
-	if (peerCount > 0) parts.push(`${peerCount} peer`);
-	if (runtimeCount > 0) parts.push(`${runtimeCount} runtime`);
+	const subject = buildUpdateSubject(updates);
 
 	const botName = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
 	const botEmail = appSlug
 		? `${appSlug}[bot]@users.noreply.github.com`
 		: "41898282+github-actions[bot]@users.noreply.github.com";
 
-	return `chore(deps): update ${parts.join(" and ")} dependencies
+	return `${subject}
 
 Updated dependencies:
 ${updates.map((u) => `- ${u.dependency}: ${u.from ?? "new"} -> ${u.to}`).join("\n")}

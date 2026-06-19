@@ -47,6 +47,8 @@ src/
 │   ├── workspace-yaml.ts  # WorkspaceYaml helpers
 │   └── workspace-yaml.test.ts
 └── utils/
+    ├── commit-subject.ts  # buildUpdateSubject (PR title / commit subject)
+    ├── commit-subject.test.ts
     ├── deps.ts            # parseConfigEntry, matchesPattern, parseSpecifier
     ├── fixtures.test.ts   # Shared test fixtures
     ├── input.ts           # parseMultiValueInput
