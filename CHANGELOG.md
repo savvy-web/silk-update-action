@@ -1,5 +1,32 @@
 # silk-update-action
 
+## 3.3.0
+
+### Features
+
+* [`666dc37`](https://github.com/savvy-web/silk-update-action/commit/666dc37b3192fd4c6633607a4809f0bc56bb7f52) PR titles and branch commit subjects are now generated from the run's actual contents instead of the static `chore(deps): Update Silk Dependencies`. Each run produces a specific, readable subject that reflects what changed.
+
+Examples of generated titles:
+
+* `chore(deps): upgrade pnpm to 10.12.1`
+* `chore(deps): upgrade Node to 24.16.0`
+* `chore(deps): bump effect to 3.19.1`
+* `chore(deps): upgrade pnpm and update 6 dependencies`
+* `chore(deps): update 3 config and 12 dependencies`
+
+Single changes are named outright; single-category runs are summarized; mixed runs compose an `upgrade … and update …` shape. All subjects keep the `chore(deps):` conventional-commit prefix and stay within the 72-character header budget (falling back to `chore(deps): update dependencies` when a composed subject would overflow).
+
+### Dependencies
+
+* | [`666dc37`](https://github.com/savvy-web/silk-update-action/commit/666dc37b3192fd4c6633607a4809f0bc56bb7f52) | Dependency    | Type    | Action  | From    | To |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :------ | :------ | -- |
+  | @savvy-web/github-action-effects                                                                             | dependency    | updated | ^2.1.4  | ^2.2.1  |    |
+  | @savvy-web/silk-effects                                                                                      | dependency    | updated | ^1.1.0  | ^1.4.0  |    |
+  | runtime-resolver                                                                                             | dependency    | updated | ^0.3.13 | ^0.3.15 |    |
+  | @savvy-web/github-action-builder                                                                             | devDependency | updated | ^0.7.8  | ^0.7.11 |    |
+  | @savvy-web/silk                                                                                              | devDependency | updated | ^1.0.0  | ^1.2.0  |    |
+  | @savvy-web/vitest                                                                                            | devDependency | updated | ^1.5.0  | ^1.5.1  |    |
+
 ## 3.2.0
 
 ### Features
