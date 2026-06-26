@@ -1,5 +1,16 @@
 # silk-update-action
 
+## 3.3.2
+
+### Dependencies
+
+* | [`24d624e`](https://github.com/savvy-web/silk-update-action/commit/24d624e03336859b59d6aa3fec8e95799a8d7603) | Dependency    | Type    | Action  | From    | To |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :------ | :------ | -- |
+  | runtime-resolver                                                                                             | dependency    | updated | ^0.3.17 | ^0.3.18 |    |
+  | @savvy-web/silk                                                                                              | devDependency | updated | ^1.3.2  | ^1.3.3  |    |
+  | @savvy-web/vitest                                                                                            | devDependency | removed | ^1.5.1  | —       |    |
+  | @vitest-agent/plugin                                                                                         | devDependency | added   | —       | ^1.0.0  |    |
+
 ## 3.3.1
 
 ### Dependencies
