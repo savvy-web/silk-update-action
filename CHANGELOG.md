@@ -1,5 +1,15 @@
 # silk-update-action
 
+## 3.3.3
+
+### Dependencies
+
+* | [`7cbb34d`](https://github.com/savvy-web/silk-update-action/commit/7cbb34da9b14f36a77b292bb885811fc37316ab8) | Dependency    | Type    | Action | From   | To |
+  | :----------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/github-action-effects                                                                             | dependency    | updated | ^2.3.0 | ^2.3.1 |    |
+  | @savvy-web/silk-effects                                                                                      | dependency    | updated | ^1.5.0 | ^1.5.1 |    |
+  | @savvy-web/silk                                                                                              | devDependency | updated | ^1.3.3 | ^1.3.4 |    |
+
 ## 3.3.2
 
 ### Dependencies
