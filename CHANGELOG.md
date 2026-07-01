@@ -1,5 +1,17 @@
 # silk-update-action
 
+## 3.3.4
+
+### Dependencies
+
+* [`5790b63`](https://github.com/savvy-web/silk-update-action/commit/5790b63b64170de3877aa91fb024ae150c5e1287) | Dependency | Type | Action | From | To |
+  \| :------------------------------- | :------------ | :------ | :------ | :------ |
+  \| @savvy-web/github-action-effects | dependency | updated | ^2.3.1 | ^2.3.3 |
+  \| @savvy-web/silk-effects | dependency | updated | ^1.5.1 | ^1.5.2 |
+  \| runtime-resolver | dependency | updated | ^0.3.18 | ^0.3.19 |
+  \| @savvy-web/github-action-builder | devDependency | updated | ^0.8.0 | ^1.0.1 |
+  \| @savvy-web/silk | devDependency | updated | ^1.3.4 | ^1.3.5 |
+
 ## 3.3.3
 
 ### Dependencies
@@ -120,10 +132,10 @@ resolve within the literal specifier.
 
 ```yaml
 # package.json (before)
-"some-lib": "^0.14.0"   # was trapped in 0.14.x
+"some-lib": "^0.14.0" # was trapped in 0.14.x
 
 # package.json (after a run with some-lib@1.2.0 published)
-"some-lib": "^1.2.0"    # advanced to latest stable major
+"some-lib": "^1.2.0" # advanced to latest stable major
 ```
 
 ### Dependencies
