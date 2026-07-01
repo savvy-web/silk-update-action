@@ -1,5 +1,11 @@
 # silk-update-action
 
+## 3.3.5
+
+### Bug Fixes
+
+* [`f33511f`](https://github.com/savvy-web/silk-update-action/commit/f33511f664fa7b7b12b51caeedb29d39fdfbd051) Explicitly declare `@types/node` version.
+
 ## 3.3.4
 
 ### Dependencies
