@@ -58,6 +58,7 @@ jobs:
             @savvy-web/pnpm-plugin-silk
           dependencies: |
             @savvy-web/*
+            @vitest-agent/*
             semver-effect
             workspaces-effect
             runtime-resolver
