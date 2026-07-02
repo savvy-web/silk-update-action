@@ -55,9 +55,10 @@ Workspace enumeration comes from `workspaces-effect` directly:
   `importerMap(cwd?)`. Requires `WorkspaceRoot` and `NodeContext.layer`
   (FileSystem/Path).
 - `WorkspaceRoot` / `WorkspaceRootLive` — Resolves workspace root from cwd.
-- `PublishabilityDetector` Tag (the override default `PublishabilityDetectorLive`
-  with vanilla rules). The action overrides this Tag with the silk/adaptive
-  detector from `@savvy-web/silk-effects` (see below).
+
+These Tags are consumed directly by `RegularDeps`, `PeerSync` and `Lockfile`.
+`workspaces-effect`'s `PublishabilityDetector` is no longer wired at this level
+— it is now an internal detail of silk's `DepsRegen` (see below).
 
 ### Runtime resolver services (from runtime-resolver)
 
@@ -73,16 +74,14 @@ Tags from `runtime-resolver`:
 
 ### Silk Services (from @savvy-web/silk-effects)
 
-Publishability rules and changeset-config reading live in `@savvy-web/silk-effects`. Both are FileSystem-based (read via `@effect/platform` FileSystem, not `node:fs`). `src/services/publishability.ts` and `src/services/changeset-config.ts` are thin re-export shims over this library.
+The dependency-changeset step delegates to silk's `Changesets.DepsRegen`, which is the source of truth. It is FileSystem-based (reads `.changeset/config.json`, package manifests and the git worktree via `@effect/platform` FileSystem/CommandExecutor, not `node:fs`).
 
-- `PublishabilityDetectorAdaptiveLive` (and the simpler `SilkPublishabilityDetectorLive`) — `PublishabilityDetector` Tag overrides. The adaptive variant requires `FileSystem | ChangesetConfig` and dispatches per-call on `ChangesetConfig.mode` (silk / vanilla / none).
-- `ChangesetConfig` Tag + `ChangesetConfigLive` — reads `.changeset/config.json`. Requires `ChangesetConfigReader` (→ FileSystem); the shim composes `ChangesetConfigReaderLive` so only a `FileSystem` requirement is left. Exposes `mode`, `versionPrivate`, `ignorePatterns`, `isIgnored` and `fixed`.
+- `Changesets.DepsRegen` Tag — `plan({ cwd, base })` + `execute(plan)` regenerate the cumulative `merge-base(base) → worktree` dependency diff into one consolidated changeset per in-scope package. Gating (versionable-minus-ignored) lives inside it.
+- `Changesets.DepsRegenDefault` — the batteries-included Layer that bundles `PointInTimeWorkspace`, `ConfigInspector`, `WorkspaceDiscovery`, the adaptive `PublishabilityDetector` and `ChangesetConfig` internally, leaving only platform services to satisfy. The action's `changesets.ts` was previously two re-export shims plus a bespoke writer; those are deleted — `ChangesetConfig` and the publishability overrides are no longer imported directly.
 
 ### Domain Services (src/services/)
 
-Each domain service uses `Context.Tag` + `Layer`. `ChangesetConfig` and the
-publishability overrides are re-exported from `@savvy-web/silk-effects` (see
-above):
+Each domain service uses `Context.Tag` + `Layer`:
 
 - `BranchManager` / `BranchManagerLive` - Depends on `GitBranch`, `GitCommit`, `CommandRunner`
 - `PnpmUpgrade` / `PnpmUpgradeLive` - Depends on `CommandRunner`
@@ -90,8 +89,7 @@ above):
 - `ConfigDeps` / `ConfigDepsLive` - Depends on `NpmRegistry`
 - `RegularDeps` / `RegularDepsLive` - Depends on `NpmRegistry`,
   `WorkspaceDiscovery`
-- `Changesets` / `ChangesetsLive` — Depends on `WorkspaceDiscovery`,
-  `PublishabilityDetector`, `ChangesetConfig`
+- `Changesets` / `ChangesetsLive` — Depends on `Changesets.DepsRegen` (from `@savvy-web/silk-effects`)
 - `Report` / `ReportLive` - Depends on `PullRequest`
 
 Stateless concerns (`PeerSync`, `WorkspaceYaml`, `Lockfile` standalone

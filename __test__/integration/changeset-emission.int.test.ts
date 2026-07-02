@@ -1,179 +1,197 @@
 /**
- * Integration tests for changeset emission against committed fixtures.
+ * Integration canaries for the DepsRegen-backed changeset step.
  *
- * Each scenario runs the full pipeline (capture lockfile state before
- * and after, derive LockfileChange records via Lockfile.compare, hand
- * them to Changesets.create) and asserts on the emitted changeset files.
+ * These drive the action's `Changesets` service through the REAL
+ * `@savvy-web/silk-effects` `Changesets.DepsRegenDefault` layer (the same
+ * batteries-included layer `makeAppLayer` wires) against a throwaway git repo.
+ * They pin, from the consumer side:
  *
- * The peer-sync-rewrite scenario uses a synthetic peerUpdates input
- * because pnpm lockfiles don't record workspace peerDependencies in
- * importer sections.
+ *  1. a publishable (publishConfig/silk, non-versionPrivate) package emits a
+ *     changeset through the default layer — the exact path the upstream
+ *     "pass the project root to listPublishablePackageNames" fix restored;
+ *  2. accumulated pure-dependency changesets for one package consolidate to a
+ *     single current table on re-fire (the dedup the whole adoption is for);
+ *  3. a catalog-only bump (manifest specifier unchanged) still surfaces a row
+ *     with concrete versions (upstream catalog-aware diffing);
+ *  4. a non-versionable package is gated out.
+ *
+ * The exhaustive gating matrix (silk vs vanilla mode, publish targets, ignore,
+ * versionPrivate) lives in `@savvy-web/silk-effects`' own DepsRegen tests; here
+ * we only prove the action's wiring + consolidation + catalog-awareness.
+ *
+ * DepsRegen reads git history (`PointInTimeWorkspace.at`) and the working tree,
+ * so each scenario commits a base state on `main`, mutates the worktree, then
+ * regenerates against `base = "main"`.
  */
 
-import { copyFileSync, readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
+import { Changesets as SilkChangesets } from "@savvy-web/silk-effects";
 import { Effect, Layer } from "effect";
-import { describe, expect, it } from "vitest";
-import { WorkspaceDiscoveryLive, WorkspaceRootLive } from "workspaces-effect";
-import type { DependencyUpdateResult } from "../../src/schemas/domain.js";
-import { ChangesetConfigLive } from "../../src/services/changeset-config.js";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { Changesets, ChangesetsLive } from "../../src/services/changesets.js";
-import { captureLockfileState, compareLockfiles } from "../../src/services/lockfile.js";
-import { PublishabilityDetectorAdaptiveLive } from "../../src/services/publishability.js";
-import { loadFixture } from "./utils/load-fixture.js";
 
-const platform = NodeContext.layer;
-const discoveryLayer = WorkspaceDiscoveryLive.pipe(
-	Layer.provide(Layer.merge(WorkspaceRootLive.pipe(Layer.provide(platform)), platform)),
+// The exact layer makeAppLayer uses for the changeset step.
+const changesetsLayer = ChangesetsLive.pipe(
+	Layer.provide(SilkChangesets.DepsRegenDefault.pipe(Layer.provide(NodeContext.layer))),
 );
 
-// Combined layer for Changesets and its dependencies. The silk-effects
-// ChangesetConfig/detector layers are FileSystem-backed, so provide `platform`
-// (NodeContext.layer) into the merged dependency layer.
-const fullLayer = ChangesetsLive.pipe(
-	Layer.provide(
-		Layer.mergeAll(
-			discoveryLayer,
-			PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(ChangesetConfigLive)),
-			ChangesetConfigLive,
-		).pipe(Layer.provideMerge(platform)),
-	),
-);
-
-interface ScenarioResult {
-	readonly emitted: ReadonlyArray<{ readonly name: string; readonly content: string }>;
-}
-
-const runScenario = async (
-	fixtureName: string,
-	options: { readonly peerUpdates?: ReadonlyArray<DependencyUpdateResult> } = {},
-): Promise<ScenarioResult> => {
-	const fixture = loadFixture(fixtureName);
-	const peerUpdates = options.peerUpdates ?? [];
-
-	copyFileSync(join(fixture.path, "pnpm-lock.before.yaml"), join(fixture.path, "pnpm-lock.yaml"));
-	const before = await Effect.runPromise(captureLockfileState(fixture.path));
-
-	copyFileSync(join(fixture.path, "pnpm-lock.after.yaml"), join(fixture.path, "pnpm-lock.yaml"));
-	const after = await Effect.runPromise(captureLockfileState(fixture.path));
-
-	const changes = await Effect.runPromise(
-		compareLockfiles(before, after, fixture.path).pipe(Effect.provide(discoveryLayer)),
-	);
-
-	await Effect.runPromise(
-		Effect.flatMap(Changesets, (c) => c.create(fixture.path, changes, [], peerUpdates)).pipe(Effect.provide(fullLayer)),
-	);
-
-	const csDir = join(fixture.path, ".changeset");
-	const emitted = readdirSync(csDir)
-		.filter((f) => f.endsWith(".md") && f !== "config.json")
-		.map((f) => ({ name: f, content: readFileSync(join(csDir, f), "utf-8") }));
-
-	return { emitted };
+const git = (cwd: string, ...args: string[]): void => {
+	execFileSync("git", args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
 };
 
-describe("changeset emission integration", () => {
-	// ─── Group A: silk fixtures with lockfile diffs ──────────────────────────
+const writeJson = (path: string, value: unknown): void => {
+	writeFileSync(path, `${JSON.stringify(value, null, "\t")}\n`);
+};
 
-	it("silk-prod-dep-bump: leaf prod-dep change writes one changeset for the leaf", async () => {
-		const { emitted } = await runScenario("silk-prod-dep-bump");
-		expect(emitted).toHaveLength(1);
-		expect(emitted[0].content).toContain('"@scope/silk-leaf": patch');
-		expect(emitted[0].content).toContain("| lodash |");
+/** Emitted changesets = `.changeset/*.md` minus README.md. */
+const emitted = (root: string): ReadonlyArray<{ readonly name: string; readonly content: string }> => {
+	const dir = join(root, ".changeset");
+	return readdirSync(dir)
+		.filter((f) => f.endsWith(".md") && f !== "README.md")
+		.map((f) => ({ name: f, content: readFileSync(join(dir, f), "utf-8") }));
+};
+
+/** A single-package pure-dependency changeset body (matches isPureDependencyChangeset). */
+const pureDepChangeset = (pkg: string, dep: string, from: string, to: string): string =>
+	`---\n"${pkg}": patch\n---\n\n## Dependencies\n\n` +
+	"| Dependency | Type | Action | From | To |\n| :--- | :--- | :--- | :--- | :--- |\n" +
+	`| ${dep} | dependency | updated | ${from} | ${to} |\n`;
+
+interface RepoOptions {
+	/** Leaf package.json (committed as the base state). */
+	readonly leaf: Record<string, unknown>;
+	/** Root pnpm-workspace.yaml contents. */
+	readonly workspaceYaml: string;
+	/** Extra files to write+commit at base, keyed by repo-relative path. */
+	readonly baseFiles?: Record<string, string>;
+}
+
+/**
+ * git-init a monorepo with a `main` base commit: root package.json,
+ * pnpm-workspace.yaml, silk `.changeset/config.json`, and one leaf package.
+ */
+const setupRepo = (root: string, options: RepoOptions): void => {
+	mkdirSync(join(root, "packages", "leaf"), { recursive: true });
+	mkdirSync(join(root, ".changeset"), { recursive: true });
+
+	writeJson(join(root, "package.json"), { name: "canary-root", version: "0.0.0", private: true });
+	writeFileSync(join(root, "pnpm-workspace.yaml"), options.workspaceYaml);
+	writeJson(join(root, ".changeset", "config.json"), {
+		changelog: ["@savvy-web/silk/changesets/changelog", { repo: "test/test" }],
+		commit: false,
+		access: "public",
+		baseBranch: "main",
+		updateInternalDependencies: "patch",
+		ignore: [],
+	});
+	writeJson(join(root, "packages", "leaf", "package.json"), options.leaf);
+	for (const [rel, content] of Object.entries(options.baseFiles ?? {})) {
+		writeFileSync(join(root, rel), content);
+	}
+
+	git(root, "init", "-b", "main");
+	git(root, "config", "user.email", "canary@test.local");
+	git(root, "config", "user.name", "Canary");
+	git(root, "config", "commit.gpgsign", "false");
+	git(root, "add", "-A");
+	git(root, "commit", "-m", "base");
+};
+
+const run = (root: string): Promise<ReadonlyArray<{ id: string; packages: readonly string[] }>> =>
+	Effect.runPromise(
+		Effect.flatMap(Changesets, (c) => c.create(root, "main")).pipe(Effect.provide(changesetsLayer)),
+	) as Promise<ReadonlyArray<{ id: string; packages: readonly string[] }>>;
+
+const WS_LEAF = "packages:\n  - packages/leaf\n";
+
+describe("changeset emission integration (DepsRegenDefault)", () => {
+	let root: string;
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "cs-int-"));
 	});
 
-	it("silk-devdep-only: devDep-only leaf change writes nothing", async () => {
-		const { emitted } = await runScenario("silk-devdep-only");
-		expect(emitted).toHaveLength(0);
-	});
-
-	it("silk-private-versionable: root prod-dep change writes a changeset for the private versionable root", async () => {
-		const { emitted } = await runScenario("silk-private-versionable");
-		expect(emitted).toHaveLength(1);
-		expect(emitted[0].content).toContain('"silk-private-versionable-root": patch');
-	});
-
-	it("silk-private-not-versionable: root prod-dep change writes nothing for the non-versionable root", async () => {
-		const { emitted } = await runScenario("silk-private-not-versionable");
-		expect(emitted).toHaveLength(0);
-	});
-
-	// ─── Group B: silk fixtures testing publishConfig.targets ────────────────
-
-	it("silk-targets-public: private leaf with public-access target gets a changeset", async () => {
-		const { emitted } = await runScenario("silk-targets-public");
-		expect(emitted).toHaveLength(1);
-		expect(emitted[0].content).toContain('"@scope/silk-targets-public-leaf": patch');
-	});
-
-	it("silk-targets-none: private leaf with no resolved access gets no changeset", async () => {
-		const { emitted } = await runScenario("silk-targets-none");
-		expect(emitted).toHaveLength(0);
-	});
-
-	// ─── Group C: vanilla fixtures ───────────────────────────────────────────
-
-	it("vanilla-public: public leaf in vanilla mode gets a changeset", async () => {
-		const { emitted } = await runScenario("vanilla-public");
-		expect(emitted).toHaveLength(1);
-		expect(emitted[0].content).toContain('"@scope/vanilla-public-leaf": patch');
-	});
-
-	it("vanilla-private: private leaf in vanilla mode (no publishConfig.access) gets no changeset", async () => {
-		const { emitted } = await runScenario("vanilla-private");
-		expect(emitted).toHaveLength(0);
-	});
-
-	// ─── Group D: catalog fixtures ───────────────────────────────────────────
-
-	it("catalog-affects-prod-dep: catalog change consumed in dependencies triggers a changeset", async () => {
-		const { emitted } = await runScenario("catalog-affects-prod-dep");
-		expect(emitted).toHaveLength(1);
-		expect(emitted[0].content).toContain('"@scope/catalog-prod-leaf": patch');
-	});
-
-	it("catalog-affects-dev-only: catalog change consumed only in devDependencies writes nothing", async () => {
-		const { emitted } = await runScenario("catalog-affects-dev-only");
-		expect(emitted).toHaveLength(0);
-	});
-
-	// ─── Group E: peer-sync ──────────────────────────────────────────────────
-
-	it("peer-sync-rewrite: synthetic peer update triggers a changeset", async () => {
-		const { emitted } = await runScenario("peer-sync-rewrite", {
-			peerUpdates: [
-				{
-					dependency: "lodash",
-					from: "^4.17.20",
-					to: "^4.17.21",
-					type: "peerDependency",
-					package: "@scope/peer-sync-leaf",
-				},
-			],
+	it("publishable target: prod-dep bump emits one changeset through the default layer", async () => {
+		setupRepo(root, {
+			workspaceYaml: WS_LEAF,
+			leaf: { name: "@scope/leaf", version: "0.1.0", private: false, dependencies: { effect: "3.0.0" } },
 		});
-		expect(emitted).toHaveLength(1);
-		expect(emitted[0].content).toContain('"@scope/peer-sync-leaf": patch');
-		expect(emitted[0].content).toContain("| lodash |");
+		// Worktree change: bump the declared dependency (uncommitted).
+		writeJson(join(root, "packages", "leaf", "package.json"), {
+			name: "@scope/leaf",
+			version: "0.1.0",
+			private: false,
+			dependencies: { effect: "3.2.0" },
+		});
+
+		const result = await run(root);
+		expect(result).toHaveLength(1);
+		expect(result[0].packages).toEqual(["@scope/leaf"]);
+		const files = emitted(root);
+		expect(files).toHaveLength(1);
+		expect(files[0].content).toContain('"@scope/leaf": patch');
+		expect(files[0].content).toContain("effect");
+		expect(files[0].content).toContain("3.2.0");
 	});
 
-	// ─── Group F: negative scenarios ─────────────────────────────────────────
+	it("consolidates accumulated pure-dependency changesets to one on re-fire", async () => {
+		setupRepo(root, {
+			workspaceYaml: WS_LEAF,
+			leaf: { name: "@scope/leaf", version: "0.1.0", private: false, dependencies: { effect: "3.0.0" } },
+		});
+		writeJson(join(root, "packages", "leaf", "package.json"), {
+			name: "@scope/leaf",
+			version: "0.1.0",
+			private: false,
+			dependencies: { effect: "3.2.0" },
+		});
+		// Two accumulated pure-dep changesets for the same package (from prior runs).
+		writeFileSync(join(root, ".changeset", "old-one.md"), pureDepChangeset("@scope/leaf", "effect", "3.0.0", "3.1.0"));
+		writeFileSync(join(root, ".changeset", "old-two.md"), pureDepChangeset("@scope/leaf", "effect", "3.1.0", "3.2.0"));
 
-	it("pnpm-upgrade-only: no real lockfile change writes nothing", async () => {
-		const { emitted } = await runScenario("pnpm-upgrade-only");
-		expect(emitted).toHaveLength(0);
+		await run(root);
+		const files = emitted(root);
+		// The two stale pure-dep changesets are deleted; exactly one fresh table remains.
+		expect(files).toHaveLength(1);
+		expect(files.map((f) => f.name)).not.toContain("old-one.md");
+		expect(files.map((f) => f.name)).not.toContain("old-two.md");
+		expect(files[0].content).toContain('"@scope/leaf": patch');
 	});
 
-	it("config-dep-no-catalog-effect: no real lockfile change writes nothing", async () => {
-		const { emitted } = await runScenario("config-dep-no-catalog-effect");
-		expect(emitted).toHaveLength(0);
+	it("catalog-only bump surfaces a row with concrete versions", async () => {
+		setupRepo(root, {
+			workspaceYaml: `${WS_LEAF}catalog:\n  effect: 3.0.0\n`,
+			leaf: { name: "@scope/leaf", version: "0.1.0", private: false, dependencies: { effect: "catalog:" } },
+		});
+		// Manifest specifier stays `catalog:`; only the inline catalog version moves.
+		writeFileSync(join(root, "pnpm-workspace.yaml"), `${WS_LEAF}catalog:\n  effect: 3.2.0\n`);
+
+		const result = await run(root);
+		expect(result).toHaveLength(1);
+		const files = emitted(root);
+		expect(files[0].content).toContain("effect");
+		expect(files[0].content).toContain("3.0.0");
+		expect(files[0].content).toContain("3.2.0");
 	});
 
-	it("silk-ignored-versionable: ignored leaf is gated out despite versionPrivate; sibling still emits", async () => {
-		const { emitted } = await runScenario("silk-ignored-versionable");
-		expect(emitted).toHaveLength(1);
-		expect(emitted[0].content).toContain('"@scope/kept-leaf": patch');
-		expect(emitted.some((e) => e.content.includes("@scope/ignored-leaf"))).toBe(false);
+	it("non-versionable package (private, no publish target) is gated out", async () => {
+		setupRepo(root, {
+			workspaceYaml: WS_LEAF,
+			leaf: { name: "@scope/leaf", version: "0.1.0", private: true, dependencies: { effect: "3.0.0" } },
+		});
+		writeJson(join(root, "packages", "leaf", "package.json"), {
+			name: "@scope/leaf",
+			version: "0.1.0",
+			private: true,
+			dependencies: { effect: "3.2.0" },
+		});
+
+		const result = await run(root);
+		expect(result).toHaveLength(0);
+		expect(emitted(root)).toHaveLength(0);
 	});
 });

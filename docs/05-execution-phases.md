@@ -133,8 +133,10 @@ A `git status --porcelain` check detects any modified, staged or untracked files
 
 - Skips entirely if the `changesets` input is `false`
 - Checks whether a `.changeset/` directory exists
-- For each affected workspace package, applies two gates before writing a changeset. The trigger gate requires at least one consumer-facing change — a `dependency`, `optionalDependency` or `peerDependency` lockfile change, or a peer-sync rewrite; `devDependency`-only changes are informational and do not by themselves produce a changeset. The versionable gate requires the package to be publishable or marked via the `versionPrivate` config
-- When both gates pass, writes a `patch` changeset whose table covers all changes for the package — triggers and informational dev rows — using specific type values: `dependency`, `optionalDependency`, `peerDependency`, `devDependency`
+- Recomputes the cumulative dependency diff between the base branch (`merge-base`) and the working tree, so the checkout must include full history (`fetch-depth: 0`); a shallow checkout cannot resolve the merge-base
+- For each affected workspace package, applies two gates. The trigger gate requires at least one consumer-facing change — a `dependency`, `optionalDependency` or `peerDependency` change, or a peer-sync rewrite; `devDependency`-only changes are informational and do not by themselves produce a changeset. The versionable gate requires the package to be publishable or marked via the `versionPrivate` config
+- When both gates pass, writes a single consolidated `patch` changeset whose `## Dependencies` table covers all changes for the package, using specific type values: `dependency`, `optionalDependency`, `peerDependency`, `devDependency`
+- Regeneration is convergent: stale pure-dependency changesets it supersedes are deleted, so re-running the action produces one current table per package rather than accumulating duplicates. Hand-authored changesets that mix a `## Dependencies` table with prose are left untouched
 - Empty changesets are not written, and config-only changes do not produce a changeset
 
 ### Commit and push

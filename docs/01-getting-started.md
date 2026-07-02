@@ -62,6 +62,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history is required when changesets are enabled (the default):
+          # the changeset step diffs against the base branch (merge-base), which
+          # a shallow (fetch-depth: 1) checkout cannot resolve.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 

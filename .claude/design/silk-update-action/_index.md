@@ -30,10 +30,7 @@ dependency ranges across workspace packages to keep them consistent.
 - Syncs peer dependency ranges across workspace packages (`syncPeers` helper) with configurable lock/minor strategies
 - Supports glob patterns for dependency matching
 - Runs custom commands after updates (linting, testing, building)
-- Integrates with Changesets for versioning, with ignore-, publishability- and
-  `versionPrivate`-aware gating via the `WorkspaceDiscovery` service (from
-  `workspaces-effect`) and the `ChangesetConfig` + `PublishabilityDetector`
-  override services (from `@savvy-web/silk-effects`)
+- Integrates with Changesets for versioning by delegating the dependency-changeset step to `@savvy-web/silk-effects`' `Changesets.DepsRegen`, which regenerates a consolidated per-package dependency changeset from the cumulative `merge-base(target) → worktree` git diff and applies its own versionable-minus-ignored gating upstream (requires a `fetch-depth: 0` checkout)
 - Regenerates the lockfile via `pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false` so it reflects the changed pnpm version, config and ranges (advancing transitives is expected, not noise)
 - Uses GitHub App authentication across a three-phase (pre/main/post) token lifecycle coordinated by the `GitHubToken` namespace for secure, short-lived tokens
 - Manages dedicated update branch with delete-and-recreate strategy

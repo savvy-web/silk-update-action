@@ -7,7 +7,7 @@ export default defineConfig({
 		post: "src/post.ts",
 	},
 	build: {
-		minify: true,
+		minify: false,
 		// `@cyclonedx/cyclonedx-library` (pulled in transitively by
 		// `@savvy-web/github-action-effects`) ships optional plugins — XML
 		// serializers/validators and draft-2019 JSON validators — that this
