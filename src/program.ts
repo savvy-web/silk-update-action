@@ -18,7 +18,7 @@ import {
 	CommandRunner,
 } from "@savvy-web/github-action-effects";
 import { Config, Duration, Effect, LogLevel, Logger } from "effect";
-import { Range } from "semver-effect";
+import { parseRange } from "semver-effect";
 import { makeAppLayer } from "./layers/app.js";
 import type { ChangesetFile, DependencyUpdateResult, PullRequestResult } from "./schemas/domain.js";
 import { BranchManager } from "./services/branch.js";
@@ -167,7 +167,11 @@ export const program = Effect.gen(function* () {
 		["upgrade-package-manager", upgradePackageManager, ["true", "false", "auto"]],
 	] as const) {
 		if (!(keywords as ReadonlyArray<string>).includes(value)) {
-			yield* Range.parse(value).pipe(
+			// Use the standalone `parseRange` (identical to `Range.parse`) — the
+			// `Range.parse = parseRange` static alias is attached by post-class
+			// assignment in semver-effect and gets tree-shaken out of the bundled
+			// dist, so calling it fails at runtime with "Range.parse is not a function".
+			yield* parseRange(value).pipe(
 				Effect.mapError(
 					(e) =>
 						new ActionInputError({
