@@ -1,0 +1,11 @@
+{
+	"version": 1,
+	"refs": [
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/silk-update-action/_index.md",
+			"hash": "37bb9632eb203c6d6a4b47676f48926c4edae91910bc77c2fe8fdcb1dc523c6e",
+			"recordedAt": "2026-07-02"
+		}
+	]
+}

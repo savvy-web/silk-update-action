@@ -136,6 +136,22 @@ packages were affected by the changes.
 - Config-only changes (`pnpm-workspace.yaml` `configDependencies`) do not
   produce a changeset on their own
 
+### Changesets missing or empty on a shallow checkout
+
+**Cause**: The changeset step diffs the working tree against the base branch
+using `merge-base`. The default `actions/checkout` fetches a single commit
+(`fetch-depth: 1`), which cannot resolve the merge-base, so the dependency diff
+comes back empty or incorrect.
+
+**Solution**: Set `fetch-depth: 0` on the checkout step when `changesets` is
+enabled:
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    fetch-depth: 0
+```
+
 ### Changeset created for wrong package
 
 **Cause**: The lockfile comparison maps catalog changes to all packages that use

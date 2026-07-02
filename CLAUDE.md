@@ -89,7 +89,7 @@ pnpm vitest run --testNamePattern="parsePnpmVersion"
 
 ### Effect-TS Patterns
 
-- **Library services**: From `@savvy-web/github-action-effects` (`^2.0.0`):
+- **Library services**: From `@savvy-web/github-action-effects` (`^2.3.5`):
   `CommandRunner`, `GitBranch`, `GitCommit`, `CheckRun`, `GitHubClient`,
   `NpmRegistry`, `PullRequest`, `GithubMarkdown`, `GitHubToken`. `pre.ts` and
   `post.ts` provide `GitHubAppLive ∘ OctokitAuthAppLive ∘ FetchHttpClient.layer`
@@ -97,18 +97,25 @@ pnpm vitest run --testNamePattern="parsePnpmVersion"
 - **Domain services**: `BranchManager`, `PnpmUpgrade`, `ConfigDeps`,
   `RegularDeps`, `Report`, `Lockfile`, `Changesets`, `RuntimeUpgrade`.
   Workspace enumeration uses `WorkspaceDiscovery` from `workspaces-effect`
-  (`^1.0.0`) directly (no local `Workspaces` Tag). Stateless helpers:
+  (`^2.0.1`) directly (no local `Workspaces` Tag), still consumed by
+  `RegularDeps`, `PeerSync`, and `Lockfile`. Stateless helpers:
   `WorkspaceYaml`, `PeerSync`. `RuntimeUpgrade` depends on `runtime-resolver`'s
   `NodeResolver`, `DenoResolver`, and `BunResolver` services; wired with either
   offline bundled cache layers (`Offline*CacheLive`, the default) or live
   network layers (`Auto*CacheLive`) depending on the `runtime-data` input.
-- **Silk-effects shims**: `services/changeset-config.ts` and
-  `services/publishability.ts` are thin re-export shims over
-  `@savvy-web/silk-effects` (`^0.4.0`) — the `ChangesetConfig` Tag (now with
-  `mode`, `versionPrivate`, `ignorePatterns`, `isIgnored`, `fixed`) and the
-  `PublishabilityDetector` Layer overrides live upstream. Both are
-  FileSystem-backed, so `makeAppLayer` provides `platform`
-  (`NodeContext.layer`) to each.
+- **Changesets adapter**: `services/changesets.ts` is a thin adapter over
+  `Changesets.DepsRegen` from `@savvy-web/silk-effects` (`^2.0.1`), which is the
+  source of truth for dependency changesets. `create(workspaceRoot, base)` runs
+  `depsRegen.plan({ cwd, base }) → execute` and maps written files to
+  `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR
+  `privatePackages.version`, minus the `ignore` list) lives upstream in
+  DepsRegen — this repo no longer carries `changeset-config.ts` /
+  `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as
+  `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`;
+  `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector,
+  WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and
+  `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/
+  CommandExecutor via `NodeContext.layer`) to satisfy.
 - **Errors**: `Schema.TaggedError` (`PnpmError`, `GitHubApiError`, `FileSystemError`)
 - **Entry**: `Action.run(program)` from `main.ts` (no `{ layer }` — `program`
   needs only the core services `Action.run` injects); inputs parsed via Effect
@@ -165,7 +172,7 @@ We author every first-party dependency in the table below, so a bug or missing A
 
 **Committing while a link/override is active:** commit the **full dogfood state** to `dev` — `src` + rebuilt `dist` + changeset **and** the `pnpm-workspace.yaml` override + `pnpm-lock.yaml`. The override holds a machine-specific link path, so `dev` only installs cleanly with the sibling repos checked out at the paths in the table above; that is the accepted dogfooding trade-off, and the cleanup in step 7 reverts it. No CI runs on a plain `dev` push, so the committed `dev` source may reference an unpublished library API until it publishes — expected during dogfooding. Commits must be GPG-signed with the GitHub-verified key for `C. Spencer Beggs <spencer@savvyweb.systems>` or the signature ruleset rejects them.
 
-**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its registry version (`workspaces-effect@1.1.0` already ships `WorkspaceDiscovery.refresh()`; `runtime-resolver@^0.3.10`, `semver-effect@^0.2.1`, `@savvy-web/github-action-effects@^2.0.0`, and `@savvy-web/silk-effects@^0.4.1` are all unlinked).
+**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^2.0.1`, `workspaces-effect@^2.0.1`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.20`, `@savvy-web/github-action-effects@^2.3.5`, all unlinked). The whole `Changesets.DepsRegen` chain is published.
 
 ## Development & Release Cycle
 
@@ -267,9 +274,18 @@ Packages publish to both GitHub Packages and npm with provenance.
   `target-branch` (empty → follows `source-branch`, via `resolveTargetBranch`)
   is the PR base. Both are validated by `BranchManager.validateBranches` early
   in `program.ts` — before the destructive branch delete-and-recreate
-- `Changesets.create` ignore-gates the versionable cascade: a changeset-ignored
-  package (`ChangesetConfig.isIgnored`) is skipped before the publishability
-  check, so it is never versioned even when `privatePackages.version` is set
+- `Changesets.create(workspaceRoot, base)` delegates to `Changesets.DepsRegen`
+  (from `@savvy-web/silk-effects`), which recomputes the cumulative dependency
+  diff from `merge-base(base) → worktree` and writes **one** consolidated
+  `## Dependencies` changeset per in-scope package (deleting stale pure-dep
+  changesets, leaving mixed ones untouched). Gating
+  (versionable-minus-ignored) lives entirely upstream in DepsRegen — this repo
+  no longer computes it, and the per-run `changes`/`regularUpdates`/`peerUpdates`
+  drive only reporting, not the changeset step
+- DepsRegen diffs `merge-base(target-branch) → worktree`, so the changeset step
+  needs local history for the base ref: the workflow checkout must use
+  `fetch-depth: 0`, and `BranchManager.ensureBaseHistory(target-branch)` runs as
+  a preflight (best-effort fetch/unshallow) before `Changesets.create`
 - `action.config.ts` declares pre/main/post entries and `build.ignore`s
   cyclonedx optional plugins (xmlbuilder2/libxmljs2/ajv-formats-draft2019)
 - `upgrade-package-manager` is a **string** input (`false` | `true` | `auto` | a semver

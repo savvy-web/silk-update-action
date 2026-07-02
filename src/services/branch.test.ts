@@ -398,3 +398,43 @@ describe("BranchManager.validateBranches", () => {
 		}
 	});
 });
+
+describe("BranchManager.ensureBaseHistory", () => {
+	it("is a no-op when the merge-base already resolves (no fetch)", async () => {
+		// merge-base succeeds → the base history is present, so no fetch commands
+		// need be mapped; an unmapped fetch would surface if the code fetched anyway.
+		const responses = new Map<string, CommandResponse>([
+			["git merge-base main HEAD", { exitCode: 0, stdout: "abc123\n", stderr: "" }],
+		]);
+		const { result } = runWithBranchManager(
+			Effect.gen(function* () {
+				const manager = yield* BranchManager;
+				return yield* manager.ensureBaseHistory("main");
+			}),
+			undefined,
+			responses,
+		);
+		expect(Either.isRight(await result)).toBe(true);
+	});
+
+	it("fetches and deepens, then succeeds (warns) when the base is unavailable", async () => {
+		// merge-base never resolves → the fallback fetch/unshallow/branch path runs
+		// and the effect still succeeds (best-effort, non-fatal — it warns).
+		const responses = new Map<string, CommandResponse>([
+			["git merge-base main HEAD", { exitCode: 1, stdout: "", stderr: "no merge base" }],
+			["git fetch origin +refs/heads/main:refs/remotes/origin/main", { exitCode: 0, stdout: "", stderr: "" }],
+			["git rev-parse --is-shallow-repository", { exitCode: 0, stdout: "true\n", stderr: "" }],
+			["git fetch --unshallow origin", { exitCode: 0, stdout: "", stderr: "" }],
+			["git branch -f main refs/remotes/origin/main", { exitCode: 0, stdout: "", stderr: "" }],
+		]);
+		const { result } = runWithBranchManager(
+			Effect.gen(function* () {
+				const manager = yield* BranchManager;
+				return yield* manager.ensureBaseHistory("main");
+			}),
+			undefined,
+			responses,
+		);
+		expect(Either.isRight(await result)).toBe(true);
+	});
+});

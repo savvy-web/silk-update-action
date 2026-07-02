@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { SemVer } from "semver-effect";
+import { parseValidSemVer } from "semver-effect";
 import { WorkspaceDiscovery } from "workspaces-effect";
 
 import { FileSystemError } from "../errors/errors.js";
@@ -42,8 +42,11 @@ export const computePeerRange = (params: {
 		const parsed = parseSpecifier(currentPeerSpecifier);
 		if (!parsed) return null;
 
-		const oldSemver = yield* SemVer.parse(oldVersion).pipe(Effect.catchAll(() => Effect.succeed(null)));
-		const newSemver = yield* SemVer.parse(newVersion).pipe(Effect.catchAll(() => Effect.succeed(null)));
+		// Standalone `parseValidSemVer` instead of the `SemVer.parse` static alias:
+		// that alias is attached by post-class assignment in semver-effect and gets
+		// tree-shaken out of the bundled dist (see the parseRange note in program.ts).
+		const oldSemver = yield* parseValidSemVer(oldVersion).pipe(Effect.catchAll(() => Effect.succeed(null)));
+		const newSemver = yield* parseValidSemVer(newVersion).pipe(Effect.catchAll(() => Effect.succeed(null)));
 
 		if (!oldSemver || !newSemver) return null;
 

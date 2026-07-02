@@ -35,17 +35,9 @@ importer ids into package names.
 (FileSystem/Path). Both are wired in `makeAppLayer`; integration tests build
 their own `discoveryLayer` from `NodeContext.layer` directly.
 
-### src/services/changeset-config.ts - ChangesetConfig (re-export shim)
+### Changeset gating (via @savvy-web/silk-effects DepsRegen)
 
-This module is a thin re-export shim over `@savvy-web/silk-effects`. It re-exports the library `ChangesetConfig` Tag and `ChangesetMode`, and exports `ChangesetConfigLive = LibChangesetConfigLive.pipe(Layer.provide(ChangesetConfigReaderLive))` so consumers only need to satisfy a platform `FileSystem` (the library reads `.changeset/config.json` via `@effect/platform` FileSystem, not `node:fs`).
-
-The `ChangesetConfig` service exposes `mode`, `versionPrivate`, `ignorePatterns`, `isIgnored` and `fixed`. `isIgnored(name, root)` backs the ignore gate in `Changesets.create` (see below). See `@savvy-web/silk-effects` for mode-detection and caching semantics.
-
-### src/services/publishability.ts - PublishabilityDetector overrides (re-export shim)
-
-This module is a thin re-export shim: `export { PublishabilityDetectorAdaptiveLive, SilkPublishabilityDetectorLive } from "@savvy-web/silk-effects"`. The silk rules and the adaptive dispatcher live in the shared library. Both layers override `workspaces-effect`'s `PublishabilityDetector` Tag and are FileSystem-based: `PublishabilityDetectorAdaptiveLive` requires `FileSystem | ChangesetConfig` and dispatches per-call on `ChangesetConfig.mode` (silk / vanilla / none). `makeAppLayer` wires the adaptive variant. See `@savvy-web/silk-effects` for the silk rule details.
-
-The versionable cascade (publishable OR `versionPrivate`) plus the ignore gate live inline in `Changesets.create` — they are silk-changesets-specific and short enough not to need their own service.
+The dependency-changeset step delegates entirely to silk's `Changesets.DepsRegen` — see the `Changesets` service below. All gating (versionable-minus-ignored: publishable OR `privatePackages.version`, minus the changeset `ignore` list) lives **upstream inside DepsRegen**. The action no longer wraps `ChangesetConfig` or the `PublishabilityDetector` overrides: the former `services/changeset-config.ts` and `services/publishability.ts` re-export shims are deleted, and DepsRegen's batteries-included Layer (`DepsRegenDefault`) provides those services internally.
 
 ### src/services/branch.ts - BranchManager
 
@@ -62,6 +54,8 @@ export class BranchManager extends Context.Tag("BranchManager")<BranchManager, {
   Effect.Effect<void, GitCommitError | CommandRunnerError>;
  readonly validateBranches: (source: string, target: string) =>
   Effect.Effect<void, GitBranchError | ActionInputError>;
+ readonly ensureBaseHistory: (base: string) =>
+  Effect.Effect<void, CommandRunnerError>;
 }>() {}
 ```
 
@@ -85,6 +79,15 @@ author so GitHub verifies it), and updates the branch ref. After committing,
 the working tree is synced via `git fetch origin <branch>` + `git reset --hard
 origin/<branch>` because `git checkout` would refuse to overwrite the
 just-committed working-copy state.
+
+**Base-history preflight:** `ensureBaseHistory(base)` probes
+`git merge-base <base> HEAD`; if it resolves (the `fetch-depth: 0` case) it is
+a no-op.
+Otherwise it best-effort fetches the base ref, unshallows a shallow clone and
+materializes a local `base` ref, then warns (non-fatal) if the merge-base is
+still missing. `program.ts` calls it before the changeset step because silk's
+`DepsRegen` diffs `merge-base(base) → worktree`, which a shallow checkout
+cannot resolve.
 
 ### src/services/workspace-yaml.ts - WorkspaceYaml
 
@@ -299,9 +302,11 @@ removals), reading dep section from the `after` snapshot to type each entry.
 
 ### src/services/changesets.ts - Changesets
 
-Create changeset files for affected packages after dependency updates.
-Depends on `WorkspaceDiscovery` (from `workspaces-effect`),
-`PublishabilityDetector` (from `workspaces-effect`), and `ChangesetConfig`.
+A **thin adapter** over silk's `Changesets.DepsRegen` (from
+`@savvy-web/silk-effects`), which is the source of truth for dependency
+changesets. Depends only on `SilkChangesets.DepsRegen`. The bespoke changeset
+writer and the local gating cascade this file used to carry are gone — see
+`src/services/changesets.ts` for the adapter.
 
 **Service interface:**
 
@@ -309,49 +314,34 @@ Depends on `WorkspaceDiscovery` (from `workspaces-effect`),
 export class Changesets extends Context.Tag("Changesets")<Changesets, {
  readonly create: (
   workspaceRoot: string,
-  lockfileChanges: ReadonlyArray<LockfileChange>,
-  regularUpdates?: ReadonlyArray<DependencyUpdateResult>,
-  peerUpdates?: ReadonlyArray<DependencyUpdateResult>,
- ) => Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError | FileSystemError>;
+  base: string,
+ ) => Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError>;
 }>() {}
 ```
 
-`workspaceRoot` is the **first** parameter. `regularUpdates` carries the
-dependency/devDependency/optionalDependency updates from the multi-section
-RegularDeps scan.
+`create(workspaceRoot, base)` calls `depsRegen.plan({ cwd: workspaceRoot, base })`
+then `execute(plan)`, and maps `result.written` back to `ChangesetFile[]` for
+reporting — reconstructing each `## Dependencies` table via
+`SilkChangesets.serializeDependencyTableToMarkdown`. DepsRegen failures
+(`GitError`, `WorkspaceDiscoveryError`, `ChangesetIOError`,
+`PointInTimeReadError`) are collapsed into the local `ChangesetError` via
+`Effect.mapError`. `base` is the resolved `target-branch` (the release
+baseline) — the anchor for DepsRegen's `merge-base(base) → worktree` diff.
 
-**Gating rules:**
+**Behavior (all upstream in DepsRegen):**
 
-- Skips entirely if no `.changeset/` directory exists at `workspaceRoot`.
-- For each workspace package, builds per-package `triggerRows` and `devRows`:
-  - `dependency`, `optionalDependency`, and `peerDependency` lockfile
-    changes are **triggers**; `devDependency` lockfile changes are
-    informational only.
-  - Peer-sync `peerUpdates` are always triggers (with `type:
-    "peerDependency"`).
-  - `regularUpdates` are routed by `update.type` against the same
-    `TRIGGER_TYPES` set used for lockfile changes:
-    `dependency`/`optionalDependency`/`peerDependency` go to
-    `triggerRows`; `devDependency` goes to `devRows`. `updateToRow`
-    honors `from === null` for the "added" action and uses `update.type`
-    directly when no override is provided.
-- A changeset is emitted for a package only when it has at least one
-  trigger row, the package is **not changeset-ignored**, AND the package is
-  **versionable**:
-  - **Ignore gate:** `ChangesetConfig.isIgnored(pkg.name, workspaceRoot)` is
-    checked first (before the publishability check). A package listed in
-    `.changeset/config.json`'s `ignore` array is skipped entirely — the
-    ignore list wins even when `privatePackages.version: true`, so an ignored
-    package is never versioned.
-  - `versionable = publishable || versionPrivate`, where:
-    - `publishable` = `PublishabilityDetector.detect(...)` returns at least
-      one target (silk rules, vanilla rules, or none-mode noop, depending on
-      `ChangesetConfig.mode`).
-    - `versionPrivate` = `ChangesetConfig.versionPrivate(workspaceRoot)`
-      (i.e. `.changeset/config.json` has `privatePackages.version: true`).
-- Empty changesets are not written.
-- Each emitted changeset's body is a single Markdown table covering both
-  trigger and informational rows, deduplicated by `(dependency, type)`.
+- The adapter short-circuits with an empty result when no `.changeset/`
+  directory exists (`hasChangesets` guard).
+- Content is DepsRegen's cumulative git diff (`merge-base(base) → worktree`,
+  catalog-/workspace-aware). It writes one consolidated dependency changeset
+  per in-scope package and deletes stale pure-dependency changesets, so
+  re-firing converges to a single current table per package (idempotent).
+  devDependency rows are dropped; mixed changesets (Dependencies table +
+  prose) are left untouched.
+- Gating is silk "versionable-minus-ignored" (publishable OR
+  `privatePackages.version`, minus the changeset `ignore` list), applied
+  inside DepsRegen. The action no longer re-implements the ignore gate,
+  versionable cascade or trigger/informational classification.
 
 **Exported helper:**
 
@@ -483,15 +473,12 @@ export const makeAppLayer = (
   Layer.provide(Layer.merge(workspaceRoot, platform)),
  );
 
- // ChangesetConfigLive (silk-effects, FileSystem-backed via its reader) and
- // PublishabilityDetectorAdaptiveLive both require a platform FileSystem;
- // provide the existing `platform` (NodeContext.layer) to both.
- const changesetConfig = ChangesetConfigLive.pipe(Layer.provide(platform));
- // PublishabilityDetectorAdaptiveLive overrides PublishabilityDetector and
- // reads ChangesetConfig.mode per-call to dispatch to silk/vanilla/noop.
- const publishabilityDetector = PublishabilityDetectorAdaptiveLive.pipe(
-  Layer.provide(Layer.merge(changesetConfig, platform)),
- );
+ // DepsRegen (silk-effects) is the source of truth for dependency changesets.
+ // DepsRegenDefault is batteries-included — it bundles the point-in-time
+ // workspace reader, ConfigInspector, WorkspaceDiscovery, the adaptive
+ // PublishabilityDetector and ChangesetConfig internally, so it needs only
+ // platform services (FileSystem/Path/CommandExecutor from NodeContext.layer).
+ const depsRegen = SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform));
 
  const libraryLayers = Layer.mergeAll(
   githubClient, gitBranch, gitCommit,
@@ -506,9 +493,7 @@ export const makeAppLayer = (
 
  const domainLayers = Layer.mergeAll(
   workspaceDiscovery,
-  changesetConfig,
-  publishabilityDetector,
-  ChangesetsLive.pipe(Layer.provide(Layer.mergeAll(workspaceDiscovery, publishabilityDetector, changesetConfig))),
+  ChangesetsLive.pipe(Layer.provide(depsRegen)),
   BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
   PnpmUpgradeLive.pipe(Layer.provide(CommandRunnerLive)),
   ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
@@ -523,9 +508,16 @@ export const makeAppLayer = (
 
 `WorkspaceDiscoveryLive` and `WorkspaceRootLive` come from
 `workspaces-effect`; `NodeContext.layer` (from `@effect/platform-node`)
-satisfies their FileSystem/Path requirements.
+satisfies their FileSystem/Path requirements. The action still wires
+`workspaceDiscovery` directly for `RegularDeps` — the changeset step no longer
+consumes it, since `DepsRegenDefault` bundles its own discovery internally.
 
-`ChangesetConfigLive` and `PublishabilityDetectorAdaptiveLive` (both re-exported from `@savvy-web/silk-effects`) are FileSystem-based — they read `.changeset/config.json` and package manifests via `@effect/platform` FileSystem rather than `node:fs`, so the same `platform` (`NodeContext.layer`) is provided to both. `ChangesetConfigLive` carries its own `ChangesetConfigReaderLive` (composed in the shim), leaving only the FileSystem requirement for `makeAppLayer` to satisfy.
+`Changesets.DepsRegenDefault` (from `@savvy-web/silk-effects`) is
+FileSystem-based — it reads `.changeset/config.json`, package manifests and the
+git worktree via `@effect/platform` FileSystem/CommandExecutor rather than
+`node:fs`, so `makeAppLayer` provides the same `platform` (`NodeContext.layer`)
+and nothing else. The former hand-wired `changesetConfig` / `publishabilityDetector`
+locals are gone.
 
 ## Pure Helpers (src/utils/)
 
