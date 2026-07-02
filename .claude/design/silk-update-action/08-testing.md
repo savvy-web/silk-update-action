@@ -29,9 +29,13 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
   rewriting (including `auto` no-op on static pins, missing-entry insertion,
   shape promotion and per-runtime resolver-failure resilience).
 - **Lockfile and changesets** (`lockfile.test.ts`, `changesets.test.ts`) —
-  catalog and importer comparison emitting per-importer, per-section triples;
-  trigger-vs-informational classification, `regularUpdates` routing by
-  `update.type`, the versionable cascade and empty-changeset suppression.
+  `lockfile.test.ts` covers catalog and importer comparison emitting
+  per-importer, per-section triples. `changesets.test.ts` exercises only the
+  DepsRegen **adapter plumbing** against a mock `Changesets.DepsRegen`: the
+  `.changeset/` guard, the `plan({ cwd, base }) → execute` call, the
+  `written → ChangesetFile` mapping and error mapping. The gating cascade,
+  catalog-aware diffing and consolidation live upstream and are tested in
+  `@savvy-web/silk-effects`.
 - **Reporting and formatting** (`report.test.ts`, `workspace-yaml.test.ts`) — PR
   creation/update, commit-message and summary generation, and YAML sorting/round
   -tripping.
@@ -39,12 +43,12 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
   `utils/semver.test.ts`, `utils/fixtures.test.ts`, `services/branch.test.ts`) —
   multi-value input parsing, `devEngines.runtime` helper functions,
   `configDepUpgradeRange` / range-resolution helpers, shared fixtures, and branch
-  lifecycle via the `GitBranch` / `GitCommit` library services.
+  lifecycle via the `GitBranch` / `GitCommit` library services (including the
+  `ensureBaseHistory` merge-base probe / fetch fallback).
 
-`changeset-config.ts` and `publishability.ts` are re-export shims with no unit
-suites of their own — mode detection, `versionPrivate`/`isIgnored`/`fixed`
-plumbing and the silk publishability rules are tested in `@savvy-web/silk-effects`
-and exercised here indirectly through `changeset-emission.int.test.ts` (below),
+Gating semantics (silk vs vanilla mode, `versionPrivate`/`isIgnored`/`fixed`
+plumbing, the publishability rules) live in `@savvy-web/silk-effects` and are
+exercised here indirectly through `changeset-emission.int.test.ts` (below),
 which doubles as an upstream-drift canary. Workspace discovery is exercised via
 `__test__/integration/workspaces.int.test.ts`, which runs `WorkspaceDiscoveryLive`
 against real fixtures.
@@ -114,16 +118,18 @@ const discoveryLayer = WorkspaceDiscoveryLive.pipe(
 - `lockfile-compare.int.test.ts` — Exercises `compareLockfiles` against
   paired `pnpm-lock.before.yaml` / `pnpm-lock.after.yaml` fixtures
   covering catalog and importer change shapes.
-- `changeset-emission.int.test.ts` — Exercises the full
-  `Changesets.create` gating cascade against fixtures with varying
-  publishability and `versionPrivate` settings. Because the silk publishability
-  rules and `ChangesetConfig` live in `@savvy-web/silk-effects`, this suite
-  doubles as an upstream-drift canary — it wires the real silk
-  `ChangesetConfigLive` / `PublishabilityDetectorAdaptiveLive` (over
-  `NodeContext.layer`) and asserts end-to-end emission behavior. The
-  `silk-ignored-versionable` fixture covers the ignore gate: an
-  `ignore`-listed leaf is gated out despite `privatePackages.version: true`,
-  while a non-ignored sibling still emits a changeset.
+- `changeset-emission.int.test.ts` — Drives the action's `Changesets` service
+  through the **real** silk `Changesets.DepsRegenDefault` layer (the same one
+  `makeAppLayer` wires) against a throwaway git repo. Because DepsRegen reads
+  git history (`PointInTimeWorkspace.at`) and the working tree, each scenario
+  commits a base state on `main`, mutates the worktree, then regenerates against
+  `base = "main"`. It pins, from the consumer side: a publishable package emits
+  a changeset through the default layer; accumulated pure-dependency changesets
+  consolidate to one current table on re-fire; a catalog-only bump still
+  surfaces a row with concrete versions; and a non-versionable package is gated
+  out. The exhaustive gating matrix (silk vs vanilla mode, publish targets,
+  ignore, `versionPrivate`) lives in `@savvy-web/silk-effects` — this suite is
+  the upstream-drift canary for the wiring, consolidation and catalog-awareness.
 - `runtime-upgrade.int.test.ts` — Runs `RuntimeUpgrade.upgrade` against the
   real `Offline*CacheLive` layers from `runtime-resolver` (no network) over a
   temp `package.json`. Acts as an upstream-drift canary for the bundled cache:

@@ -18,7 +18,7 @@ import {
 	CommandRunner,
 } from "@savvy-web/github-action-effects";
 import { Config, Duration, Effect, LogLevel, Logger } from "effect";
-import { Range } from "semver-effect";
+import { parseRange } from "semver-effect";
 import { makeAppLayer } from "./layers/app.js";
 import type { ChangesetFile, DependencyUpdateResult, PullRequestResult } from "./schemas/domain.js";
 import { BranchManager } from "./services/branch.js";
@@ -167,7 +167,11 @@ export const program = Effect.gen(function* () {
 		["upgrade-package-manager", upgradePackageManager, ["true", "false", "auto"]],
 	] as const) {
 		if (!(keywords as ReadonlyArray<string>).includes(value)) {
-			yield* Range.parse(value).pipe(
+			// Use the standalone `parseRange` (identical to `Range.parse`) — the
+			// `Range.parse = parseRange` static alias is attached by post-class
+			// assignment in semver-effect and gets tree-shaken out of the bundled
+			// dist, so calling it fails at runtime with "Range.parse is not a function".
+			yield* parseRange(value).pipe(
 				Effect.mapError(
 					(e) =>
 						new ActionInputError({
@@ -515,8 +519,16 @@ const innerProgram = (
 						let changesets: ReadonlyArray<ChangesetFile> = [];
 						if (inputs.changesets) {
 							yield* Effect.logInfo("Step 11: Creating changesets");
+							// DepsRegen diffs against merge-base(target-branch); make sure that
+							// history is available locally before it runs (no-op on a
+							// fetch-depth: 0 checkout of the target).
+							yield* branchManager.ensureBaseHistory(inputs.targetBranch);
 							const changesetsService = yield* Changesets;
-							changesets = yield* changesetsService.create(process.cwd(), changes, regularUpdates, peerUpdates);
+							// DepsRegen recomputes the cumulative dependency diff from
+							// merge-base(target-branch) → worktree and consolidates/dedupes
+							// existing pure-dep changesets. The per-run `changes`/
+							// `regularUpdates`/`peerUpdates` still drive reporting below.
+							changesets = yield* changesetsService.create(process.cwd(), inputs.targetBranch);
 						} else {
 							yield* Effect.logInfo("Step 11: Skipping changesets (disabled)");
 						}

@@ -26,8 +26,7 @@ src/
 ├── services/
 │   ├── branch.ts          # BranchManager service (Context.Tag)
 │   ├── branch.test.ts
-│   ├── changeset-config.ts # re-export shim → @savvy-web/silk-effects ChangesetConfig
-│   ├── changesets.ts      # Changesets service (versionable + ignore + trigger gating)
+│   ├── changesets.ts      # Changesets service (thin adapter over silk DepsRegen)
 │   ├── changesets.test.ts
 │   ├── config-deps.ts     # ConfigDeps service
 │   ├── config-deps.test.ts
@@ -37,7 +36,6 @@ src/
 │   ├── peer-sync.test.ts
 │   ├── pnpm-upgrade.ts    # PnpmUpgrade service
 │   ├── pnpm-upgrade.test.ts
-│   ├── publishability.ts  # re-export shim → @savvy-web/silk-effects detector overrides
 │   ├── regular-deps.ts    # RegularDeps service
 │   ├── regular-deps.test.ts
 │   ├── report.ts          # Report service (PR, summary, commit msg)
@@ -78,20 +76,23 @@ src/
   `makeAppLayer(dryRun, { runtimeLive })` which wires all library layers (from
   `@savvy-web/github-action-effects`), upstream `WorkspaceDiscoveryLive` +
   `WorkspaceRootLive` from `workspaces-effect` (provided by `NodeContext.layer`
-  from `@effect/platform-node`), the `PublishabilityDetector` override and
-  `ChangesetConfig` from `@savvy-web/silk-effects` (both FileSystem-based, also
-  provided `NodeContext.layer`), runtime-resolver cache layers
-  (`Offline*CacheLive` or `Auto*CacheLive` depending on `runtimeLive`), and
-  domain service layers together. The `GitHubClient` layer is built from
-  `GitHubToken.client()`, which reads the installation token envelope `pre`
-  persisted to `ActionState` — there is no bare `GitHubClientLive` and no
-  `process.env.GITHUB_TOKEN` bridge.
+  from `@effect/platform-node`), silk's `Changesets.DepsRegenDefault` from
+  `@savvy-web/silk-effects` (a batteries-included Layer needing only platform
+  services, which bundles the point-in-time workspace reader, ConfigInspector,
+  WorkspaceDiscovery, the adaptive PublishabilityDetector and ChangesetConfig
+  internally), runtime-resolver cache layers (`Offline*CacheLive` or
+  `Auto*CacheLive` depending on `runtimeLive`), and domain service layers
+  together. The `GitHubClient` layer is built from `GitHubToken.client()`,
+  which reads the installation token envelope `pre` persisted to `ActionState`
+  — there is no bare `GitHubClientLive` and no `process.env.GITHUB_TOKEN`
+  bridge.
 - **No barrel re-exports:** Direct imports everywhere. No `index.ts` files.
 - **Tests co-located:** Each `.ts` file has a `.test.ts` sibling in the same directory.
-- **Workspace enumeration:** All workspace enumeration goes through the upstream
-  `WorkspaceDiscovery` Tag from `workspaces-effect`, consumed directly by
-  `RegularDeps`, `PeerSync`, `Lockfile` and `Changesets` via its
-  `listPackages(cwd?)` and `importerMap(cwd?)` methods.
+- **Workspace enumeration:** All direct workspace enumeration goes through the
+  upstream `WorkspaceDiscovery` Tag from `workspaces-effect`, consumed by
+  `RegularDeps`, `PeerSync` and `Lockfile` via its `listPackages(cwd?)` and
+  `importerMap(cwd?)` methods. `Changesets` no longer enumerates directly — its
+  workspace/point-in-time reads happen inside silk's `DepsRegen`.
 
 ## Data Flow
 
@@ -129,7 +130,8 @@ graph TD
     T --> T2{Changes Detected?}
     T2 -->|No| U[Exit Early]
     T2 -->|Yes| V{changesets input AND .changeset/ dir?}
-    V -->|Yes| W[Changesets.create — ignore + versionable + trigger gating]
+    V -->|Yes| VB[BranchManager.ensureBaseHistory target]
+    VB --> W[Changesets.create cwd, target — silk DepsRegen plan+execute]
     V -->|No| X[BranchManager.commitChanges]
     W --> X
     X --> Y[Report.createOrUpdatePR]
@@ -186,7 +188,7 @@ log messages.
   (`utils/branch.ts`).
 - The `upgrade-runtime-*` inputs (`false` | `auto` | a semver range) and the
   `upgrade-package-manager` input (`false` | `true` | `auto` | a semver range) are validated
-  via `Range.parse` from `semver-effect` when an explicit range is provided
+  via the standalone `parseRange` from `semver-effect` when an explicit range is provided
   (any value that is not one of the input's allowed keywords). The
   `runtime-data` input selects the resolver layer wired in `makeAppLayer`.
 
@@ -210,11 +212,12 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 - Workspace layers from `workspaces-effect`: `WorkspaceDiscoveryLive`,
   `WorkspaceRootLive` (both provided with `NodeContext.layer` from
   `@effect/platform-node` for FileSystem/Path).
-- Silk layers from `@savvy-web/silk-effects` (re-exported via local shims):
-  `ChangesetConfigLive` and the `PublishabilityDetector` override
-  `PublishabilityDetectorAdaptiveLive` (which consults `ChangesetConfig.mode`
-  per call and dispatches to silk / vanilla / noop detection). Both are
-  FileSystem-based and provided `NodeContext.layer`.
+- Silk changeset layer from `@savvy-web/silk-effects`:
+  `Changesets.DepsRegenDefault`, the batteries-included Layer backing the
+  `Changesets` service. It bundles the point-in-time workspace reader,
+  ConfigInspector, WorkspaceDiscovery, the adaptive PublishabilityDetector and
+  ChangesetConfig internally, so `makeAppLayer` only provides platform services
+  (`NodeContext.layer`).
 - Domain layers: `BranchManagerLive`, `PnpmUpgradeLive`, `ConfigDepsLive`,
   `RegularDepsLive`, `ChangesetsLive`, `ReportLive`, `RuntimeUpgradeLive`.
 - Runtime resolver layers from `runtime-resolver`: `Offline*CacheLive` (default,
@@ -334,10 +337,11 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 - For each devDep update matching `peer-lock` or `peer-minor` input:
   - `peer-lock`: Sync peer range on every version bump.
   - `peer-minor`: Sync peer range only on minor+ bumps (floor patch to .0).
-- Uses `semver-effect` (`SemVer.parse`) for version parsing.
+- Uses the standalone `parseValidSemVer` from `semver-effect` for version parsing.
 - Produces `DependencyUpdateResult[]` records of type `peerDependency` that
-  flow into `allUpdates` for reporting and into `Changesets.create` as
-  changeset triggers.
+  flow into `allUpdates` for PR / commit / summary reporting. They no longer
+  feed the changeset step — DepsRegen derives changeset content from its own
+  git diff (Step 14).
 
 ### Step 9: Regenerate Lockfile and Install
 
@@ -386,11 +390,13 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 
 ### Step 13: Detect Changes
 
-- `compareLockfiles(before, after, workspaceRoot?)` produces `LockfileChange[]`.
-  Catalog comparison emits **one record per (catalog change, consuming
-  importer, dep section) triple** with the precise type field
-  (`dependency` / `devDependency` / `optionalDependency` / `peerDependency`)
-  so downstream Changesets gating can use `type` alone as the trigger signal.
+- `compareLockfiles(before, after, workspaceRoot?)` produces `LockfileChange[]`,
+  used together with `git status --porcelain` to gate the early exit and to
+  report changes. Catalog comparison still emits **one record per (catalog
+  change, consuming importer, dep section) triple** carrying the precise type
+  field (`dependency` / `devDependency` / `optionalDependency` /
+  `peerDependency`). These records no longer feed the changeset step — content
+  for changesets now comes from DepsRegen's own git diff (Step 14).
 - `allUpdates` is the concatenation of `configUpdatesFromPnpm`,
   `configUpdates`, `regularUpdates`, `peerUpdates`, and `runtimeUpdates`.
 - Also checks `git status --porcelain` to detect any other modified files.
@@ -399,29 +405,28 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 ### Step 14: Create Changesets (conditional)
 
 - Skipped if `changesets` input is `false` (default: `true`).
-- `Changesets.create(workspaceRoot, lockfileChanges, regularUpdates,
-  peerUpdates)` takes `workspaceRoot` first. `regularUpdates` carries the
-  dependency/devDependency/optionalDependency updates from the multi-section
-  RegularDeps scan.
-- Gating rules:
-  - Skips entirely if no `.changeset/` directory exists.
-  - For each workspace package, builds per-package `triggerRows` and
-    `devRows`. `dependency`, `optionalDependency`, and `peerDependency`
-    lockfile changes are **triggers**; `devDependency` lockfile changes
-    are informational only.
-  - Peer-sync updates are always triggers. `regularUpdates` are routed
-    by `update.type`: `dependency`/`optionalDependency`/`peerDependency`
-    go to triggers, `devDependency` goes to informational rows only. The
-    routing uses the same `TRIGGER_TYPES` set as lockfile changes so a
-    `peerDependency` arriving via either path is treated identically.
-  - A changeset-ignored package (listed in `.changeset/config.json`'s
-    `ignore` array, checked via `ChangesetConfig.isIgnored`) is skipped
-    entirely before the publishability check — the ignore list wins even
-    when `privatePackages.version: true`.
-  - A non-ignored package gets a changeset only when it has at least one
-    trigger row AND it is **versionable** (publishable per
-    `PublishabilityDetector`, OR `versionPrivate` per `ChangesetConfig`).
-  - Empty changesets are not written.
+- The `Changesets` service is a thin adapter over silk's
+  `Changesets.DepsRegen` — see `src/services/changesets.ts`. `create(cwd, base)`
+  takes the workspace root and the diff baseline (the resolved `target-branch`,
+  i.e. the release baseline), calls `depsRegen.plan({ cwd, base })` then
+  `execute(plan)`, and maps `result.written` back to `ChangesetFile[]` for
+  reporting (reconstructing each `## Dependencies` table via
+  `SilkChangesets.serializeDependencyTableToMarkdown`).
+- Before calling `create`, `program.ts` runs
+  `BranchManager.ensureBaseHistory(base)` so the `merge-base(base) → worktree`
+  diff can resolve even on a shallow checkout. A `fetch-depth: 0` checkout of
+  the base ref satisfies this without any fetch.
+- The per-run `changes` / `regularUpdates` / `peerUpdates` are **no longer
+  inputs** to the changeset step — DepsRegen derives content from the git diff.
+  They still drive the PR / commit / summary reporting via `allUpdates`.
+- **Gating lives upstream in DepsRegen** ("versionable-minus-ignored":
+  publishable OR `privatePackages.version`, minus the changeset `ignore` list).
+  The action no longer carries its own ignore gate, versionable cascade or
+  trigger/informational classification. DepsRegen writes one consolidated
+  dependency changeset per in-scope package, deletes stale pure-dependency
+  changesets (idempotent across re-fires), drops devDependency rows and leaves
+  mixed changesets (Dependencies table + prose) untouched. The adapter still
+  short-circuits with an empty result when no `.changeset/` directory exists.
 
 ### Step 15: Commit, Push, and Create PR
 

@@ -1,29 +1,33 @@
 /**
- * Changesets service for creating changeset files after dependency updates.
+ * Changesets service — a thin adapter over `@savvy-web/silk-effects`'
+ * `Changesets.DepsRegen`, which is the source of truth for dependency
+ * changesets.
  *
- * A workspace package gets a changeset only when it is versionable
- * (publishable OR versionPrivate) AND a consumer-facing change occurred.
- * Triggers are non-dev LockfileChange records (dependency,
- * optionalDependency, peerDependency), peer-sync rewrites, and any
- * regularUpdates whose `type` is dependency/optionalDependency/peerDependency.
- * devDependency rows (from lockfile changes or regularUpdates) are
- * informational only and never themselves trigger a changeset. Empty
- * changesets are not written.
+ * DepsRegen recomputes the cumulative dependency diff from
+ * `merge-base(base) → working tree` (catalog-/workspace-aware), writes **one**
+ * consolidated `## Dependencies` changeset per in-scope package, and deletes
+ * every stale *pure-dependency* changeset it finds — so re-firing the action
+ * against an accumulation of pure-dep changesets converges to a single current
+ * table per package instead of piling up duplicates. Mixed changesets
+ * (Dependencies table + prose) are detected and left untouched.
+ *
+ * Gating (versionable-minus-ignored: publishable OR `privatePackages.version`,
+ * minus the changeset `ignore` list) lives upstream in DepsRegen — this action
+ * no longer carries its own predicate. Content comes from the git diff, so the
+ * per-run `lockfileChanges`/`regularUpdates`/`peerUpdates` are no longer inputs
+ * to the changeset step; they continue to drive the PR/commit/summary reporting
+ * pipeline in `program.ts`.
  *
  * @module services/changesets
  */
 
-import { randomBytes } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, join } from "node:path";
+import { Changesets as SilkChangesets } from "@savvy-web/silk-effects";
 import { Context, Effect, Layer } from "effect";
-import type { WorkspacePackage } from "workspaces-effect";
-import { PublishabilityDetector, WorkspaceDiscovery } from "workspaces-effect";
 
-import type { ChangesetError } from "../errors/errors.js";
-import { FileSystemError } from "../errors/errors.js";
-import type { ChangesetFile, DependencyUpdateResult, LockfileChange } from "../schemas/domain.js";
-import { ChangesetConfig } from "./changeset-config.js";
+import { ChangesetError } from "../errors/errors.js";
+import type { ChangesetFile } from "../schemas/domain.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Service Interface
@@ -32,12 +36,19 @@ import { ChangesetConfig } from "./changeset-config.js";
 export class Changesets extends Context.Tag("Changesets")<
 	Changesets,
 	{
+		/**
+		 * Regenerate dependency changesets for the workspace.
+		 *
+		 * @param workspaceRoot - Project root containing `.changeset/`.
+		 * @param base - Base branch for the `merge-base(base) → worktree` diff
+		 *   window (the resolved `target-branch`, i.e. the release baseline). A
+		 *   window anchored at the release baseline spans every unreleased change,
+		 *   which is what makes consolidation correct rather than trimming.
+		 */
 		readonly create: (
 			workspaceRoot: string,
-			lockfileChanges: ReadonlyArray<LockfileChange>,
-			regularUpdates?: ReadonlyArray<DependencyUpdateResult>,
-			peerUpdates?: ReadonlyArray<DependencyUpdateResult>,
-		) => Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError | FileSystemError>;
+			base: string,
+		) => Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError>;
 	}
 >() {}
 
@@ -58,88 +69,12 @@ export const hasChangesets = (workspaceRoot: string = process.cwd()): boolean =>
 export const ChangesetsLive = Layer.effect(
 	Changesets,
 	Effect.gen(function* () {
-		const discovery = yield* WorkspaceDiscovery;
-		const detector = yield* PublishabilityDetector;
-		const config = yield* ChangesetConfig;
+		const depsRegen = yield* SilkChangesets.DepsRegen;
 		return {
-			create: (workspaceRoot, lockfileChanges, regularUpdates = [], peerUpdates = []) =>
-				createChangesetsImpl(workspaceRoot, lockfileChanges, regularUpdates, peerUpdates, discovery, detector, config),
+			create: (workspaceRoot, base) => createChangesetsImpl(workspaceRoot, base, depsRegen),
 		};
 	}),
 );
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Internal Helpers
-// ══════════════════════════════════════════════════════════════════════════════
-
-const TRIGGER_TYPES: ReadonlySet<LockfileChange["type"]> = new Set([
-	"dependency",
-	"optionalDependency",
-	"peerDependency",
-]);
-
-const EM_DASH = "—";
-
-interface ChangesetTableRow {
-	readonly dependency: string;
-	readonly type: string;
-	readonly action: string;
-	readonly from: string | null;
-	readonly to: string;
-}
-
-interface PerPackage {
-	triggerRows: ChangesetTableRow[];
-	devRows: ChangesetTableRow[];
-}
-
-const formatRowsAsTable = (rows: ReadonlyArray<ChangesetTableRow>): string => {
-	const lines = [
-		"## Dependencies",
-		"",
-		"| Dependency | Type | Action | From | To |",
-		"| :--- | :--- | :--- | :--- | :--- |",
-	];
-	for (const row of rows) {
-		lines.push(`| ${row.dependency} | ${row.type} | ${row.action} | ${row.from ?? EM_DASH} | ${row.to} |`);
-	}
-	return lines.join("\n");
-};
-
-const generateChangesetId = (): string => {
-	const adjectives = ["brave", "calm", "eager", "fair", "giant", "happy", "jolly", "kind", "lucky", "merry"];
-	const nouns = ["apple", "beach", "cloud", "dream", "eagle", "flame", "grape", "heart", "island", "jewel"];
-	const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-	const noun = nouns[Math.floor(Math.random() * nouns.length)];
-	const suffix = randomBytes(4).toString("hex");
-	return `${adj}-${noun}-${suffix}`;
-};
-
-const lockfileChangeToRow = (c: LockfileChange): ChangesetTableRow => ({
-	dependency: c.dependency,
-	type: c.type,
-	action: c.from === null ? "added" : "updated",
-	from: c.from,
-	to: c.to,
-});
-
-const updateToRow = (u: DependencyUpdateResult, typeOverride?: string): ChangesetTableRow => ({
-	dependency: u.dependency,
-	type: typeOverride ?? u.type,
-	action: u.from === null ? "added" : "updated",
-	from: u.from,
-	to: u.to,
-});
-
-const dedupeRows = (rows: ChangesetTableRow[]): ChangesetTableRow[] => {
-	const seen = new Set<string>();
-	return rows.filter((row) => {
-		const key = `${row.dependency}|${row.type}`;
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
-};
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Implementation
@@ -147,113 +82,47 @@ const dedupeRows = (rows: ChangesetTableRow[]): ChangesetTableRow[] => {
 
 const createChangesetsImpl = (
 	workspaceRoot: string,
-	lockfileChanges: ReadonlyArray<LockfileChange>,
-	regularUpdates: ReadonlyArray<DependencyUpdateResult>,
-	peerUpdates: ReadonlyArray<DependencyUpdateResult>,
-	discovery: Context.Tag.Service<typeof WorkspaceDiscovery>,
-	detector: Context.Tag.Service<typeof PublishabilityDetector>,
-	config: Context.Tag.Service<typeof ChangesetConfig>,
-): Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError | FileSystemError> =>
+	base: string,
+	depsRegen: typeof SilkChangesets.DepsRegen.Service,
+): Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError> =>
 	Effect.gen(function* () {
 		if (!hasChangesets(workspaceRoot)) {
 			yield* Effect.logInfo("Repository does not use changesets, skipping changeset creation");
 			return [];
 		}
 
-		const allPackages = yield* discovery.listPackages(workspaceRoot).pipe(
-			Effect.catchAll((error) =>
-				Effect.gen(function* () {
-					yield* Effect.logWarning(`Failed to list workspace packages: ${String(error)}`);
-					return [] as ReadonlyArray<WorkspacePackage>;
-				}),
-			),
-		);
+		// plan() is side-effect-free; execute() writes fresh changesets first, then
+		// deletes stale pure-dep ones (crash-safe, idempotent across re-fires).
+		const plan = yield* depsRegen.plan({ cwd: workspaceRoot, base });
+		const result = yield* depsRegen.execute(plan);
 
-		// Group changes per package
-		const perPackage = new Map<string, PerPackage>();
-		const ensure = (name: string): PerPackage => {
-			let entry = perPackage.get(name);
-			if (!entry) {
-				entry = { triggerRows: [], devRows: [] };
-				perPackage.set(name, entry);
-			}
-			return entry;
-		};
-
-		for (const change of lockfileChanges) {
-			if (change.type === "config") continue;
-			const isTrigger = TRIGGER_TYPES.has(change.type);
-			for (const pkg of change.affectedPackages) {
-				const entry = ensure(pkg);
-				if (isTrigger) {
-					entry.triggerRows.push(lockfileChangeToRow(change));
-				} else {
-					entry.devRows.push(lockfileChangeToRow(change));
-				}
-			}
-		}
-
-		for (const update of peerUpdates) {
-			if (!update.package) continue;
-			ensure(update.package).triggerRows.push(updateToRow(update, "peerDependency"));
-		}
-
-		// regularUpdates carry the real section type (dependency / devDependency
-		// / optionalDependency). Route by type — non-dev types are triggers,
-		// devDependency is informational only.
-		for (const update of regularUpdates) {
-			if (!update.package) continue;
-			const isTrigger = TRIGGER_TYPES.has(update.type as LockfileChange["type"]);
-			const row = updateToRow(update);
-			if (isTrigger) {
-				ensure(update.package).triggerRows.push(row);
-			} else {
-				ensure(update.package).devRows.push(row);
-			}
-		}
-
-		const changesetDir = join(workspaceRoot, ".changeset");
-		const out: ChangesetFile[] = [];
-
-		for (const pkg of allPackages) {
-			const entry = perPackage.get(pkg.name);
-			if (!entry || entry.triggerRows.length === 0) continue;
-
-			// Changeset `ignore` excludes a package from versioning entirely — it
-			// wins even when privatePackages.version is on — so guard before the
-			// (FileSystem-touching) publishability check.
-			const ignored = yield* config.isIgnored(pkg.name, workspaceRoot);
-			if (ignored) {
-				yield* Effect.logDebug(`Skipping changeset for ${pkg.name}: in changeset ignore list`);
-				continue;
-			}
-
-			// Versionable cascade: publishable OR versionPrivate.
-			// pkg is already a full WorkspacePackage from getWorkspacePackagesSync.
-			const targets = yield* detector.detect(pkg, workspaceRoot);
-			const publishable = targets.length > 0;
-			const versionable = publishable || (yield* config.versionPrivate(workspaceRoot));
-
-			if (!versionable) {
-				yield* Effect.logDebug(`Skipping changeset for ${pkg.name}: not versionable`);
-				continue;
-			}
-
-			const allRows = dedupeRows([...entry.triggerRows, ...entry.devRows]);
-			const summary = formatRowsAsTable(allRows);
-			const id = generateChangesetId();
-			const filepath = join(changesetDir, `${id}.md`);
-			const content = `---\n"${pkg.name}": patch\n---\n\n${summary}\n`;
-
-			yield* Effect.try({
-				try: () => writeFileSync(filepath, content, "utf-8"),
-				catch: (e) => new FileSystemError({ operation: "write", path: filepath, reason: String(e) }),
+		// Map the written files back to ChangesetFile records for reporting. The
+		// diff lives on plan.toWrite (execute writes exactly those files), so we
+		// reconstruct each table for the PR body/summary without re-reading disk.
+		const byFile = new Map(plan.toWrite.map((entry) => [entry.file, entry] as const));
+		const written: ChangesetFile[] = [];
+		for (const file of result.written) {
+			const entry = byFile.get(file);
+			if (!entry) continue;
+			const table = SilkChangesets.serializeDependencyTableToMarkdown([...entry.diff.rows]);
+			written.push({
+				id: basename(file).replace(/\.md$/, ""),
+				packages: [entry.package],
+				type: "patch",
+				summary: `## Dependencies\n\n${table}`,
 			});
-
-			yield* Effect.logDebug(`Created changeset ${id} for ${pkg.name}`);
-			out.push({ id, packages: [pkg.name], type: "patch", summary });
 		}
 
-		yield* Effect.logInfo(`Created ${out.length} changeset(s)`);
-		return out;
-	});
+		yield* Effect.logInfo(
+			`DepsRegen: wrote ${result.written.length} changeset(s), deleted ${result.deleted.length} stale, ` +
+				`skipped ${result.skippedMixed.length} mixed`,
+		);
+		return written;
+	}).pipe(
+		// DepsRegen surfaces GitError | WorkspaceDiscoveryError | ChangesetIOError |
+		// PointInTimeReadError. A failure here (e.g. the base ref is not fetched so
+		// merge-base cannot be computed) is genuinely fatal to the changeset step —
+		// collapse it into the action's ChangesetError with a descriptive reason
+		// rather than swallowing it.
+		Effect.mapError((error) => new ChangesetError({ reason: `changeset regeneration failed: ${String(error)}` })),
+	);

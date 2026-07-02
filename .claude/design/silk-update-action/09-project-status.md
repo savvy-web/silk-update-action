@@ -9,8 +9,9 @@ around the `GitHubToken` token lifecycle. All domain logic is wrapped as Effect
 services with `Context.Tag` + `Layer`, plus a few standalone helper modules
 (`PeerSync`, `WorkspaceYaml`). Layer composition is centralized in
 `src/layers/app.ts`. Workspace enumeration comes from `workspaces-effect`, and
-publishability detection plus changeset-config reading come from
-`@savvy-web/silk-effects`.
+the dependency-changeset step delegates to `@savvy-web/silk-effects`'
+`Changesets.DepsRegen` (which owns publishability detection and changeset-config
+reading internally).
 
 **Architecture:**
 
@@ -24,12 +25,14 @@ publishability detection plus changeset-config reading come from
   `STATE_KEYS`).
 - **Effect-first services:** Domain services in `src/services/` —
   `BranchManager`, `PnpmUpgrade`, `RuntimeUpgrade`, `ConfigDeps`, `RegularDeps`,
-  `Report`, `Lockfile`, `Changesets`. `ChangesetConfig` and the
-  `PublishabilityDetector` Tag overrides come from `@savvy-web/silk-effects`;
-  `services/changeset-config.ts` and `services/publishability.ts` are thin
-  re-export shims over it. Stateless helpers (`PeerSync`, `WorkspaceYaml`)
-  export functions without their own Tag. Workspace enumeration goes through
-  `WorkspaceDiscovery` from `workspaces-effect` directly.
+  `Report`, `Lockfile`, `Changesets`. `Changesets` is a thin adapter over
+  `@savvy-web/silk-effects`' `Changesets.DepsRegen`; the former
+  `services/changeset-config.ts` and `services/publishability.ts` re-export
+  shims are deleted, since `ChangesetConfig` and the `PublishabilityDetector`
+  overrides are now internal to DepsRegen. Stateless helpers (`PeerSync`,
+  `WorkspaceYaml`) export functions without their own Tag. Workspace enumeration
+  goes through `WorkspaceDiscovery` from `workspaces-effect` directly (for
+  `RegularDeps`, `PeerSync` and `Lockfile`).
 - **Layer composition:** `makeAppLayer(dryRun, { runtimeLive })` in
   `src/layers/app.ts` wires all library and domain layers together. The
   `GitHubClient` is built from `GitHubToken.client()` (over a self-contained
@@ -98,9 +101,10 @@ publishability detection plus changeset-config reading come from
   versions via `runtime-resolver` within currently-maintained (non-EOL) majors;
   `auto` no-ops on a static pin or already-current value, while an explicit
   range can add a missing entry (promoting the object/array shape). Runtime
-  bumps fold into `allUpdates` for reporting/commit/PR only — they never trigger
-  `Changesets.create` and never trigger `runInstall` (unlike the pnpm bump,
-  which does trigger `runInstall` to perform the corepack switch).
+  bumps fold into `allUpdates` for reporting/commit/PR only — they never produce
+  a changeset (DepsRegen scopes changesets to dependency diffs) and never trigger
+  `runInstall` (unlike the pnpm bump, which does trigger `runInstall` to perform
+  the corepack switch).
 - Lockfile regeneration via `runInstall`: `pnpm clean --lockfile` then
   `pnpm install --frozen-lockfile=false`. The action changes the pnpm version,
   config and dependency ranges, so the lockfile is regenerated from a clean
@@ -112,25 +116,26 @@ publishability detection plus changeset-config reading come from
 - Custom command execution via `runCommands` (`sh -c`) with error collection.
 - Lockfile comparison via `Lockfile` service. Catalog comparison emits one
   `LockfileChange` per (catalog change, consuming importer, dep section)
-  triple, carrying the precise `type` field so downstream consumers can
-  trigger off `type` alone.
-- Changeset creation via `Changesets` service, gated by an ignore gate, a
-  versionable cascade and trigger/informational classification. A
-  changeset-ignored package (per `ChangesetConfig.isIgnored`) is skipped before
-  the publishability check, so the `.changeset/config.json` `ignore` list wins
-  even when `privatePackages.version: true`. Empty changesets are not written.
-  `Changesets.create`'s `regularUpdates` parameter is routed by `update.type`
-  against the same `TRIGGER_TYPES` set used for lockfile changes
-  (dependency/optionalDependency/peerDependency are triggers, devDependency is
-  informational only). PeerDependency changes arrive via `compareCatalogs`
-  (catalog refs in workspace peerDependencies) and `syncPeers`
-  (peer-minor/peer-lock rewrites), both of which feed the trigger lane.
-- Changeset-config reading (`mode`, `versionPrivate`, `ignorePatterns`,
-  `isIgnored`, `fixed`) and publishability detection
-  (`SilkPublishabilityDetectorLive`, `PublishabilityDetectorAdaptiveLive`) are
-  provided by `@savvy-web/silk-effects` (FileSystem-based), wired via the
-  `services/changeset-config.ts` and `services/publishability.ts` re-export
-  shims.
+  triple, carrying the precise `type` field. These records drive change
+  detection / reporting; they no longer feed the changeset step.
+- Changeset creation via the `Changesets` service, a thin adapter over
+  `@savvy-web/silk-effects`' `Changesets.DepsRegen`. `create(cwd, base)` calls
+  `depsRegen.plan({ cwd, base }) → execute(plan)` and maps the written files
+  back to `ChangesetFile[]` for reporting. Content comes from DepsRegen's
+  cumulative `merge-base(base) → worktree` git diff (`base` = resolved
+  `target-branch`, the release baseline): it writes one consolidated dependency
+  changeset per in-scope package, deletes stale pure-dependency changesets
+  (idempotent across re-fires), drops devDependency rows and leaves mixed
+  changesets (Dependencies table + prose) untouched. Requires a `fetch-depth: 0`
+  checkout; `program.ts` runs `BranchManager.ensureBaseHistory(base)` first as a
+  shallow-checkout safety net.
+- All changeset gating (versionable-minus-ignored: publishable OR
+  `privatePackages.version`, minus the changeset `ignore` list) plus
+  publishability detection and changeset-config reading now live **upstream in
+  DepsRegen** (`@savvy-web/silk-effects`, FileSystem-based). The action no
+  longer carries its own ignore gate, versionable cascade or
+  trigger/informational classification, and no longer imports `ChangesetConfig`
+  or the `PublishabilityDetector` overrides directly.
 - Verified commits via `BranchManager.commitChanges()` (GitHub API,
   `GitCommit.commitFiles`).
 - PR creation/update via `Report` service (uses `PullRequest` library service).

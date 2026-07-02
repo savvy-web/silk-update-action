@@ -51,6 +51,8 @@ yield* GitHubToken.dispose();
 
 **Configurable refs:** the branch the update is cut from is the `source-branch` input (default `main`), and the PR target is the `target-branch` input (default `""`, which follows `source-branch`). This supports cutting from one branch and merging into another (e.g. cut from `dev`, PR into `main`).
 
+**Base-history preflight:** when changesets are enabled, `BranchManager.ensureBaseHistory(target)` runs before the changeset step. Silk's `DepsRegen` diffs `merge-base(target) → worktree`, so it needs the base ref and a common ancestor present locally — a `fetch-depth: 0` checkout of the base (the documented setup) satisfies this. On a shallower checkout the preflight best-effort fetches the base ref, unshallows and materializes a local ref, warning non-fatally if the merge-base still cannot be resolved.
+
 **Why Delete-and-Recreate Instead of Rebase:**
 
 - Simpler logic, no conflict resolution needed

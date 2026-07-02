@@ -19,6 +19,7 @@ import {
 	NpmRegistryLive,
 	PullRequestLive,
 } from "@savvy-web/github-action-effects";
+import { Changesets as SilkChangesets } from "@savvy-web/silk-effects";
 import { Layer } from "effect";
 import {
 	AutoBunCacheLive,
@@ -40,11 +41,9 @@ import {
 import { WorkspaceDiscoveryLive, WorkspaceRootLive } from "workspaces-effect";
 
 import { BranchManagerLive } from "../services/branch.js";
-import { ChangesetConfigLive } from "../services/changeset-config.js";
 import { ChangesetsLive } from "../services/changesets.js";
 import { ConfigDepsLive } from "../services/config-deps.js";
 import { PnpmUpgradeLive } from "../services/pnpm-upgrade.js";
-import { PublishabilityDetectorAdaptiveLive } from "../services/publishability.js";
 import { RegularDepsLive } from "../services/regular-deps.js";
 import { ReportLive } from "../services/report.js";
 import { RuntimeUpgradeLive } from "../services/runtime-upgrade.js";
@@ -107,15 +106,13 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 	const workspaceRoot = WorkspaceRootLive.pipe(Layer.provide(platform));
 	const workspaceDiscovery = WorkspaceDiscoveryLive.pipe(Layer.provide(Layer.merge(workspaceRoot, platform)));
 
-	// ChangesetConfigLive (silk-effects, FileSystem-backed via its reader) and the
-	// adaptive detector both require a platform FileSystem; provide the existing
-	// `platform` (NodeContext.layer) here.
-	const changesetConfig = ChangesetConfigLive.pipe(Layer.provide(platform));
-	// PublishabilityDetectorAdaptiveLive overrides PublishabilityDetector and
-	// reads ChangesetConfig.mode per-call to dispatch to silk/vanilla/noop.
-	const publishabilityDetector = PublishabilityDetectorAdaptiveLive.pipe(
-		Layer.provide(Layer.merge(changesetConfig, platform)),
-	);
+	// DepsRegen (from @savvy-web/silk-effects) is the source of truth for
+	// dependency changesets. DepsRegenDefault is the batteries-included layer: it
+	// bundles the point-in-time workspace reader, ConfigInspector, WorkspaceDiscovery,
+	// silk's adaptive PublishabilityDetector, and ChangesetConfig internally, so its
+	// gating is silk "versionable-minus-ignored" and the only residual requirements
+	// are the platform services (FileSystem/Path/CommandExecutor from NodeContext).
+	const depsRegen = SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform));
 
 	const libraryLayers = Layer.mergeAll(
 		githubClient,
@@ -130,9 +127,7 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 
 	const domainLayers = Layer.mergeAll(
 		workspaceDiscovery,
-		changesetConfig,
-		publishabilityDetector,
-		ChangesetsLive.pipe(Layer.provide(Layer.mergeAll(workspaceDiscovery, publishabilityDetector, changesetConfig))),
+		ChangesetsLive.pipe(Layer.provide(depsRegen)),
 		BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
 		PnpmUpgradeLive.pipe(Layer.provide(CommandRunnerLive)),
 		ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
