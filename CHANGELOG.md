@@ -1,5 +1,22 @@
 # silk-update-action
 
+## 3.4.0
+
+### Features
+
+* [`64967fe`](https://github.com/savvy-web/silk-update-action/commit/64967fe0b9d3018ad82730f0624c7ba8daccfe15) Adopt `@savvy-web/silk-effects` `Changesets.DepsRegen` as the source of truth for the dependency-changeset step. Dependency changesets are now regenerated from the cumulative `merge-base(target-branch) → worktree` diff and consolidated into a single `## Dependencies` table per package, deleting stale pure-dependency changesets — so re-running the action converges instead of accumulating duplicate changesets. Catalog-aware diffing and versionable-minus-ignored gating are handled upstream in silk-effects; the previous in-repo gating cascade and the `changeset-config`/`publishability` shims are removed.
+* Workflows that enable `changesets` now need a full-history checkout (`actions/checkout` with `fetch-depth: 0`): the changeset step diffs against the base branch via `git merge-base`. `BranchManager.ensureBaseHistory` best-effort deepens a shallow clone when the base history is missing.
+
+### Dependencies
+
+* [`64967fe`](https://github.com/savvy-web/silk-update-action/commit/64967fe0b9d3018ad82730f0624c7ba8daccfe15) | Dependency | Type | Action | From | To |
+  \| -------------------------------- | ---------- | ------- | ------- | ------- |
+  \| @savvy-web/github-action-effects | dependency | updated | ^2.3.3 | ^2.3.5 |
+  \| @savvy-web/silk-effects | dependency | updated | ^1.5.2 | ^2.0.1 |
+  \| runtime-resolver | dependency | updated | ^0.3.19 | ^0.3.20 |
+  \| semver-effect | dependency | updated | ^0.2.1 | ^0.3.1 |
+  \| workspaces-effect | dependency | updated | ^1.2.0 | ^2.0.1 |
+
 ## 3.3.5
 
 ### Bug Fixes
