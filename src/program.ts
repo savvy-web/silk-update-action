@@ -515,8 +515,16 @@ const innerProgram = (
 						let changesets: ReadonlyArray<ChangesetFile> = [];
 						if (inputs.changesets) {
 							yield* Effect.logInfo("Step 11: Creating changesets");
+							// DepsRegen diffs against merge-base(target-branch); make sure that
+							// history is available locally before it runs (no-op on a
+							// fetch-depth: 0 checkout of the target).
+							yield* branchManager.ensureBaseHistory(inputs.targetBranch);
 							const changesetsService = yield* Changesets;
-							changesets = yield* changesetsService.create(process.cwd(), changes, regularUpdates, peerUpdates);
+							// DepsRegen recomputes the cumulative dependency diff from
+							// merge-base(target-branch) → worktree and consolidates/dedupes
+							// existing pure-dep changesets. The per-run `changes`/
+							// `regularUpdates`/`peerUpdates` still drive reporting below.
+							changesets = yield* changesetsService.create(process.cwd(), inputs.targetBranch);
 						} else {
 							yield* Effect.logInfo("Step 11: Skipping changesets (disabled)");
 						}

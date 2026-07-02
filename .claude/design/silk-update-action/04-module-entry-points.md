@@ -166,7 +166,10 @@ The module exports:
   targetBranch)` **before** `BranchManager.manage(branch, sourceBranch)`, so a
   missing ref fails fast before the destructive delete-and-recreate. The
   resolved `targetBranch` is threaded into `Report.createOrUpdatePR(branch,
-  base, ...)` as the PR base.
+  base, ...)` as the PR base, and into `Changesets.create(process.cwd(),
+  targetBranch)` as the diff baseline. When `changesets` is enabled it first
+  runs `BranchManager.ensureBaseHistory(targetBranch)` so the DepsRegen
+  `merge-base(target) → worktree` diff can resolve on a shallow checkout.
 - `runCommands(commands)` — execute custom commands sequentially via
   `CommandRunner` (`sh -c "<cmd>"`); returns `{ successful, failed }`.
 - `runInstall()` — regenerates the lockfile via `CommandRunner.exec`:

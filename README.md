@@ -30,6 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history is required when changesets are enabled: the changeset
+          # step diffs against the base branch (merge-base), which a shallow
+          # (fetch-depth: 1) checkout cannot resolve.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: savvy-web/silk-update-action@v3
         with:
@@ -68,7 +73,7 @@ jobs:
 | `upgrade-runtime-bun` | No | `false` | Upgrade the Bun entry in `devEngines.runtime`: `false`, `auto`, or a semver range (e.g. `^1`) |
 | `runtime-data` | No | `offline` | Runtime version data source: `offline` (bundled cache) or `live` (fetch latest, fall back to cache) |
 | `run` | No | `""` | Commands to run after updates (one per line) |
-| `changesets` | No | `true` | Create changesets when `.changeset/` exists |
+| `changesets` | No | `true` | Create changesets when `.changeset/` exists. Requires a full-history checkout (`fetch-depth: 0`) so the base-branch diff can be computed |
 | `dry-run` | No | `false` | Detect changes without committing |
 | `log-level` | No | `auto` | Logging verbosity |
 | `timeout` | No | `180` | Maximum time in seconds before cancelling |

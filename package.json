@@ -44,11 +44,11 @@
 		"@pnpm/lockfile.fs": "^1100.1.7",
 		"@pnpm/lockfile.types": "^1100.0.12",
 		"@savvy-web/github-action-effects": "^2.3.4",
-		"@savvy-web/silk-effects": "^1.6.0",
+		"@savvy-web/silk-effects": "^2.0.0",
 		"effect": "catalog:silk",
 		"runtime-resolver": "^0.3.20",
 		"semver-effect": "^0.3.0",
-		"workspaces-effect": "^1.2.0",
+		"workspaces-effect": "^2.0.0",
 		"yaml": "^2.9.0"
 	},
 	"devDependencies": {

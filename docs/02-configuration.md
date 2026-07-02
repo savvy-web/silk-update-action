@@ -227,14 +227,19 @@ and does not run `pnpm install`.
 
 #### `changesets`
 
-When set to `true` and a `.changeset/` directory exists, the action creates
-changesets for affected packages after dependency updates. Set to `false` to
-skip changeset creation entirely, which is useful for repositories that do not
-use the changeset release workflow. Default: `true`.
+When set to `true` and a `.changeset/` directory exists, the action regenerates
+a consolidated dependency changeset for each affected package after the updates.
+Set to `false` to skip changeset creation entirely, which is useful for
+repositories that do not use the changeset release workflow. Default: `true`.
 
 ```yaml
 changesets: false # Skip changeset creation
 ```
+
+The changeset step diffs the working tree against the base branch, so the
+checkout must include full history. Set `fetch-depth: 0` on `actions/checkout`
+when changesets are enabled — a shallow checkout cannot resolve the merge-base
+and the changeset content will be wrong or empty.
 
 #### `dry-run`
 
@@ -407,9 +412,20 @@ the dependency changes.
 ## Changeset integration
 
 If your repository has a `.changeset/` directory and the `changesets` input is
-`true` (the default), the action creates changesets based on consumer-facing
-changes. A workspace package gets a `patch` changeset only when **both** gates
-pass:
+`true` (the default), the action regenerates a consolidated dependency changeset
+for each affected package. Rather than appending a new changeset every run, it
+recomputes the cumulative dependency diff between the base branch and the working
+tree, writes a single current `## Dependencies` table per package and deletes any
+stale pure-dependency changesets it supersedes. Re-running the action therefore
+converges on one table per package instead of piling up duplicates. Hand-authored
+changesets that mix a `## Dependencies` table with prose are left untouched.
+
+Because the diff is taken against the base branch, the checkout must include full
+history — set `fetch-depth: 0` on `actions/checkout` (see
+[Getting started](./01-getting-started.md)). A shallow checkout cannot resolve
+the merge-base.
+
+A workspace package gets a `patch` changeset only when **both** gates pass:
 
 1. **Trigger gate** — at least one consumer-facing change must apply to the
    package:

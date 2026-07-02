@@ -34,6 +34,16 @@ export class BranchManager extends Context.Tag("BranchManager")<
 			source: string,
 			target: string,
 		) => Effect.Effect<void, GitBranchError | ActionInputError>;
+		/**
+		 * Ensure `base` has enough local git history for the changeset diff.
+		 *
+		 * DepsRegen computes `git merge-base <base> HEAD` and reads the ancestor's
+		 * tree, so it needs a local ref named `base` AND a common ancestor present.
+		 * A `fetch-depth: 0` checkout of the base ref (the documented setup) already
+		 * satisfies both. This is the safety net for shallower checkouts: it probes
+		 * first and only fetches/deepens when the merge-base is missing.
+		 */
+		readonly ensureBaseHistory: (base: string) => Effect.Effect<void, CommandRunnerError>;
 	}
 >() {}
 
@@ -51,6 +61,7 @@ export const BranchManagerLive = Layer.effect(
 			manage: (branchName, defaultBranch = "main") => manageBranchImpl(branch, cmd, branchName, defaultBranch),
 			commitChanges: (message, branchName) => commitChangesImpl(commit, cmd, message, branchName),
 			validateBranches: (source, target) => validateBranchesImpl(branch, source, target),
+			ensureBaseHistory: (base) => ensureBaseHistoryImpl(cmd, base),
 		};
 	}),
 );
@@ -240,4 +251,57 @@ const commitChangesImpl = (
 		// that were just committed via the GitHub API.
 		yield* cmd.exec("git", ["fetch", "origin", branchName]);
 		yield* cmd.exec("git", ["reset", "--hard", `origin/${branchName}`]);
+	});
+
+/** True when `git merge-base <base> HEAD` resolves (ref exists AND a common ancestor is present). */
+const hasMergeBase = (cmd: Context.Tag.Service<typeof CommandRunner>, base: string): Effect.Effect<boolean, never> =>
+	cmd.execCapture("git", ["merge-base", base, "HEAD"]).pipe(
+		Effect.as(true),
+		Effect.catchAll(() => Effect.succeed(false)),
+	);
+
+/** True when the repository is a shallow clone (history truncated). */
+const isShallowRepo = (cmd: Context.Tag.Service<typeof CommandRunner>): Effect.Effect<boolean, never> =>
+	cmd.execCapture("git", ["rev-parse", "--is-shallow-repository"]).pipe(
+		Effect.map((r) => r.stdout.trim() === "true"),
+		Effect.catchAll(() => Effect.succeed(false)),
+	);
+
+/**
+ * Ensure `base` has enough local history for `git merge-base <base> HEAD`.
+ *
+ * Probes first (the documented `fetch-depth: 0` + `ref: <base>` checkout already
+ * satisfies this, so the common case does no work). Only when the merge-base is
+ * missing does it fetch the base ref, deepen a shallow clone, and materialize a
+ * local ref so the bare name resolves. Every git call is best-effort — a fetch
+ * failure degrades to a clear, actionable warning rather than aborting the run
+ * (DepsRegen will still surface a precise error if the diff genuinely can't be
+ * computed).
+ */
+const ensureBaseHistoryImpl = (
+	cmd: Context.Tag.Service<typeof CommandRunner>,
+	base: string,
+): Effect.Effect<void, CommandRunnerError> =>
+	Effect.gen(function* () {
+		if (yield* hasMergeBase(cmd, base)) {
+			yield* Effect.logDebug(`Base history for "${base}" already present; no fetch needed`);
+			return;
+		}
+
+		yield* Effect.logInfo(`Base history for "${base}" not available locally; fetching to enable the changeset diff`);
+
+		// Ensure the remote-tracking ref exists, deepen a shallow clone, then
+		// materialize a local ref so `git merge-base <base> HEAD` resolves by name.
+		yield* cmd.exec("git", ["fetch", "origin", `+refs/heads/${base}:refs/remotes/origin/${base}`]).pipe(Effect.ignore);
+		if (yield* isShallowRepo(cmd)) {
+			yield* cmd.exec("git", ["fetch", "--unshallow", "origin"]).pipe(Effect.ignore);
+		}
+		yield* cmd.exec("git", ["branch", "-f", base, `refs/remotes/origin/${base}`]).pipe(Effect.ignore);
+
+		if (!(yield* hasMergeBase(cmd, base))) {
+			yield* Effect.logWarning(
+				`Could not establish a merge-base between "${base}" and HEAD. The changeset step diffs against ` +
+					`this branch — check out with fetch-depth: 0 (and ensure "${base}" is fetched).`,
+			);
+		}
 	});
