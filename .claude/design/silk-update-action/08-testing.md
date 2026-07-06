@@ -19,15 +19,7 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
 - **Schemas and errors** (`schemas/domain.test.ts`, `errors/errors.test.ts`) —
   schema validation for the domain types and error construction, `_tag`
   matching and the `isRetryable` / `getErrorMessage` helpers.
-- **Dependency services** (`config-deps.test.ts`, `regular-deps.test.ts`,
-  `peer-sync.test.ts`, `pnpm-upgrade.test.ts`, `runtime-upgrade.test.ts`) —
-  npm-registry querying, range-respecting resolution (RegularDeps resolving
-  within the current specifier's range, ConfigDeps within the synthesized
-  major range, neither jumping to absolute `latest`), multi-section RegularDeps
-  scanning with accurate per-section `type` reporting, `peer-lock`/`peer-minor`
-  range computation, pnpm self-upgrade, and per-runtime `devEngines.runtime`
-  rewriting (including `auto` no-op on static pins, missing-entry insertion,
-  shape promotion and per-runtime resolver-failure resilience).
+- **Dependency services** (`config-deps.test.ts`, `regular-deps.test.ts`, `peer-sync.test.ts`, `pnpm-upgrade.test.ts`, `runtime-upgrade.test.ts`) — npm-registry querying, range-respecting resolution (RegularDeps resolving within the current specifier's range, ConfigDeps within the synthesized major range, neither jumping to absolute `latest`), multi-section RegularDeps scanning with accurate per-section `type` reporting, `peer-lock`/`peer-minor` range computation, pnpm self-upgrade (driven through the library's in-memory `NpmRegistryTest` layer rather than a fake `CommandRunner`), and per-runtime `devEngines.runtime` rewriting (including `auto` no-op on static pins, missing-entry insertion, shape promotion and per-runtime resolver-failure resilience).
 - **Lockfile and changesets** (`lockfile.test.ts`, `changesets.test.ts`) —
   `lockfile.test.ts` covers catalog and importer comparison emitting
   per-importer, per-section triples. `changesets.test.ts` exercises only the

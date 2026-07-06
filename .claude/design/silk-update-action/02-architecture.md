@@ -251,10 +251,7 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 
 - Conditional on `inputs["upgrade-package-manager"] !== "false"` (the input is a string —
   `false` | `true` | `auto` | a semver range — defaulting to `"true"`).
-- `PnpmUpgrade.upgrade(mode, workspaceRoot?)` reads the reference version
-  (favoring `devEngines.packageManager` over the `packageManager` field),
-  resolves a target via `resolveLatestSatisfying`, and edits root
-  `package.json` directly — it does **not** run `corepack use`.
+- `PnpmUpgrade.upgrade(mode, workspaceRoot?)` reads the reference version (favoring `devEngines.packageManager` over the `packageManager` field), queries versions and integrity via the `NpmRegistry` service (whose runner-writable npm cache avoids the root-owned `~/.npm` EACCES failure on GitHub macOS runners that a raw `npm view` shell-out hit), resolves a target via `resolveLatestSatisfying`, and edits root `package.json` directly — it does **not** run `corepack use`.
 - `true`/`auto` resolve the latest within the reference's current major
   (`^reference`). An explicit semver range may cross majors and adds a
   `packageManager` field when no pnpm field exists.

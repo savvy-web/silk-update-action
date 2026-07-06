@@ -84,7 +84,7 @@ The dependency-changeset step delegates to silk's `Changesets.DepsRegen`, which 
 Each domain service uses `Context.Tag` + `Layer`:
 
 - `BranchManager` / `BranchManagerLive` - Depends on `GitBranch`, `GitCommit`, `CommandRunner`
-- `PnpmUpgrade` / `PnpmUpgradeLive` - Depends on `CommandRunner`
+- `PnpmUpgrade` / `PnpmUpgradeLive` - Depends on `NpmRegistry`
 - `RuntimeUpgrade` / `RuntimeUpgradeLive` - Depends on `NodeResolver`, `DenoResolver`, `BunResolver` (from `runtime-resolver`)
 - `ConfigDeps` / `ConfigDepsLive` - Depends on `NpmRegistry`
 - `RegularDeps` / `RegularDepsLive` - Depends on `NpmRegistry`,

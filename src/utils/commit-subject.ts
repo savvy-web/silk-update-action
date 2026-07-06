@@ -14,15 +14,21 @@ import type { RuntimeName } from "./runtime.js";
  * buckets — the package manager (pnpm), runtime engines (node/deno/bun), pnpm
  * config dependencies, and regular dependencies. A single change is named
  * outright; a single category is summarized; a mix is composed into an
- * `upgrade … , update …` shape. Anything that cannot be summarized within the
- * 72-character header budget falls back to a safe generic subject.
+ * `upgrade … , update …` shape. Regular dependencies are broken down by their
+ * package.json section (dependencies / devDependencies / peerDependencies /
+ * optionalDependencies), counting distinct names per section in
+ * production-first order.
+ *
+ * The 72-character header budget is enforced by a progressive ladder: the
+ * typed breakdown is tried first; if it overflows, the coarse phrasing
+ * (`update 1 config and 6 dependencies`) is tried; only then does the subject
+ * degrade to the safe generic fallback.
  */
 export const buildUpdateSubject = (updates: ReadonlyArray<DependencyUpdateResult>): string => {
-	const subject = `${PREFIX}${resolveSubject(updates)}`;
-	// Global header-budget guard: any subject that overflows (a long scoped
-	// package name, an unexpectedly long version) degrades to the safe default
-	// rather than emitting an over-long, lint-violating subject.
-	return subject.length <= HEADER_MAX ? subject : `${PREFIX}${FALLBACK}`;
+	const typed = `${PREFIX}${resolveSubject(updates, "typed")}`;
+	if (typed.length <= HEADER_MAX) return typed;
+	const coarse = `${PREFIX}${resolveSubject(updates, "coarse")}`;
+	return coarse.length <= HEADER_MAX ? coarse : `${PREFIX}${FALLBACK}`;
 };
 
 /**
@@ -36,18 +42,31 @@ const PREFIX = "chore(deps): ";
 const FALLBACK = "update dependencies";
 const HEADER_MAX = 72;
 
-const DEP_TYPES = new Set<DependencyUpdateResult["type"]>([
-	"dependency",
-	"devDependency",
-	"peerDependency",
-	"optionalDependency",
-]);
+/** How the regular-deps bucket is phrased: per-section nouns or lumped. */
+type Detail = "typed" | "coarse";
+
+/** Production-first display order for the regular-dep sections. */
+const DEP_TYPE_ORDER = ["dependency", "devDependency", "peerDependency", "optionalDependency"] as const;
+
+type DepType = (typeof DEP_TYPE_ORDER)[number];
+
+const DEP_TYPES = new Set<DependencyUpdateResult["type"]>(DEP_TYPE_ORDER);
+
+/** package.json field-name nouns: `1 devDependency`, `4 devDependencies`. */
+const depTypeNoun = (type: DepType, n: number): string => (n === 1 ? type : `${type.slice(0, -1)}ies`);
+
+/** Distinct dependency names per section, in production-first order. */
+const countByType = (deps: ReadonlyArray<DependencyUpdateResult>): ReadonlyArray<{ type: DepType; count: number }> =>
+	DEP_TYPE_ORDER.map((type) => ({
+		type,
+		count: distinct(deps.filter((u) => u.type === type).map((u) => u.dependency)).length,
+	})).filter(({ count }) => count > 0);
 
 /** Canonical display order + casing for runtime engines. */
 const RUNTIME_ORDER: ReadonlyArray<RuntimeName> = ["node", "deno", "bun"];
 const RUNTIME_LABEL: Record<RuntimeName, string> = { node: "Node", deno: "Deno", bun: "Bun" };
 
-const resolveSubject = (updates: ReadonlyArray<DependencyUpdateResult>): string => {
+const resolveSubject = (updates: ReadonlyArray<DependencyUpdateResult>, detail: Detail): string => {
 	const pm = updates.find((u) => u.type === "config" && u.dependency === "pnpm") ?? null;
 	const runtimes = RUNTIME_ORDER.filter((r) => updates.some((u) => u.type === "runtime" && u.dependency === r));
 	const config = updates.filter((u) => u.type === "config" && u.dependency !== "pnpm");
@@ -77,28 +96,38 @@ const resolveSubject = (updates: ReadonlyArray<DependencyUpdateResult>): string 
 	if (buckets === 1) {
 		if (runtimes.length > 0) return `upgrade ${joinAnd(runtimes.map((r) => RUNTIME_LABEL[r]))}`;
 		if (configNames.length > 0) return `update ${configNames.length} config dependencies`;
+		const typeCounts = countByType(deps);
 		const sharedWorkspace = singleWorkspace(deps);
-		if (sharedWorkspace) return `update dependencies in ${sharedWorkspace}`;
+		if (sharedWorkspace) {
+			// One section across one workspace gets the typed noun; a mixed batch
+			// keeps the generic noun rather than enumerating inside the clause.
+			const sectionNoun =
+				detail === "typed" && typeCounts.length === 1 ? depTypeNoun(typeCounts[0].type, 2) : "dependencies";
+			return `update ${sectionNoun} in ${sharedWorkspace}`;
+		}
+		if (detail === "typed") return depsPhrase(typeCounts);
 		return `update ${depNames.length} dependencies`;
 	}
 
-	// Rule 9: mixed categories — compose. The global guard in buildUpdateSubject
-	// degrades an over-budget composition to the default.
-	return compose(pm, runtimes, configNames.length, depNames.length);
+	// Rule 9: mixed categories — compose. The ladder in buildUpdateSubject
+	// degrades an over-budget composition to coarse, then to the default.
+	return compose(pm, runtimes, configNames.length, deps, depNames.length, detail);
 };
 
 const compose = (
 	pm: DependencyUpdateResult | null,
 	runtimes: ReadonlyArray<RuntimeName>,
 	configCount: number,
+	deps: ReadonlyArray<DependencyUpdateResult>,
 	depCount: number,
+	detail: Detail,
 ): string => {
 	const clauses: string[] = [];
 
 	const upgradeTargets = [...(pm ? ["pnpm"] : []), ...runtimes.map((r) => RUNTIME_LABEL[r])];
 	if (upgradeTargets.length > 0) clauses.push(`upgrade ${joinAnd(upgradeTargets)}`);
 
-	const updateClause = updatePhrase(configCount, depCount);
+	const updateClause = updatePhrase(configCount, deps, depCount, detail);
 	if (updateClause) clauses.push(updateClause);
 
 	if (clauses.length === 1) return clauses[0];
@@ -108,13 +137,35 @@ const compose = (
 	return clauses.join(separator);
 };
 
-/** "update 4 config and 6 dependencies", or either half alone. */
-const updatePhrase = (configCount: number, depCount: number): string | null => {
+/**
+ * The `update …` clause. Coarse detail lumps regular deps into one count
+ * ("update 4 config and 6 dependencies"); typed detail enumerates per section
+ * ("update 1 config dependency and 4 devDependencies"). When the regular deps
+ * are all plain `dependencies`, the elliptical coarse form is already precise
+ * ("config" modifies the shared noun), so typed detail keeps it.
+ */
+const updatePhrase = (
+	configCount: number,
+	deps: ReadonlyArray<DependencyUpdateResult>,
+	depCount: number,
+	detail: Detail,
+): string | null => {
 	if (configCount === 0 && depCount === 0) return null;
+	const typeCounts = countByType(deps);
+	const onlyPlainDeps = typeCounts.length === 0 || (typeCounts.length === 1 && typeCounts[0].type === "dependency");
+	if (detail === "typed" && !onlyPlainDeps) {
+		const configItem = configCount > 0 ? [`${configCount} config ${noun(configCount)}`] : [];
+		const typeItems = typeCounts.map(({ type, count }) => `${count} ${depTypeNoun(type, count)}`);
+		return `update ${joinAnd([...configItem, ...typeItems])}`;
+	}
 	if (configCount > 0 && depCount > 0) return `update ${configCount} config and ${pluralize(depCount)}`;
 	if (configCount > 0) return `update ${configCount} config ${noun(configCount)}`;
 	return `update ${pluralize(depCount)}`;
 };
+
+/** Typed single-category deps phrase: one section or a per-section enumeration. */
+const depsPhrase = (typeCounts: ReadonlyArray<{ type: DepType; count: number }>): string =>
+	`update ${joinAnd(typeCounts.map(({ type, count }) => `${count} ${depTypeNoun(type, count)}`))}`;
 
 const pluralize = (n: number): string => `${n} ${noun(n)}`;
 const noun = (n: number): string => (n === 1 ? "dependency" : "dependencies");
