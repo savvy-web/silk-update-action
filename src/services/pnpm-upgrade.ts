@@ -16,14 +16,14 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { CommandRunner } from "@savvy-web/github-action-effects";
+import { NpmRegistry } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
 import { corepackHashFromIntegrity, detectIndent, parsePnpmVersion } from "../utils/pnpm.js";
 import { resolveLatestSatisfying } from "../utils/semver.js";
 
-type CommandRunnerShape = Context.Tag.Service<typeof CommandRunner>;
+type NpmRegistryShape = Context.Tag.Service<typeof NpmRegistry>;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -57,9 +57,9 @@ export class PnpmUpgrade extends Context.Tag("PnpmUpgrade")<
 export const PnpmUpgradeLive = Layer.effect(
 	PnpmUpgrade,
 	Effect.gen(function* () {
-		const runner = yield* CommandRunner;
+		const registry = yield* NpmRegistry;
 		return {
-			upgrade: (mode, workspaceRoot = process.cwd()) => upgradePnpmImpl(runner, mode, workspaceRoot),
+			upgrade: (mode, workspaceRoot = process.cwd()) => upgradePnpmImpl(registry, mode, workspaceRoot),
 		};
 	}),
 );
@@ -90,7 +90,7 @@ const fsWriteError = (path: string, e: unknown) => new FileSystemError({ operati
  * activates the new version via corepack reading the updated fields.
  */
 const upgradePnpmImpl = (
-	runner: CommandRunnerShape,
+	registry: NpmRegistryShape,
 	mode: string,
 	workspaceRoot: string,
 ): Effect.Effect<PnpmUpgradeResult | null, FileSystemError> =>
@@ -136,14 +136,12 @@ const upgradePnpmImpl = (
 			targetRange = mode;
 		}
 
-		// Query available pnpm versions.
-		const versionsResult = yield* runner
-			.execCapture("sh", ["-c", "npm view pnpm versions --json"])
-			.pipe(Effect.mapError((e) => fsReadError("npm registry", `Failed to query pnpm versions: ${e.stderr}`)));
-		const allVersions = yield* Effect.try({
-			try: () => JSON.parse(versionsResult.stdout) as string[],
-			catch: (e) => fsReadError("npm registry", `Failed to parse pnpm versions: ${e}`),
-		});
+		// Query available pnpm versions via NpmRegistry, which redirects npm's
+		// cache to a runner-writable directory — a raw `npm view` here hits the
+		// partially root-owned ~/.npm on GitHub's macOS runners and dies EACCES.
+		const allVersions = yield* registry
+			.getVersions("pnpm")
+			.pipe(Effect.mapError((e) => fsReadError("npm registry", `Failed to query pnpm versions: ${e.reason}`)));
 
 		const resolved = yield* resolveLatestSatisfying(allVersions, targetRange);
 		if (!resolved) {
@@ -158,8 +156,8 @@ const upgradePnpmImpl = (
 		// Derive the corepack-canonical packageManager hash from the npm registry
 		// integrity for the resolved version. corepack is NOT invoked — pnpm
 		// install activates the new version via corepack reading these fields.
-		const integrity = yield* runner.execCapture("sh", ["-c", `npm view pnpm@${resolved} dist.integrity`]).pipe(
-			Effect.map((r) => r.stdout.trim()),
+		const integrity = yield* registry.getPackageInfo("pnpm", resolved).pipe(
+			Effect.map((info) => info.integrity ?? ""),
 			Effect.catchAll(() => Effect.succeed("")),
 		);
 		const hash = corepackHashFromIntegrity(integrity);

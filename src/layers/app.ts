@@ -129,7 +129,7 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 		workspaceDiscovery,
 		ChangesetsLive.pipe(Layer.provide(depsRegen)),
 		BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
-		PnpmUpgradeLive.pipe(Layer.provide(CommandRunnerLive)),
+		PnpmUpgradeLive.pipe(Layer.provide(npmRegistry)),
 		ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
 		RegularDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, workspaceDiscovery))),
 		ReportLive.pipe(Layer.provide(prLayer)),
