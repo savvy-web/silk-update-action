@@ -109,12 +109,7 @@ Format `pnpm-workspace.yaml` consistently to avoid lint-staged hook changes.
 
 ### src/services/pnpm-upgrade.ts - PnpmUpgrade
 
-Upgrade pnpm by editing the `packageManager` and `devEngines.packageManager`
-fields of the root `package.json` directly — **not** via `corepack use`.
-`corepack use` errors when both `packageManager` and `devEngines.packageManager`
-are present, so the service derives corepack's canonical hash itself and writes
-the fields; the subsequent `runInstall` performs the actual corepack switch.
-Depends on `CommandRunner`.
+Upgrade pnpm by editing the `packageManager` and `devEngines.packageManager` fields of the root `package.json` directly — **not** via `corepack use`. `corepack use` errors when both `packageManager` and `devEngines.packageManager` are present, so the service derives corepack's canonical hash itself and writes the fields; the subsequent `runInstall` performs the actual corepack switch. Depends on `NpmRegistry` (not `CommandRunner`): `NpmRegistryLive` routes every npm invocation through a runner-writable cache (`--cache $RUNNER_TEMP/silk-npm-cache`), sidestepping the partially root-owned `~/.npm` on GitHub macOS runners that made a raw `npm view` shell-out fail with EACCES (the pnpm upgrade was skipped with a warning while `ConfigDeps`/`RegularDeps`, already on `NpmRegistry`, succeeded).
 
 **Service interface:**
 
@@ -138,13 +133,8 @@ range). `false` returns `null` (skip).
 3. Choose a target range: `true`/`auto` use `^reference` (latest within the
    current major; skip with a warning if no reference exists); an explicit
    semver range is used verbatim (may cross majors).
-4. Query available versions (`npm view pnpm versions --json`) and resolve via
-   `resolveLatestSatisfying`. Skip if none satisfies or the resolved version
-   equals the reference.
-5. Derive the corepack-canonical `+sha512.<hex>` hash from the resolved
-   version's npm registry integrity (`npm view pnpm@<v> dist.integrity` →
-   `corepackHashFromIntegrity`); fall back to a bare version when integrity is
-   unavailable.
+4. Query available versions via `NpmRegistry.getVersions("pnpm")` and resolve via `resolveLatestSatisfying`. Skip if none satisfies or the resolved version equals the reference.
+5. Derive the corepack-canonical `+sha512.<hex>` hash from the resolved version's npm registry integrity (`NpmRegistry.getPackageInfo("pnpm", resolved)` → `.integrity` → `corepackHashFromIntegrity`, best-effort with a `catchAll`); fall back to a bare version when integrity is unavailable.
 6. Write `packageManager` = `pnpm@<v>+sha512.<hex>` (creating it in range mode
    when no pnpm field exists at all) and, when present,
    `devEngines.packageManager.version` = `<v>+sha512.<hex>`. The pinned hash is
@@ -495,7 +485,7 @@ export const makeAppLayer = (
   workspaceDiscovery,
   ChangesetsLive.pipe(Layer.provide(depsRegen)),
   BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
-  PnpmUpgradeLive.pipe(Layer.provide(CommandRunnerLive)),
+  PnpmUpgradeLive.pipe(Layer.provide(npmRegistry)),
   ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
   RegularDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, workspaceDiscovery))),
   ReportLive.pipe(Layer.provide(prLayer)),
@@ -527,7 +517,7 @@ locals are gone.
 
 ### src/utils/commit-subject.ts
 
-- `buildUpdateSubject(updates)` — Derive the full conventional PR title / commit subject (`chore(deps): …`) from the run's `DependencyUpdateResult[]`. First-match-wins over four buckets (pnpm self-upgrade, runtimes, config deps, regular deps): names a single change, summarizes runtime-only or config-only batches, scopes a single-workspace dependency batch, composes mixed runs and falls back to `chore(deps): update dependencies` when nothing matches or the header would exceed 72 chars. Versions are shown clean (range operator and `+sha512` suffix stripped); runtime names are capitalized, pnpm stays lowercase. Consumed by `Report` for both the PR title and the commit subject.
+- `buildUpdateSubject(updates)` — Derive the full conventional PR title / commit subject (`chore(deps): …`) from the run's `DependencyUpdateResult[]`. First-match-wins over four buckets (pnpm self-upgrade, runtimes, config deps, regular deps): names a single change, summarizes runtime-only or config-only batches, scopes a single-workspace dependency batch and composes mixed runs. The regular-deps bucket is broken down by package.json section (dependencies / devDependencies / peerDependencies / optionalDependencies), counting distinct names per section in production-first order with field-name nouns (`update 1 config dependency and 4 devDependencies`); the elliptical coarse form (`update N config and M dependencies`) is kept when the regular deps are all plain `dependencies`, and the single-workspace variant gets the typed noun when the batch is one section (`update devDependencies in @scope/pkg`, mixed batches keep `update dependencies in <ws>`). The 72-char header budget is a progressive degradation ladder: typed breakdown → coarse phrasing → generic `chore(deps): update dependencies` fallback. Versions are shown clean (range operator and `+sha512` suffix stripped); runtime names are capitalized, pnpm stays lowercase. Consumed by `Report` for both the PR title and the commit subject.
 
 ### src/utils/deps.ts
 

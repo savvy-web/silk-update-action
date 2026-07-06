@@ -89,20 +89,8 @@ pnpm vitest run --testNamePattern="parsePnpmVersion"
 
 ### Effect-TS Patterns
 
-- **Library services**: From `@savvy-web/github-action-effects` (`^2.3.5`):
-  `CommandRunner`, `GitBranch`, `GitCommit`, `CheckRun`, `GitHubClient`,
-  `NpmRegistry`, `PullRequest`, `GithubMarkdown`, `GitHubToken`. `pre.ts` and
-  `post.ts` provide `GitHubAppLive ∘ OctokitAuthAppLive ∘ FetchHttpClient.layer`
-  for `GitHubToken.provision`/`dispose`.
-- **Domain services**: `BranchManager`, `PnpmUpgrade`, `ConfigDeps`,
-  `RegularDeps`, `Report`, `Lockfile`, `Changesets`, `RuntimeUpgrade`.
-  Workspace enumeration uses `WorkspaceDiscovery` from `workspaces-effect`
-  (`^2.0.1`) directly (no local `Workspaces` Tag), still consumed by
-  `RegularDeps`, `PeerSync`, and `Lockfile`. Stateless helpers:
-  `WorkspaceYaml`, `PeerSync`. `RuntimeUpgrade` depends on `runtime-resolver`'s
-  `NodeResolver`, `DenoResolver`, and `BunResolver` services; wired with either
-  offline bundled cache layers (`Offline*CacheLive`, the default) or live
-  network layers (`Auto*CacheLive`) depending on the `runtime-data` input.
+- **Library services**: From `@savvy-web/github-action-effects` (`^2.3.6`): `CommandRunner`, `GitBranch`, `GitCommit`, `CheckRun`, `GitHubClient`, `NpmRegistry`, `PullRequest`, `GithubMarkdown`, `GitHubToken`. `pre.ts` and `post.ts` provide `GitHubAppLive ∘ OctokitAuthAppLive ∘ FetchHttpClient.layer` for `GitHubToken.provision`/`dispose`.
+- **Domain services**: `BranchManager`, `PnpmUpgrade`, `ConfigDeps`, `RegularDeps`, `Report`, `Lockfile`, `Changesets`, `RuntimeUpgrade`. Workspace enumeration uses `WorkspaceDiscovery` from `workspaces-effect` (`^2.0.2`) directly (no local `Workspaces` Tag), still consumed by `RegularDeps`, `PeerSync`, and `Lockfile`. Stateless helpers: `WorkspaceYaml`, `PeerSync`. `PnpmUpgrade`, `ConfigDeps`, and `RegularDeps` all query npm via the `NpmRegistry` service. `RuntimeUpgrade` depends on `runtime-resolver`'s `NodeResolver`, `DenoResolver`, and `BunResolver` services; wired with either offline bundled cache layers (`Offline*CacheLive`, the default) or live network layers (`Auto*CacheLive`) depending on the `runtime-data` input.
 - **Changesets adapter**: `services/changesets.ts` is a thin adapter over `Changesets.DepsRegen` from `@savvy-web/silk-effects`, which is the source of truth for dependency changesets. silk-effects 3 swapped its embedded changesets engine to the @changesets v3 `next` prereleases (hence the `@changesets/config@4` `$schema` in `.changeset/config.json`); the consumed DepsRegen surface is unchanged. `create(workspaceRoot, base)` runs `depsRegen.plan({ cwd, base }) → execute` and maps written files to `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR `privatePackages.version`, minus the `ignore` list) lives upstream in DepsRegen — this repo no longer carries `changeset-config.ts` / `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`; `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector, WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/CommandExecutor via `NodeContext.layer`) to satisfy.
 - **Errors**: `Schema.TaggedError` (`PnpmError`, `GitHubApiError`, `FileSystemError`)
 - **Entry**: `Action.run(program)` from `main.ts` (no `{ layer }` — `program`
@@ -160,7 +148,7 @@ We author every first-party dependency in the table below, so a bug or missing A
 
 **Committing while a link/override is active:** commit the **full dogfood state** to `dev` — `src` + rebuilt `dist` + changeset **and** the `pnpm-workspace.yaml` override + `pnpm-lock.yaml`. The override holds a machine-specific link path, so `dev` only installs cleanly with the sibling repos checked out at the paths in the table above; that is the accepted dogfooding trade-off, and the cleanup in step 7 reverts it. No CI runs on a plain `dev` push, so the committed `dev` source may reference an unpublished library API until it publishes — expected during dogfooding. Commits must be GPG-signed with the GitHub-verified key for `C. Spencer Beggs <spencer@savvyweb.systems>` or the signature ruleset rejects them.
 
-**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^3.0.0`, `workspaces-effect@^2.0.1`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.21`, `@savvy-web/github-action-effects@^2.3.5`, all unlinked). The whole `Changesets.DepsRegen` chain is published.
+**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^3.0.2`, `workspaces-effect@^2.0.2`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.21`, `@savvy-web/github-action-effects@^2.3.6`, all unlinked). The whole `Changesets.DepsRegen` chain is published.
 
 ## Development & Release Cycle
 
@@ -275,29 +263,7 @@ Packages publish to both GitHub Packages and npm with provenance.
   `fetch-depth: 0`, and `BranchManager.ensureBaseHistory(target-branch)` runs as
   a preflight (best-effort fetch/unshallow) before `Changesets.create`
 - `action.config.ts` declares pre/main/post entries, `build.ignore`s cyclonedx optional plugins (xmlbuilder2/libxmljs2/ajv-formats-draft2019), and lists `build.nativeDynamicImports` (`@changesets/apply-release-plan`, `workspaces-effect`) so rspack preserves their fully dynamic `await import()` in the bundle instead of miscompiling it into a context module — rationale in `@./.claude/design/silk-update-action/01-dependencies.md` and the `action.config.ts` comment
-- `upgrade-package-manager` is a **string** input (`false` | `true` | `auto` | a semver
-  range), validated like the `upgrade-runtime-*` inputs — not a boolean.
-  Default `"true"`. It currently upgrades **pnpm only** (support for other
-  package managers is planned); the implementing service is still `PnpmUpgrade`.
-  This input was renamed from `update-pnpm` in the v2 rebrand. `true`/`auto`
-  resolve the latest pnpm within the **current
-  major** (favoring the `devEngines.packageManager` version); an explicit range
-  (e.g. `^11`) may cross majors and can add a `packageManager` field when none
-  exists. `PnpmUpgrade` no longer runs `corepack use` — it edits root
-  `package.json` directly, writing the resolved version with the corepack-
-  canonical `+sha512.<hex>` hash (derived from the npm registry integrity via
-  `corepackHashFromIntegrity` in `src/utils/pnpm.ts`) into **both**
-  `packageManager` and `devEngines.packageManager.version`. The corepack switch
-  happens via the existing `runInstall`, which now **regenerates** the lockfile
-  (`pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`) rather
-  than `--fix-lockfile`: the action changes all three pnpm resolution inputs
-  (pnpm version, config deps + `pnpm-plugin-silk` hooks, dependency ranges), and
-  `--fix-lockfile` only repairs entries without re-resolving, so it could commit
-  an inconsistent lockfile (e.g. an unfilled peer → `ERR_MODULE_NOT_FOUND`).
-  `pnpm clean` needs **pnpm 11+** and runs a consumer's own `clean`/`purge`
-  script over the built-in if one exists. Unlike the runtime bump, the pnpm bump
-  **does** trigger `runInstall` (gated on `configUpdatesFromPnpm.length > 0`);
-  like the runtime bump it never creates a changeset.
+- `upgrade-package-manager` is a **string** input (`false` | `true` | `auto` | a semver range), validated like the `upgrade-runtime-*` inputs — not a boolean. Default `"true"`. It currently upgrades **pnpm only** (support for other package managers is planned); the implementing service is still `PnpmUpgrade`. This input was renamed from `update-pnpm` in the v2 rebrand. `true`/`auto` resolve the latest pnpm within the **current major** (favoring the `devEngines.packageManager` version); an explicit range (e.g. `^11`) may cross majors and can add a `packageManager` field when none exists. `PnpmUpgrade` queries pnpm versions and integrity via the `NpmRegistry` service — **not** a raw `npm view` shell-out, which hit EACCES against the root-owned `~/.npm` cache on GitHub macOS runners (the integrity fetch is best-effort; on failure the version is written without a hash). `PnpmUpgrade` no longer runs `corepack use` — it edits root `package.json` directly, writing the resolved version with the corepack-canonical `+sha512.<hex>` hash (derived from the npm registry integrity via `corepackHashFromIntegrity` in `src/utils/pnpm.ts`) into **both** `packageManager` and `devEngines.packageManager.version`. The corepack switch happens via the existing `runInstall`, which now **regenerates** the lockfile (`pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`) rather than `--fix-lockfile`: the action changes all three pnpm resolution inputs (pnpm version, config deps + `pnpm-plugin-silk` hooks, dependency ranges), and `--fix-lockfile` only repairs entries without re-resolving, so it could commit an inconsistent lockfile (e.g. an unfilled peer → `ERR_MODULE_NOT_FOUND`). `pnpm clean` needs **pnpm 11+** and runs a consumer's own `clean`/`purge` script over the built-in if one exists. Unlike the runtime bump, the pnpm bump **does** trigger `runInstall` (gated on `configUpdatesFromPnpm.length > 0`); like the runtime bump it never creates a changeset.
 - Runtime engine bumps (`upgrade-runtime-*`) edit root `package.json`
   `devEngines.runtime` and flow into the PR/commit/summary, but never create a
   changeset and never trigger `pnpm install` (unlike the pnpm bump, which does

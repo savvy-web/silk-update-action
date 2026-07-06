@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CommandRunner } from "@savvy-web/github-action-effects";
+import { NpmRegistry, NpmRegistryError, NpmRegistryTest } from "@savvy-web/github-action-effects";
 import type { Context } from "effect";
 import { Effect, Layer, LogLevel, Logger } from "effect";
 import { describe, expect, it } from "vitest";
@@ -24,38 +24,33 @@ const readPackageJson = (dir: string) => {
 	return JSON.parse(readFileSync(join(dir, "package.json"), "utf-8"));
 };
 
-type CommandRunnerShape = Context.Tag.Service<typeof CommandRunner>;
+const REGISTRY_VERSIONS = ["10.27.0", "10.28.0", "10.28.2", "10.29.0", "10.29.1", "11.0.0"];
 
-const versions = JSON.stringify(["10.27.0", "10.28.0", "10.28.2", "10.29.0", "10.29.1", "11.0.0"]);
+// A valid arbitrary base64 sha512 used for the resolved version in tests.
+const FAKE_INTEGRITY =
+	"sha512-tY+95tymapKVOAIVgfZItFcLbKGbGOfL1/LAenskRUFVOI2s3wjyrzZ46IptH+BPnWCd8kv1FzWgYOoEGzdKtw==";
 
-const makeExecCapture =
-	(handler: (command: string, args?: ReadonlyArray<string>) => string) =>
-	(command: string, args?: ReadonlyArray<string>) =>
-		Effect.succeed({ exitCode: 0, stdout: handler(command, args), stderr: "" });
-
-const defaultExecCapture = makeExecCapture(() => "ok");
-
-const makeRunner = (
-	execCaptureOverride?: (
-		command: string,
-		args?: ReadonlyArray<string>,
-	) => Effect.Effect<{ exitCode: number; stdout: string; stderr: string }, never>,
-): CommandRunnerShape => ({
-	exec: (_cmd, _args) => Effect.succeed(0),
-	execCapture: execCaptureOverride ?? defaultExecCapture,
-	execJson: (_cmd, _args, _schema) => Effect.die("not implemented"),
-	execLines: (_cmd, _args) => Effect.succeed([]),
-});
+/** In-memory registry with the pnpm versions list; `integrity: null` omits it. */
+const makePnpmRegistry = (integrity: string | null = FAKE_INTEGRITY) =>
+	NpmRegistryTest.layer({
+		packages: new Map([
+			[
+				"pnpm",
+				{
+					versions: REGISTRY_VERSIONS,
+					latest: "11.0.0",
+					distTags: { latest: "11.0.0" },
+					...(integrity !== null && { integrity }),
+				},
+			],
+		]),
+	});
 
 const runWithService = <A, E>(
 	fn: (service: Context.Tag.Service<typeof PnpmUpgrade>) => Effect.Effect<A, E>,
-	execCaptureOverride?: (
-		command: string,
-		args?: ReadonlyArray<string>,
-	) => Effect.Effect<{ exitCode: number; stdout: string; stderr: string }, never>,
+	registryLayer: Layer.Layer<NpmRegistry> = makePnpmRegistry(),
 ) => {
-	const commandRunnerLayer = Layer.succeed(CommandRunner, makeRunner(execCaptureOverride));
-	const layer = PnpmUpgradeLive.pipe(Layer.provide(commandRunnerLayer));
+	const layer = PnpmUpgradeLive.pipe(Layer.provide(registryLayer));
 	return Effect.runPromise(
 		Effect.gen(function* () {
 			const service = yield* PnpmUpgrade;
@@ -66,13 +61,9 @@ const runWithService = <A, E>(
 
 const runWithServiceEither = <A, E>(
 	fn: (service: Context.Tag.Service<typeof PnpmUpgrade>) => Effect.Effect<A, E>,
-	execCaptureOverride?: (
-		command: string,
-		args?: ReadonlyArray<string>,
-	) => Effect.Effect<{ exitCode: number; stdout: string; stderr: string }, never>,
+	registryLayer: Layer.Layer<NpmRegistry> = makePnpmRegistry(),
 ) => {
-	const commandRunnerLayer = Layer.succeed(CommandRunner, makeRunner(execCaptureOverride));
-	const layer = PnpmUpgradeLive.pipe(Layer.provide(commandRunnerLayer));
+	const layer = PnpmUpgradeLive.pipe(Layer.provide(registryLayer));
 	return Effect.runPromise(
 		Effect.either(
 			Effect.gen(function* () {
@@ -274,44 +265,13 @@ describe("resolveLatestSatisfying", () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("PnpmUpgrade service", () => {
-	/** Helper to extract the shell command from execCapture args */
-	const getShellCmd = (_command: string, args?: ReadonlyArray<string>) => args?.[1] ?? "";
-
-	// A valid arbitrary base64 sha512 used for the resolved version in tests.
-	const FAKE_INTEGRITY =
-		"sha512-tY+95tymapKVOAIVgfZItFcLbKGbGOfL1/LAenskRUFVOI2s3wjyrzZ46IptH+BPnWCd8kv1FzWgYOoEGzdKtw==";
 	const EXPECTED_HASH = corepackHashFromIntegrity(FAKE_INTEGRITY) as string; // sha512.<hex>
-
-	/** Standard exec mock — answers versions list and per-version integrity; NO corepack. */
-	const makeExec = (capturedCmds?: string[]) => (_command: string, args?: ReadonlyArray<string>) => {
-		const cmd = getShellCmd(_command, args);
-		capturedCmds?.push(cmd);
-		if (cmd.includes("npm view pnpm versions")) {
-			return Effect.succeed({ exitCode: 0, stdout: versions, stderr: "" });
-		}
-		if (/npm view pnpm@\S+ dist\.integrity/.test(cmd)) {
-			return Effect.succeed({ exitCode: 0, stdout: `${FAKE_INTEGRITY}\n`, stderr: "" });
-		}
-		return Effect.succeed({ exitCode: 0, stdout: "ok", stderr: "" });
-	};
-
-	/** Exec mock that returns empty integrity (graceful fallback test). */
-	const makeExecNoIntegrity = () => (_command: string, args?: ReadonlyArray<string>) => {
-		const cmd = getShellCmd(_command, args);
-		if (cmd.includes("npm view pnpm versions")) {
-			return Effect.succeed({ exitCode: 0, stdout: versions, stderr: "" });
-		}
-		if (/npm view pnpm@\S+ dist\.integrity/.test(cmd)) {
-			return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
-		}
-		return Effect.succeed({ exitCode: 0, stdout: "ok", stderr: "" });
-	};
 
 	it("returns null when no pnpm fields in package.json", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", version: "1.0.0" });
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("true", dir));
 		expect(result).toBeNull();
 	});
 
@@ -319,16 +279,15 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "yarn@4.0.0" });
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("true", dir));
 		expect(result).toBeNull();
 	});
 
 	it("upgrades pnpm (packageManager only, in-major) writing pinned version+hash to file", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.28.2" });
-		const capturedCmds: string[] = [];
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec(capturedCmds));
+		const result = await runWithService((s) => s.upgrade("true", dir));
 
 		expect(result).not.toBeNull();
 		expect(result?.from).toBe("10.28.2");
@@ -337,17 +296,15 @@ describe("PnpmUpgrade service", () => {
 		expect(result?.devEnginesUpdated).toBe(false);
 		expect(result?.added).toBe(false);
 
-		// Direct file write: pinned version+hash, NO corepack
 		const pkg = readPackageJson(dir);
 		expect(pkg.packageManager).toBe(`pnpm@10.29.1+${EXPECTED_HASH}`);
-		expect(capturedCmds.some((c) => c.includes("corepack"))).toBe(false);
 	});
 
 	it("returns null when already on latest in range", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.29.1" });
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("true", dir));
 		expect(result).toBeNull();
 	});
 
@@ -359,7 +316,7 @@ describe("PnpmUpgrade service", () => {
 			devEngines: { packageManager: { name: "pnpm", version: "10.28.2" } },
 		});
 
-		const result = await runWithService((s) => s.upgrade("auto", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("auto", dir));
 
 		// devEngines-favored: ^10.28.2 -> 10.29.1 is an upgrade
 		expect(result).not.toBeNull();
@@ -380,9 +337,8 @@ describe("PnpmUpgrade service", () => {
 			packageManager: "pnpm@10.28.2",
 			devEngines: { packageManager: { name: "pnpm", version: "10.28.2" } },
 		});
-		const capturedCmds: string[] = [];
 
-		const result = await runWithService((s) => s.upgrade("^11", dir), makeExec(capturedCmds));
+		const result = await runWithService((s) => s.upgrade("^11", dir));
 
 		expect(result?.from).toBe("10.28.2");
 		expect(result?.to).toBe("11.0.0");
@@ -392,43 +348,38 @@ describe("PnpmUpgrade service", () => {
 		const pkg = readPackageJson(dir);
 		expect(pkg.packageManager).toBe(`pnpm@11.0.0+${EXPECTED_HASH}`);
 		expect(pkg.devEngines.packageManager.version).toBe(`11.0.0+${EXPECTED_HASH}`);
-		expect(capturedCmds.some((c) => c.includes("corepack"))).toBe(false);
 	});
 
 	it("adds packageManager field (added: true) when no pnpm fields exist and a range is given", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", version: "1.0.0" });
-		const capturedCmds: string[] = [];
 
-		const result = await runWithService((s) => s.upgrade("^11", dir), makeExec(capturedCmds));
+		const result = await runWithService((s) => s.upgrade("^11", dir));
 
 		expect(result).not.toBeNull();
 		expect(result?.from).toBeNull();
 		expect(result?.to).toBe("11.0.0");
 		expect(result?.added).toBe(true);
 		expect(result?.packageManagerUpdated).toBe(true);
-		expect(capturedCmds.some((c) => c.includes("corepack"))).toBe(false);
 
 		const pkg = readPackageJson(dir);
 		expect(pkg.packageManager).toBe(`pnpm@11.0.0+${EXPECTED_HASH}`);
 	});
 
-	it("updates devEngines only (no packageManager) writing pinned form, no corepack", async () => {
+	it("updates devEngines only (no packageManager) writing pinned form", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, {
 			name: "test",
 			devEngines: { packageManager: { name: "pnpm", version: "10.28.2" } },
 		});
-		const capturedCmds: string[] = [];
 
-		const result = await runWithService((s) => s.upgrade("^11", dir), makeExec(capturedCmds));
+		const result = await runWithService((s) => s.upgrade("^11", dir));
 
 		expect(result?.from).toBe("10.28.2");
 		expect(result?.to).toBe("11.0.0");
 		expect(result?.packageManagerUpdated).toBe(false);
 		expect(result?.devEnginesUpdated).toBe(true);
 		expect(result?.added).toBe(false);
-		expect(capturedCmds.some((c) => c.includes("corepack"))).toBe(false);
 
 		const pkg = readPackageJson(dir);
 		expect(pkg.devEngines.packageManager.version).toBe(`11.0.0+${EXPECTED_HASH}`);
@@ -442,7 +393,7 @@ describe("PnpmUpgrade service", () => {
 			devEngines: { packageManager: { name: "pnpm", version: "10.28.2" } },
 		});
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("true", dir));
 
 		expect(result).not.toBeNull();
 		expect(result?.from).toBe("10.28.2");
@@ -459,7 +410,7 @@ describe("PnpmUpgrade service", () => {
 			devEngines: { packageManager: { name: "yarn", version: "4.0.0" } },
 		});
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("true", dir));
 
 		expect(result).not.toBeNull();
 		expect(result?.packageManagerUpdated).toBe(true);
@@ -481,7 +432,7 @@ describe("PnpmUpgrade service", () => {
 			)}\n`,
 		);
 
-		await runWithService((s) => s.upgrade("true", dir), makeExec());
+		await runWithService((s) => s.upgrade("true", dir));
 
 		const raw = readFileSync(join(dir, "package.json"), "utf-8");
 		expect(raw).toMatch(/^\t"/m);
@@ -502,7 +453,7 @@ describe("PnpmUpgrade service", () => {
 			)}\n`,
 		);
 
-		await runWithService((s) => s.upgrade("true", dir), makeExec());
+		await runWithService((s) => s.upgrade("true", dir));
 
 		const raw = readFileSync(join(dir, "package.json"), "utf-8");
 		expect(raw).toMatch(/^ {2}"/m);
@@ -513,7 +464,7 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@11.0.0" });
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("true", dir));
 		expect(result).toBeNull();
 	});
 
@@ -521,14 +472,14 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@12.0.0" });
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("true", dir));
 		expect(result).toBeNull();
 	});
 
 	it("fails when package.json does not exist", async () => {
 		const dir = makeTempDir();
 
-		const result = await runWithServiceEither((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithServiceEither((s) => s.upgrade("true", dir));
 
 		expect(result._tag).toBe("Left");
 		if (result._tag === "Left") {
@@ -540,7 +491,7 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writeFileSync(join(dir, "package.json"), "{ not valid json");
 
-		const result = await runWithServiceEither((s) => s.upgrade("true", dir), makeExec());
+		const result = await runWithServiceEither((s) => s.upgrade("true", dir));
 
 		expect(result._tag).toBe("Left");
 		if (result._tag === "Left") {
@@ -548,20 +499,12 @@ describe("PnpmUpgrade service", () => {
 		}
 	});
 
-	it("fails when npm view returns invalid JSON", async () => {
+	it("maps a registry versions-query failure to FileSystemError", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.28.2" });
 
-		const result = await runWithServiceEither(
-			(s) => s.upgrade("true", dir),
-			(_command, args) => {
-				const cmd = getShellCmd(_command, args);
-				if (cmd.includes("npm view pnpm versions")) {
-					return Effect.succeed({ exitCode: 0, stdout: "not json", stderr: "" });
-				}
-				return Effect.succeed({ exitCode: 0, stdout: "ok", stderr: "" });
-			},
-		);
+		// Empty registry: getVersions("pnpm") fails with NpmRegistryError.
+		const result = await runWithServiceEither((s) => s.upgrade("true", dir), NpmRegistryTest.empty());
 
 		expect(result._tag).toBe("Left");
 		if (result._tag === "Left") {
@@ -578,7 +521,7 @@ describe("PnpmUpgrade service", () => {
 			devEngines: { packageManager: { name: "pnpm", version: "10.28.2" } },
 		});
 
-		const result = await runWithService((s) => s.upgrade("auto", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("auto", dir));
 
 		// If packageManager were the reference, ^10.29.1 -> 10.29.1 == current -> null.
 		// devEngines-favored: ^10.28.2 -> 10.29.1, so an upgrade is reported.
@@ -591,7 +534,7 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.28.2" });
 
-		const result = await runWithService((s) => s.upgrade("auto", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("auto", dir));
 
 		expect(result?.from).toBe("10.28.2");
 		expect(result?.to).toBe("10.29.1");
@@ -602,7 +545,7 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", version: "1.0.0" });
 
-		const result = await runWithService((s) => s.upgrade("auto", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("auto", dir));
 		expect(result).toBeNull();
 	});
 
@@ -610,7 +553,7 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.28.2" });
 
-		const result = await runWithService((s) => s.upgrade("false", dir));
+		const result = await runWithService((s) => s.upgrade("false", dir), NpmRegistryTest.empty());
 		expect(result).toBeNull();
 	});
 
@@ -618,7 +561,7 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.28.2" });
 
-		const result = await runWithService((s) => s.upgrade("^99", dir), makeExec());
+		const result = await runWithService((s) => s.upgrade("^99", dir));
 		expect(result).toBeNull();
 	});
 
@@ -626,13 +569,40 @@ describe("PnpmUpgrade service", () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.28.2" });
 
-		const result = await runWithService((s) => s.upgrade("true", dir), makeExecNoIntegrity());
+		const result = await runWithService((s) => s.upgrade("true", dir), makePnpmRegistry(null));
 
 		expect(result).not.toBeNull();
 		expect(result?.to).toBe("10.29.1");
 
 		const pkg = readPackageJson(dir);
 		// No +sha512 suffix — bare version fallback
+		expect(pkg.packageManager).toBe("pnpm@10.29.1");
+	});
+
+	it("writes bare version (no hash) when the integrity query fails", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, { name: "test", packageManager: "pnpm@10.28.2" });
+
+		// Versions resolve, but getPackageInfo fails: the integrity fetch is
+		// best-effort and must degrade to a bare version, not fail the upgrade.
+		const registry = Layer.effect(
+			NpmRegistry,
+			Effect.gen(function* () {
+				const base = yield* NpmRegistry;
+				return {
+					...base,
+					getPackageInfo: (pkg: string) =>
+						Effect.fail(new NpmRegistryError({ pkg, operation: "view" as const, reason: "boom" })),
+				};
+			}),
+		).pipe(Layer.provide(makePnpmRegistry()));
+
+		const result = await runWithService((s) => s.upgrade("true", dir), registry);
+
+		expect(result).not.toBeNull();
+		expect(result?.to).toBe("10.29.1");
+
+		const pkg = readPackageJson(dir);
 		expect(pkg.packageManager).toBe("pnpm@10.29.1");
 	});
 });

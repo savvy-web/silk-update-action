@@ -102,21 +102,21 @@ describe("buildUpdateSubject", () => {
 			expect(subject).toBe(`${PREFIX}update dependencies in @savvy-web/foo`);
 		});
 
-		it("rule 8: counts distinct deps when spread across workspaces", () => {
+		it("rule 8: breaks mixed types down when spread across workspaces", () => {
 			const subject = buildUpdateSubject([
 				mk("effect", "dependency", "3.21.3", "@savvy-web/a"),
 				mk("vitest", "devDependency", "3.0.0", "@savvy-web/b"),
 				mk("zod", "dependency", "4.0.0", "@savvy-web/c"),
 			]);
-			expect(subject).toBe(`${PREFIX}update 3 dependencies`);
+			expect(subject).toBe(`${PREFIX}update 2 dependencies and 1 devDependency`);
 		});
 
-		it("rule 8: counts distinct deps when some land in the root (null package)", () => {
+		it("rule 8: breaks mixed types down when some land in the root (null package)", () => {
 			const subject = buildUpdateSubject([
 				mk("effect", "dependency", "3.21.3", null),
 				mk("vitest", "devDependency", "3.0.0", "@savvy-web/foo"),
 			]);
-			expect(subject).toBe(`${PREFIX}update 2 dependencies`);
+			expect(subject).toBe(`${PREFIX}update 1 dependency and 1 devDependency`);
 		});
 
 		it("rule 8: root-only multi-dep updates are counted, not workspace-named", () => {
@@ -125,6 +125,104 @@ describe("buildUpdateSubject", () => {
 				mk("zod", "dependency", "4.0.0", null),
 			]);
 			expect(subject).toBe(`${PREFIX}update 2 dependencies`);
+		});
+	});
+
+	describe("typed dependency breakdown", () => {
+		it("summarizes an all-devDependencies batch with the typed noun", () => {
+			const subject = buildUpdateSubject([
+				mk("vitest", "devDependency", "3.0.0", "@savvy-web/a"),
+				mk("tsx", "devDependency", "4.0.0", "@savvy-web/b"),
+				mk("turbo", "devDependency", "2.5.0", null),
+			]);
+			expect(subject).toBe(`${PREFIX}update 3 devDependencies`);
+		});
+
+		it("summarizes an all-peerDependencies batch with the typed noun", () => {
+			const subject = buildUpdateSubject([
+				mk("react", "peerDependency", "19.0.0", "@savvy-web/a"),
+				mk("effect", "peerDependency", "3.21.3", "@savvy-web/b"),
+			]);
+			expect(subject).toBe(`${PREFIX}update 2 peerDependencies`);
+		});
+
+		it("summarizes an all-optionalDependencies batch with the typed noun", () => {
+			const subject = buildUpdateSubject([
+				mk("fsevents", "optionalDependency", "2.3.3", "@savvy-web/a"),
+				mk("bufferutil", "optionalDependency", "4.0.9", "@savvy-web/b"),
+			]);
+			expect(subject).toBe(`${PREFIX}update 2 optionalDependencies`);
+		});
+
+		it("enumerates three types production-first", () => {
+			const subject = buildUpdateSubject([
+				mk("effect", "dependency", "3.21.3", "@savvy-web/a"),
+				mk("vitest", "devDependency", "3.0.0", "@savvy-web/b"),
+				mk("tsx", "devDependency", "4.0.0", "@savvy-web/c"),
+				mk("react", "peerDependency", "19.0.0", "@savvy-web/d"),
+			]);
+			expect(subject).toBe(`${PREFIX}update 1 dependency, 2 devDependencies and 1 peerDependency`);
+		});
+
+		it("counts a name once per type when it appears in two sections", () => {
+			const subject = buildUpdateSubject([
+				mk("effect", "dependency", "3.21.3", "@savvy-web/a"),
+				mk("effect", "devDependency", "3.21.3", "@savvy-web/b"),
+				mk("zod", "dependency", "4.0.0", "@savvy-web/c"),
+			]);
+			expect(subject).toBe(`${PREFIX}update 2 dependencies and 1 devDependency`);
+		});
+
+		it("composes config + devDependencies with typed nouns", () => {
+			const subject = buildUpdateSubject([
+				mk("typescript", "config", "5.9.2"),
+				mk("vitest", "devDependency", "3.0.0", "@savvy-web/a"),
+				mk("tsx", "devDependency", "4.0.0", "@savvy-web/b"),
+				mk("turbo", "devDependency", "2.5.0", "@savvy-web/c"),
+				mk("biome", "devDependency", "2.0.0", "@savvy-web/d"),
+			]);
+			expect(subject).toBe(`${PREFIX}update 1 config dependency and 4 devDependencies`);
+		});
+
+		it("keeps the elliptical config phrasing when regular deps are all plain dependencies", () => {
+			const subject = buildUpdateSubject([
+				mk("typescript", "config", "5.9.2"),
+				mk("effect", "dependency", "3.21.3", "@savvy-web/a"),
+				mk("zod", "dependency", "4.0.0", "@savvy-web/b"),
+			]);
+			expect(subject).toBe(`${PREFIX}update 1 config and 2 dependencies`);
+		});
+
+		it("composes pnpm + devDependencies with the typed noun", () => {
+			const subject = buildUpdateSubject([
+				mk("pnpm", "config", "11.7.0"),
+				mk("vitest", "devDependency", "3.0.0", "@savvy-web/a"),
+				mk("tsx", "devDependency", "4.0.0", "@savvy-web/b"),
+			]);
+			expect(subject).toBe(`${PREFIX}upgrade pnpm and update 2 devDependencies`);
+		});
+
+		it("names the workspace with the typed noun when a single-workspace batch is homogeneous", () => {
+			const subject = buildUpdateSubject([
+				mk("vitest", "devDependency", "3.0.0", "@savvy-web/foo"),
+				mk("tsx", "devDependency", "4.0.0", "@savvy-web/foo"),
+			]);
+			expect(subject).toBe(`${PREFIX}update devDependencies in @savvy-web/foo`);
+		});
+
+		it("degrades to the coarse phrasing when the typed breakdown overflows 72 chars", () => {
+			const subject = buildUpdateSubject([
+				mk("typescript", "config", "5.9.2"),
+				mk("effect", "dependency", "3.21.3", "@savvy-web/a"),
+				mk("zod", "dependency", "4.0.0", "@savvy-web/b"),
+				mk("vitest", "devDependency", "3.0.0", "@savvy-web/c"),
+				mk("tsx", "devDependency", "4.0.0", "@savvy-web/d"),
+				mk("react", "peerDependency", "19.0.0", "@savvy-web/e"),
+				mk("fsevents", "optionalDependency", "2.3.3", "@savvy-web/f"),
+			]);
+			// Typed: "update 1 config dependency, 2 dependencies, 2 devDependencies,
+			// 1 peerDependency and 1 optionalDependency" — over budget. Coarse fits.
+			expect(subject).toBe(`${PREFIX}update 1 config and 6 dependencies`);
 		});
 	});
 
