@@ -43,7 +43,7 @@
 		"@pnpm/lockfile.fs": "^1100.1.7",
 		"@pnpm/lockfile.types": "^1100.0.12",
 		"@savvy-web/github-action-effects": "^2.3.5",
-		"@savvy-web/silk-effects": "^3.0.0",
+		"@savvy-web/silk-effects": "^3.0.1",
 		"effect": "catalog:silk",
 		"runtime-resolver": "^0.3.21",
 		"semver-effect": "^0.3.1",
@@ -52,7 +52,7 @@
 	},
 	"devDependencies": {
 		"@savvy-web/github-action-builder": "^1.1.0",
-		"@savvy-web/silk": "^2.0.0",
+		"@savvy-web/silk": "^2.1.0",
 		"@types/node": "catalog:silk",
 		"@vitest-agent/plugin": "^1.1.4"
 	},
