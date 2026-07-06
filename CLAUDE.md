@@ -103,19 +103,7 @@ pnpm vitest run --testNamePattern="parsePnpmVersion"
   `NodeResolver`, `DenoResolver`, and `BunResolver` services; wired with either
   offline bundled cache layers (`Offline*CacheLive`, the default) or live
   network layers (`Auto*CacheLive`) depending on the `runtime-data` input.
-- **Changesets adapter**: `services/changesets.ts` is a thin adapter over
-  `Changesets.DepsRegen` from `@savvy-web/silk-effects` (`^2.0.1`), which is the
-  source of truth for dependency changesets. `create(workspaceRoot, base)` runs
-  `depsRegen.plan({ cwd, base }) → execute` and maps written files to
-  `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR
-  `privatePackages.version`, minus the `ignore` list) lives upstream in
-  DepsRegen — this repo no longer carries `changeset-config.ts` /
-  `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as
-  `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`;
-  `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector,
-  WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and
-  `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/
-  CommandExecutor via `NodeContext.layer`) to satisfy.
+- **Changesets adapter**: `services/changesets.ts` is a thin adapter over `Changesets.DepsRegen` from `@savvy-web/silk-effects`, which is the source of truth for dependency changesets. silk-effects 3 swapped its embedded changesets engine to the @changesets v3 `next` prereleases (hence the `@changesets/config@4` `$schema` in `.changeset/config.json`); the consumed DepsRegen surface is unchanged. `create(workspaceRoot, base)` runs `depsRegen.plan({ cwd, base }) → execute` and maps written files to `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR `privatePackages.version`, minus the `ignore` list) lives upstream in DepsRegen — this repo no longer carries `changeset-config.ts` / `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`; `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector, WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/CommandExecutor via `NodeContext.layer`) to satisfy.
 - **Errors**: `Schema.TaggedError` (`PnpmError`, `GitHubApiError`, `FileSystemError`)
 - **Entry**: `Action.run(program)` from `main.ts` (no `{ layer }` — `program`
   needs only the core services `Action.run` injects); inputs parsed via Effect
@@ -172,7 +160,7 @@ We author every first-party dependency in the table below, so a bug or missing A
 
 **Committing while a link/override is active:** commit the **full dogfood state** to `dev` — `src` + rebuilt `dist` + changeset **and** the `pnpm-workspace.yaml` override + `pnpm-lock.yaml`. The override holds a machine-specific link path, so `dev` only installs cleanly with the sibling repos checked out at the paths in the table above; that is the accepted dogfooding trade-off, and the cleanup in step 7 reverts it. No CI runs on a plain `dev` push, so the committed `dev` source may reference an unpublished library API until it publishes — expected during dogfooding. Commits must be GPG-signed with the GitHub-verified key for `C. Spencer Beggs <spencer@savvyweb.systems>` or the signature ruleset rejects them.
 
-**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^2.0.1`, `workspaces-effect@^2.0.1`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.20`, `@savvy-web/github-action-effects@^2.3.5`, all unlinked). The whole `Changesets.DepsRegen` chain is published.
+**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^3.0.0`, `workspaces-effect@^2.0.1`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.21`, `@savvy-web/github-action-effects@^2.3.5`, all unlinked). The whole `Changesets.DepsRegen` chain is published.
 
 ## Development & Release Cycle
 
@@ -286,8 +274,7 @@ Packages publish to both GitHub Packages and npm with provenance.
   needs local history for the base ref: the workflow checkout must use
   `fetch-depth: 0`, and `BranchManager.ensureBaseHistory(target-branch)` runs as
   a preflight (best-effort fetch/unshallow) before `Changesets.create`
-- `action.config.ts` declares pre/main/post entries and `build.ignore`s
-  cyclonedx optional plugins (xmlbuilder2/libxmljs2/ajv-formats-draft2019)
+- `action.config.ts` declares pre/main/post entries, `build.ignore`s cyclonedx optional plugins (xmlbuilder2/libxmljs2/ajv-formats-draft2019), and lists `build.nativeDynamicImports` (`@changesets/apply-release-plan`, `workspaces-effect`) so rspack preserves their fully dynamic `await import()` in the bundle instead of miscompiling it into a context module — rationale in `@./.claude/design/silk-update-action/01-dependencies.md` and the `action.config.ts` comment
 - `upgrade-package-manager` is a **string** input (`false` | `true` | `auto` | a semver
   range), validated like the `upgrade-runtime-*` inputs — not a boolean.
   Default `"true"`. It currently upgrades **pnpm only** (support for other
