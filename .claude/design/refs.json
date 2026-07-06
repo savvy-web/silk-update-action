@@ -3,6 +3,12 @@
 	"refs": [
 		{
 			"source": "CLAUDE.md",
+			"target": ".claude/design/silk-update-action/01-dependencies.md",
+			"hash": "bab021691767104b67dae23453fcf5125904dd530ec684667e5b18d5f78b0afd",
+			"recordedAt": "2026-07-05"
+		},
+		{
+			"source": "CLAUDE.md",
 			"target": ".claude/design/silk-update-action/_index.md",
 			"hash": "37bb9632eb203c6d6a4b47676f48926c4edae91910bc77c2fe8fdcb1dc523c6e",
 			"recordedAt": "2026-07-02"

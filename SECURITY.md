@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-Only the latest `1.x` release receives security updates.
+Only the latest `3.x` release receives security updates.
 
 | Version | Supported |
 | --- | --- |
-| `1.x` (latest) | Yes |
-| `< 1.0` | No |
+| `3.x` (latest) | Yes |
+| `< 3.0` | No |
 
 ## Reporting a Vulnerability
 
