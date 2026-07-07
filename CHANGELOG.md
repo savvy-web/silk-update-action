@@ -1,5 +1,15 @@
 # silk-update-action
 
+## 3.4.4
+
+### Bug Fixes
+
+* Use latest `@savvy-web/silk-effects`
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 3.4.3
 
 ### Features
