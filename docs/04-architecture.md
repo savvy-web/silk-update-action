@@ -27,14 +27,14 @@ Splitting the token across phases keeps the credential short-lived and bounded t
 
 The main phase runs these steps in order. Most steps are conditional on the inputs you supply, and unrelated steps are skipped when their inputs are absent.
 
-1. Manage the dedicated update branch (default `pnpm/config-deps`). If the branch exists it is deleted and recreated from the default branch, so each run starts from a clean baseline and the PR diff shows only the dependency changes.
+1. Manage the dedicated update branch (default `pnpm/config-deps`). The `source-branch` and `target-branch` refs are validated first — a missing ref fails the run before anything destructive happens. If the update branch exists it is deleted and recreated from the source branch (`source-branch`, default `main`), so each run starts from a clean baseline and the PR diff shows only the dependency changes.
 2. Capture the current `pnpm-lock.yaml` state for later comparison.
 3. Upgrade the package manager (pnpm, for now) if `upgrade-package-manager` is non-`false`, bumping the `packageManager` and `devEngines.packageManager` fields when a newer version is available within range.
 4. Upgrade the `devEngines.runtime` entries (Node.js, Deno, Bun) when any `upgrade-runtime-*` input is set. See [runtime upgrades](#runtime-upgrades) below.
 5. Update config dependencies. The action resolves each one within a conservative range derived from its current major (hash-pinned config deps carry no explicit range) and edits the `configDependencies` entry in `pnpm-workspace.yaml` in place. It does not run `pnpm add --config`, which would promote the dependency into a catalog.
 6. Update regular dependencies across `dependencies`, `devDependencies` and `optionalDependencies` in every workspace `package.json`, resolving each within the semver range already declared in `package.json` (so a `^4.0.0` specifier stays on `4.x`) and matching the `dependencies` input patterns (globs supported).
 7. Sync peer-dependency ranges for packages listed in `peer-lock` or `peer-minor`, following each package's strategy.
-8. Reconcile the lockfile with `pnpm install --frozen-lockfile=false --fix-lockfile`, which writes the lockfile changes while leaving unrelated transitive versions pinned.
+8. Regenerate the lockfile — `pnpm clean --lockfile` followed by `pnpm install --frozen-lockfile=false` — so resolution re-runs under the new pnpm version, config dependencies and ranges. Advancing transitive versions within their declared ranges is expected, so a larger lockfile diff is intentional rather than noise. `pnpm clean` requires pnpm 11 or later.
 9. Format `pnpm-workspace.yaml` so the result matches the repository's lint-staged formatting and does not churn after commit.
 10. Run any custom `run` commands sequentially. If a command fails, the action records the failure on the check run and exits without creating a PR.
 11. Detect changes by diffing the before and after lockfiles and inspecting `git status`. If nothing changed, the run exits early.
@@ -44,7 +44,7 @@ The main phase runs these steps in order. Most steps are conditional on the inpu
 
 ### Runtime upgrades
 
-The `upgrade-runtime-node`, `upgrade-runtime-deno` and `upgrade-runtime-bun` inputs each accept `false`, `auto` or a semver range, and `runtime-data` selects whether version data comes from the bundled `offline` cache or a `live` fetch. A runtime upgrade rewrites the matching `devEngines.runtime` entry's version. Like a pnpm self-upgrade, it is a tooling-level change: it appears in the PR summary and commit message but never creates a changeset and never triggers `pnpm install`. Version resolution covers only currently-maintained major lines, so a request targeting an end-of-life line is skipped with a warning.
+The `upgrade-runtime-node`, `upgrade-runtime-deno` and `upgrade-runtime-bun` inputs each accept `false`, `auto` or a semver range, and `runtime-data` selects whether version data comes from the bundled `offline` cache or a `live` fetch. A runtime upgrade rewrites the matching `devEngines.runtime` entry's version. Like a pnpm self-upgrade, it is a tooling-level change that appears in the PR summary and commit message but never creates a changeset; unlike a pnpm self-upgrade, it never triggers the install step. Version resolution covers only currently-maintained major lines, so a request targeting an end-of-life line is skipped with a warning.
 
 ## Verified commits
 

@@ -76,7 +76,7 @@ Tags from `runtime-resolver`:
 
 The dependency-changeset step delegates to silk's `Changesets.DepsRegen`, which is the source of truth. It is FileSystem-based (reads `.changeset/config.json`, package manifests and the git worktree via `@effect/platform` FileSystem/CommandExecutor, not `node:fs`).
 
-- `Changesets.DepsRegen` Tag — `plan({ cwd, base })` + `execute(plan)` regenerate the cumulative `merge-base(base) → worktree` dependency diff into one consolidated changeset per in-scope package. Gating (versionable-minus-ignored) lives inside it.
+- `Changesets.DepsRegen` Tag — `plan({ cwd, base })` + `execute(plan)` regenerate the cumulative `merge-base(base) → worktree` dependency diff into one consolidated changeset per in-scope package. Gating (versionable-minus-ignored) lives inside it. `plan` refreshes workspace discovery first (silk-effects 3.2.1), so its worktree snapshots read manifests edited earlier in the run rather than the layer-memoized discovery cache — the fix for the silent zero-changeset bug.
 - `Changesets.DepsRegenDefault` — the batteries-included Layer that bundles `PointInTimeWorkspace`, `ConfigInspector`, `WorkspaceDiscovery`, the adaptive `PublishabilityDetector` and `ChangesetConfig` internally, leaving only platform services to satisfy. The action's `changesets.ts` was previously two re-export shims plus a bespoke writer; those are deleted — `ChangesetConfig` and the publishability overrides are no longer imported directly.
 
 ### Domain Services (src/services/)

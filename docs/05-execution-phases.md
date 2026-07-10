@@ -14,7 +14,7 @@ The action runs as three phases — `pre`, `main` and `post` — declared in its
   - [Update config dependencies](#update-config-dependencies)
   - [Update workspace dependencies](#update-workspace-dependencies)
   - [Sync peer dependencies](#sync-peer-dependencies)
-  - [Reconcile lockfile and install](#reconcile-lockfile-and-install)
+  - [Regenerate lockfile and install](#regenerate-lockfile-and-install)
   - [Format pnpm-workspace.yaml](#format-pnpm-workspaceyaml)
   - [Run custom commands](#run-custom-commands)
   - [Capture lockfile state (after)](#capture-lockfile-state-after)
@@ -47,10 +47,11 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 
 ### Branch management
 
+- Validates that the `source-branch` and `target-branch` refs exist, failing fast before any destructive operation
 - Checks whether the update branch already exists
-- If the branch does not exist, creates it from the default branch using the GitHub API, then fetches and checks it out locally
-- If the branch exists, deletes it and recreates it from the default branch to ensure a clean baseline
-- This reset strategy guarantees the PR always shows only the dependency changes against the current default branch
+- If the branch does not exist, creates it from the source branch (`source-branch`, default `main`) using the GitHub API, then fetches and checks it out locally
+- If the branch exists, deletes it and recreates it from the source branch to ensure a clean baseline
+- This reset strategy guarantees the PR always shows only the dependency changes against the current source branch
 
 ### Capture lockfile state (before)
 
@@ -60,10 +61,10 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 ### Upgrade pnpm
 
 - Runs when the `upgrade-package-manager` input is non-`false` (the default is `true`)
-- Detects the current pnpm version from `packageManager` in `package.json`
+- Detects the current pnpm version from `devEngines.packageManager` in `package.json`, falling back to the `packageManager` field
 - Checks for the latest available pnpm version within range
 - Updates the `packageManager` and `devEngines` fields when a newer version is available
-- Records the version change for the PR summary and commit message; it does not create a changeset
+- Records the version change for the PR summary and commit message; it does not create a changeset, but it does trigger the lockfile regeneration step, whose `pnpm install` performs the corepack switch to the new version
 
 ### Upgrade runtimes
 
@@ -71,7 +72,7 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 - Resolves the latest version for the matching `devEngines.runtime` entry and rewrites its `version`, preserving the entry's operator
 - Uses the `runtime-data` source — `offline` reads the bundled cache, `live` fetches the latest data and falls back to the cache on failure
 - Resolution covers only currently-maintained major lines; a request targeting an end-of-life line is skipped with a warning
-- Like a pnpm self-upgrade, a runtime bump appears in the PR summary and commit message but never creates a changeset and never triggers `pnpm install`
+- Like a pnpm self-upgrade, a runtime bump appears in the PR summary and commit message but never creates a changeset; unlike a pnpm self-upgrade, it never triggers the install step
 
 ### Update config dependencies
 
@@ -97,11 +98,12 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 - Preserves the existing prefix (`^`, `~`, `>=` and so on)
 - Skips with a warning when no peer entry exists for the package
 
-### Reconcile lockfile and install
+### Regenerate lockfile and install
 
-- Runs only when there are config dependencies, regular dependencies or peer-sync rewrites to process
-- Runs `pnpm install --frozen-lockfile=false --fix-lockfile`: `--frozen-lockfile=false` opts out of CI's default refusal to write lockfile changes, and `--fix-lockfile` reconciles the lockfile against the modified manifests while leaving unrelated transitives at their pinned versions
-- Avoids deleting `node_modules` or `pnpm-lock.yaml`, which keeps installs fast and keeps unrelated lockfile churn out of the PR diff
+- Runs only when there is a package-manager upgrade, config-dependency update, workspace-dependency update or peer-sync rewrite to process
+- Removes `pnpm-lock.yaml` and `node_modules` with `pnpm clean --lockfile` (requires pnpm 11+; a `clean` or `purge` script in the root `package.json` runs in place of the built-in), then runs `pnpm install --frozen-lockfile=false` to regenerate the lockfile from scratch — `--frozen-lockfile=false` opts out of CI's default refusal to write lockfile changes
+- Full regeneration re-runs resolution under the new pnpm version, config dependencies and ranges; advancing transitive versions within their declared ranges is expected, so a larger lockfile diff is intentional rather than noise
+- When the package manager was upgraded, this install also performs the corepack switch to the new pnpm version
 
 ### Format pnpm-workspace.yaml
 
@@ -134,8 +136,8 @@ A `git status --porcelain` check detects any modified, staged or untracked files
 - Skips entirely if the `changesets` input is `false`
 - Checks whether a `.changeset/` directory exists
 - Recomputes the cumulative dependency diff between the base branch (`merge-base`) and the working tree, so the checkout must include full history (`fetch-depth: 0`); a shallow checkout cannot resolve the merge-base
-- For each affected workspace package, applies two gates. The trigger gate requires at least one consumer-facing change — a `dependency`, `optionalDependency` or `peerDependency` change, or a peer-sync rewrite; `devDependency`-only changes are informational and do not by themselves produce a changeset. The versionable gate requires the package to be publishable or marked via the `versionPrivate` config
-- When both gates pass, writes a single consolidated `patch` changeset whose `## Dependencies` table covers all changes for the package, using specific type values: `dependency`, `optionalDependency`, `peerDependency`, `devDependency`
+- For each affected workspace package, applies two conditions. The package's diff must contain at least one consumer-facing change — a `dependency`, `optionalDependency` or `peerDependency` change, including peer-sync rewrites; `devDependency`-only changes never produce a changeset. The package must also be versionable — publishable, or a private package opted in via `privatePackages.version` in `.changeset/config.json` — and not listed in the changeset `ignore` list
+- When both conditions hold, writes a single consolidated `patch` changeset whose `## Dependencies` table lists the package's `dependency`, `optionalDependency` and `peerDependency` changes (dev rows are dropped)
 - Regeneration is convergent: stale pure-dependency changesets it supersedes are deleted, so re-running the action produces one current table per package rather than accumulating duplicates. Hand-authored changesets that mix a `## Dependencies` table with prose are left untouched
 - Empty changesets are not written, and config-only changes do not produce a changeset
 
@@ -152,7 +154,7 @@ In dry-run mode this step is skipped entirely.
 
 ### Create or update PR
 
-- Searches for an existing open PR from the update branch to the default branch
+- Searches for an existing open PR from the update branch to the target branch (`target-branch`, which defaults to following `source-branch`)
 - Updates the title and body of an existing PR, or creates a new one
 - The PR body includes per-package tables with dependency, type, action, from and to columns, plus changeset details in expandable sections
 - If `auto-merge` is set, enables auto-merge on the PR via the GitHub GraphQL API; failures are logged as warnings without failing the action
