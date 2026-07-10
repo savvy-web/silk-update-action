@@ -1,5 +1,17 @@
 # silk-update-action
 
+## 3.4.6
+
+### Dependencies
+
+* | Dependency              | Type       | Action  | From   | To     |                                                                              |
+  | ----------------------- | ---------- | ------- | ------ | ------ | ---------------------------------------------------------------------------- |
+  | @savvy-web/silk-effects | dependency | updated | ^3.2.1 | ^3.2.2 | [#173][#173] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
+
+### Patch Changes
+
+[#173]: https://github.com/savvy-web/silk-update-action/pull/173
+
 ## 3.4.5
 
 ### Bug Fixes
