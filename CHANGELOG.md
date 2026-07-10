@@ -1,5 +1,31 @@
 # silk-update-action
 
+## 3.4.5
+
+### Bug Fixes
+
+* The changeset step no longer silently writes zero changesets when dependency updates were applied earlier in the same run. The bundled `workspaces-effect` and `@savvy-web/silk-effects` now refresh the workspace-discovery cache before `DepsRegen` snapshots the worktree, so the diff sees the just-updated manifests instead of the ones cached before the update steps ran.
+
+### Documentation
+
+* Corrected the README and `docs/` guide to describe the `source-branch` / `target-branch` inputs and the `pnpm clean --lockfile` regeneration step, which were previously documented as always resetting to `main` and reconciling via `--fix-lockfile` [#168][#168]
+
+### Dependencies
+
+* | Dependency                       | Type       | Action  | From       | To         |                                                                       |
+  | -------------------------------- | ---------- | ------- | ---------- | ---------- | --------------------------------------------------------------------- |
+  | @pnpm/lockfile.types             | dependency | updated | ^1100.0.12 | ^1100.0.13 |                                                                       |
+  | @savvy-web/github-action-effects | dependency | updated | ^2.3.7     | ^2.4.0     |                                                                       |
+  | @savvy-web/silk-effects          | dependency | updated | ^3.1.0     | ^3.2.1     |                                                                       |
+  | runtime-resolver                 | dependency | updated | ^0.3.21    | ^0.3.22    |                                                                       |
+  | workspaces-effect                | dependency | updated | ^2.0.2     | ^2.0.3     | [#168][#168] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#168]: https://github.com/savvy-web/silk-update-action/pull/168
+
 ## 3.4.4
 
 ### Bug Fixes
