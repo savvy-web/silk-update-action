@@ -89,9 +89,9 @@ pnpm vitest run --testNamePattern="parsePnpmVersion"
 
 ### Effect-TS Patterns
 
-- **Library services**: From `@savvy-web/github-action-effects` (`^2.3.6`): `CommandRunner`, `GitBranch`, `GitCommit`, `CheckRun`, `GitHubClient`, `NpmRegistry`, `PullRequest`, `GithubMarkdown`, `GitHubToken`. `pre.ts` and `post.ts` provide `GitHubAppLive ∘ OctokitAuthAppLive ∘ FetchHttpClient.layer` for `GitHubToken.provision`/`dispose`.
-- **Domain services**: `BranchManager`, `PnpmUpgrade`, `ConfigDeps`, `RegularDeps`, `Report`, `Lockfile`, `Changesets`, `RuntimeUpgrade`. Workspace enumeration uses `WorkspaceDiscovery` from `workspaces-effect` (`^2.0.2`) directly (no local `Workspaces` Tag), still consumed by `RegularDeps`, `PeerSync`, and `Lockfile`. Stateless helpers: `WorkspaceYaml`, `PeerSync`. `PnpmUpgrade`, `ConfigDeps`, and `RegularDeps` all query npm via the `NpmRegistry` service. `RuntimeUpgrade` depends on `runtime-resolver`'s `NodeResolver`, `DenoResolver`, and `BunResolver` services; wired with either offline bundled cache layers (`Offline*CacheLive`, the default) or live network layers (`Auto*CacheLive`) depending on the `runtime-data` input.
-- **Changesets adapter**: `services/changesets.ts` is a thin adapter over `Changesets.DepsRegen` from `@savvy-web/silk-effects`, which is the source of truth for dependency changesets. silk-effects 3 swapped its embedded changesets engine to the @changesets v3 `next` prereleases (hence the `@changesets/config@4` `$schema` in `.changeset/config.json`); the consumed DepsRegen surface is unchanged. `create(workspaceRoot, base)` runs `depsRegen.plan({ cwd, base }) → execute` and maps written files to `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR `privatePackages.version`, minus the `ignore` list) lives upstream in DepsRegen — this repo no longer carries `changeset-config.ts` / `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`; `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector, WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/CommandExecutor via `NodeContext.layer`) to satisfy.
+- **Library services**: From `@savvy-web/github-action-effects` (`^2.4.0`): `CommandRunner`, `GitBranch`, `GitCommit`, `CheckRun`, `GitHubClient`, `NpmRegistry`, `PullRequest`, `GithubMarkdown`, `GitHubToken`. `pre.ts` and `post.ts` provide `GitHubAppLive ∘ OctokitAuthAppLive ∘ FetchHttpClient.layer` for `GitHubToken.provision`/`dispose`.
+- **Domain services**: `BranchManager`, `PnpmUpgrade`, `ConfigDeps`, `RegularDeps`, `Report`, `Lockfile`, `Changesets`, `RuntimeUpgrade`. Workspace enumeration uses `WorkspaceDiscovery` from `workspaces-effect` (`^2.0.3`) directly (no local `Workspaces` Tag), still consumed by `RegularDeps`, `PeerSync`, and `Lockfile`. Stateless helpers: `WorkspaceYaml`, `PeerSync`. `PnpmUpgrade`, `ConfigDeps`, and `RegularDeps` all query npm via the `NpmRegistry` service. `RuntimeUpgrade` depends on `runtime-resolver`'s `NodeResolver`, `DenoResolver`, and `BunResolver` services; wired with either offline bundled cache layers (`Offline*CacheLive`, the default) or live network layers (`Auto*CacheLive`) depending on the `runtime-data` input.
+- **Changesets adapter**: `services/changesets.ts` is a thin adapter over `Changesets.DepsRegen` from `@savvy-web/silk-effects`, which is the source of truth for dependency changesets. silk-effects 3 swapped its embedded changesets engine to the @changesets v3 `next` prereleases (hence the `@changesets/config@4` `$schema` in `.changeset/config.json`); the consumed DepsRegen surface is unchanged. Since silk-effects 3.2.1, `DepsRegen.plan` refreshes workspace discovery at plan time, so the changeset step sees manifests edited earlier in the run (fixes the silent zero-changeset bug). `create(workspaceRoot, base)` runs `depsRegen.plan({ cwd, base }) → execute` and maps written files to `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR `privatePackages.version`, minus the `ignore` list) lives upstream in DepsRegen — this repo no longer carries `changeset-config.ts` / `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`; `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector, WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/CommandExecutor via `NodeContext.layer`) to satisfy.
 - **Errors**: `Schema.TaggedError` (`PnpmError`, `GitHubApiError`, `FileSystemError`)
 - **Entry**: `Action.run(program)` from `main.ts` (no `{ layer }` — `program`
   needs only the core services `Action.run` injects); inputs parsed via Effect
@@ -114,7 +114,7 @@ We author every first-party dependency in the table below, so a bug or missing A
 | ------- | ---- | -------------- | -------------- |
 | `@savvy-web/github-action-effects` | `savvy-web/github-action-effects` | `../github-action-effects` | direct → `pnpm link` |
 | `@savvy-web/github-action-builder` | `savvy-web/github-action-builder` | `../github-action-builder` | direct (build tool) → `pnpm link` |
-| `@savvy-web/silk-effects` | `savvy-web/silk-effect` | clone as needed | direct → `pnpm link` |
+| `@savvy-web/silk-effects` | `savvy-web/systems` (monorepo, `packages/silk-effects`) | `../systems` (pkg: `../systems/packages/silk-effects`) | direct → `pnpm link` |
 | `runtime-resolver` | `spencerbeggs/runtime-resolver` | `../../spencerbeggs/runtime-resolver` | direct → `pnpm link` |
 | `semver-effect` | `spencerbeggs/semver-effect` | `../../spencerbeggs/semver-effect` | direct + transitive → override |
 | `workspaces-effect` | `spencerbeggs/workspaces-effect` | `../../spencerbeggs/workspaces-effect` | direct + transitive → override |
@@ -131,14 +131,14 @@ We author every first-party dependency in the table below, so a bug or missing A
   ```yaml
   # pnpm-workspace.yaml
   overrides:
-    workspaces-effect: "link:../../spencerbeggs/workspaces-effect/dist/dev"
+    workspaces-effect: "link:../../spencerbeggs/workspaces-effect/dist/dev/pkg"
   ```
 
-  then `pnpm install`. `dist/dev` is the rslib-builder link target (`publishConfig.directory` + `linkDirectory: true`). Effect resolves services by the tag's string id, so the one provided layer is shared even across duplicate copies — but the override keeps the bundle to a single copy. Verify every resolution points at the link: `find node_modules -name workspaces-effect`.
+  then `pnpm install`. `dist/dev/pkg` is the rslib-builder link target (`publishConfig.directory` + `linkDirectory: true`). Effect resolves services by the tag's string id, so the one provided layer is shared even across duplicate copies — but the override keeps the bundle to a single copy. Verify every resolution points at the link: `find node_modules -name workspaces-effect`.
 
 **Procedure (either mechanism):**
 
-1. **Build the library:** in its repo run `pnpm ci:build` (produces `dist/dev` link target plus `dist/npm` / `dist/github`).
+1. **Build the library:** in its repo run `pnpm ci:build` (produces the `dist/dev/pkg` link target plus `dist/npm` / `dist/github`).
 2. **Link it** (link or override) and `pnpm install`.
 3. **Keep the declared range correct** in this repo's `package.json` for the eventual unlinked install — the link/override overrides resolution only while in place.
 4. **Iterate:** edit library source → `pnpm ci:build` there → `pnpm typecheck` + `pnpm test` here → `pnpm build` here (bundles the linked lib into `dist/`) → commit the full state (`src` + `dist` + changeset + the `pnpm-workspace.yaml` override + `pnpm-lock.yaml`) → push `dev`.
@@ -148,7 +148,7 @@ We author every first-party dependency in the table below, so a bug or missing A
 
 **Committing while a link/override is active:** commit the **full dogfood state** to `dev` — `src` + rebuilt `dist` + changeset **and** the `pnpm-workspace.yaml` override + `pnpm-lock.yaml`. The override holds a machine-specific link path, so `dev` only installs cleanly with the sibling repos checked out at the paths in the table above; that is the accepted dogfooding trade-off, and the cleanup in step 7 reverts it. No CI runs on a plain `dev` push, so the committed `dev` source may reference an unpublished library API until it publishes — expected during dogfooding. Commits must be GPG-signed with the GitHub-verified key for `C. Spencer Beggs <spencer@savvyweb.systems>` or the signature ruleset rejects them.
 
-**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^3.0.2`, `workspaces-effect@^2.0.2`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.21`, `@savvy-web/github-action-effects@^2.3.6`, all unlinked). The whole `Changesets.DepsRegen` chain is published.
+**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^3.2.1`, `workspaces-effect@^2.0.3`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.22`, `@savvy-web/github-action-effects@^2.4.0`, all unlinked). The stale-discovery fix (DepsRegen silently writing zero changesets) shipped in `workspaces-effect@2.0.3` / `@savvy-web/silk-effects@3.2.1` and is bundled into the committed `dist`.
 
 ## Development & Release Cycle
 

@@ -109,12 +109,9 @@ Common issues and their solutions.
 
 ### Branch is out of date after action runs
 
-**Cause**: The action resets the branch to `main` before applying changes. If
-`main` advanced after the action started but before it pushed, the branch may be
-based on a slightly older commit.
+**Cause**: The action resets the branch to the source branch (`source-branch`, default `main`) before applying changes. If the source branch advanced after the action started but before it pushed, the branch may be based on a slightly older commit.
 
-**Solution**: This is expected behavior. The next run will reset the branch to
-the latest `main` again.
+**Solution**: This is expected behavior. The next run will reset the branch to the latest source branch again.
 
 ## Changeset issues
 
@@ -130,9 +127,7 @@ packages were affected by the changes.
 - Check that workspace packages actually use the updated dependencies as
   runtime/peer/optional dependencies. `devDependency`-only updates do not
   trigger changesets.
-- Verify the affected packages are versionable: either publishable, or marked
-  via the `versionPrivate` config. Private packages without `versionPrivate`
-  are skipped.
+- Verify the affected packages are versionable: publishable, or a private package opted in via `privatePackages.version` in `.changeset/config.json`. Packages in the changeset `ignore` list and private packages without the opt-in are skipped.
 - Config-only changes (`pnpm-workspace.yaml` `configDependencies`) do not
   produce a changeset on their own
 

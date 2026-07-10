@@ -63,6 +63,8 @@ jobs:
 | `app-private-key` | Yes | -- | GitHub App private key (PEM format) |
 | `skip-token-revoke` | No | `false` | Skip token revocation in the post step (tokens expire after 1 hour anyway) |
 | `branch` | No | `pnpm/config-deps` | Branch name for the update PR |
+| `source-branch` | No | `main` | Branch the update branch is created from and reset to; the PR also targets it unless `target-branch` is set |
+| `target-branch` | No | `""` | Branch the PR merges into; leave empty to follow `source-branch` |
 | `config-dependencies` | No | `""` | Config dependencies to update (one per line) |
 | `dependencies` | No | `""` | Workspace dependencies to update across `dependencies`, `devDependencies`, and `optionalDependencies` (one per line, supports globs) |
 | `peer-lock` | No | `""` | Peer ranges that sync on every version bump (one per line) |
@@ -108,4 +110,4 @@ The App needs `contents: write`, `pull-requests: write` and `checks: write` perm
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](LICENSE)

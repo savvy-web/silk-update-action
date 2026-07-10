@@ -31,9 +31,9 @@ import { WorkspaceDiscovery } from "workspaces-effect";
 root (`.` for the root workspace), used by `Lockfile.compare` to translate
 importer ids into package names.
 
-`WorkspaceDiscoveryLive` requires `WorkspaceRootLive` and `NodeContext.layer`
-(FileSystem/Path). Both are wired in `makeAppLayer`; integration tests build
-their own `discoveryLayer` from `NodeContext.layer` directly.
+`WorkspaceDiscoveryLive` requires `WorkspaceRootLive` and `NodeContext.layer` (FileSystem/Path). Both are wired in `makeAppLayer`; integration tests build their own `discoveryLayer` from `NodeContext.layer` directly.
+
+**Caching:** `WorkspaceDiscoveryLive` caches `listPackages` per root for the layer lifetime, and Effect memoizes layers by object reference, so every consumer wired from the same layer shares one instance — an enumeration cached before `ConfigDeps`/`RegularDeps` edit manifests stays stale for later readers unless refreshed (`refresh()`, added in workspaces-effect 2.0.3). DepsRegen refreshes at plan time (see the `Changesets` service below), so the changeset step is not bitten by this.
 
 ### Changeset gating (via @savvy-web/silk-effects DepsRegen)
 
@@ -332,6 +332,7 @@ baseline) — the anchor for DepsRegen's `merge-base(base) → worktree` diff.
   `privatePackages.version`, minus the changeset `ignore` list), applied
   inside DepsRegen. The action no longer re-implements the ignore gate,
   versionable cascade or trigger/informational classification.
+- `plan` refreshes workspace discovery before its snapshots and gating reads (silk-effects 3.2.1; workspaces-effect 2.0.3's `worktree()` also refreshes), so the diff sees manifests edited earlier in the same run. Without this the memoized discovery cache served pre-update manifests, the worktree snapshot equaled the merge-base snapshot and the step silently wrote 0 changesets.
 
 **Exported helper:**
 

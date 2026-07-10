@@ -8,7 +8,7 @@ The authoritative dependency list and ranges live in the `dependencies` block of
 
 ## Key Packages
 
-- `@savvy-web/github-action-effects` (v2.3.6) - Effect-based services for GitHub Actions.
+- `@savvy-web/github-action-effects` (^2.4.0) - Effect-based services for GitHub Actions.
   Replaces `@actions/*` with a native ESM implementation. Provides:
   - **Action plumbing:** `ActionOutputs`, `ActionEnvironment`, `ActionLogger`,
     `ActionState`, `Action.run()`, `CheckRun.withCheckRun()`, `AutoMerge.enable()`
@@ -55,13 +55,7 @@ The authoritative dependency list and ranges live in the `dependencies` block of
   regardless. (Version resolution in `utils/semver.ts` — including the in-range
   resolution for `ConfigDeps`/`RegularDeps` and `configDepUpgradeRange` — uses
   `SemverResolver` from `@savvy-web/github-action-effects`, not `semver-effect`.)
-- `workspaces-effect` (^2.0.2) - Effect-native workspace layer (a git-aware
-  major: adds `PointInTimeWorkspace` and options-object signatures; the
-  `listPackages`/`importerMap`/`detect` surface this action uses is unchanged).
-  Consumed directly by domain services (`RegularDeps`, `PeerSync`, `Lockfile`)
-  via the upstream `WorkspaceDiscovery` Tag. `Changesets` no longer consumes it
-  directly — it delegates to silk's `DepsRegen`, which wires its own workspace
-  discovery internally. Provides:
+- `workspaces-effect` (^2.0.3) - Effect-native workspace layer (a git-aware major: adds `PointInTimeWorkspace` and options-object signatures; the `listPackages`/`importerMap`/`detect` surface this action uses is unchanged). Consumed directly by domain services (`RegularDeps`, `PeerSync`, `Lockfile`) via the upstream `WorkspaceDiscovery` Tag. `Changesets` no longer consumes it directly — it delegates to silk's `DepsRegen`, which wires its own workspace discovery internally. **Caching note:** `WorkspaceDiscoveryLive` caches `listPackages` per root for the layer lifetime, and Effect memoizes layers by object reference, so consumers that enumerate before the manifest edits can share a discovery instance with code that reads after them. 2.0.3 makes `PointInTimeWorkspace.worktree()` call `discovery.refresh()` first, so worktree snapshots re-read just-edited manifests (paired with the silk-effects 3.2.1 plan-time refresh below). Provides:
   - `WorkspaceDiscovery` Tag + `WorkspaceDiscoveryLive` Layer with
     `listPackages(cwd?)` and `importerMap(cwd?)` methods accepting an
     optional cwd parameter.
@@ -70,7 +64,7 @@ The authoritative dependency list and ranges live in the `dependencies` block of
   - `getWorkspacePackagesSync(workspaceRoot)` - synchronously enumerate workspace
     packages, including the root workspace package.
   - `WorkspacePackage`, `PublishTarget`, `PublishConfig` value classes.
-- `@savvy-web/silk-effects` (^3.0.2) - Shared silk changeset services, FileSystem-based (reads via `@effect/platform` FileSystem rather than `node:fs`). It is the **source of truth** for the dependency-changeset step via its `Changesets.DepsRegen` service. v3 is a major that swaps the embedded changesets engine from the @changesets v2 line to the v3 `next` prereleases (`@changesets/apply-release-plan@8-next`, `get-release-plan@5-next`, `config@4-next` etc. — the engine that writes the `@changesets/config@4` `$schema` into `.changeset/config.json`); the consumed surface below is **unchanged**, so the adapter (`src/services/changesets.ts`) and layer wiring (`src/layers/app.ts`) needed no source changes. The publishability rules and `ChangesetConfig` still live here but are **internal** to `DepsRegen` — the action no longer imports them directly (the former `changeset-config.ts` and `publishability.ts` re-export shims are deleted). Consumed surface:
+- `@savvy-web/silk-effects` (^3.2.1) - Shared silk changeset services, FileSystem-based (reads via `@effect/platform` FileSystem rather than `node:fs`). It is the **source of truth** for the dependency-changeset step via its `Changesets.DepsRegen` service. v3 is a major that swaps the embedded changesets engine from the @changesets v2 line to the v3 `next` prereleases (`@changesets/apply-release-plan@8-next`, `get-release-plan@5-next`, `config@4-next` etc. — the engine that writes the `@changesets/config@4` `$schema` into `.changeset/config.json`); the consumed surface below is **unchanged**, so the adapter (`src/services/changesets.ts`) and layer wiring (`src/layers/app.ts`) needed no source changes. The publishability rules and `ChangesetConfig` still live here but are **internal** to `DepsRegen` — the action no longer imports them directly (the former `changeset-config.ts` and `publishability.ts` re-export shims are deleted). **Stale-discovery fix (3.2.1):** `DepsRegen.plan` refreshes workspace discovery at the top of plan — before the ConfigInspector base-branch fallback, the snapshots and the gating reads — so the changeset step sees manifests edited earlier in the same run. Before this (with workspaces-effect ≤ 2.0.2), the shared memoized discovery cache served pre-update manifests, the worktree snapshot equaled the merge-base snapshot and every run silently wrote 0 changesets. Consumed surface:
   - `Changesets.DepsRegen` Tag — plans (`plan({ cwd, base })`) and executes
     (`execute(plan)`) the cumulative `merge-base(base) → worktree` dependency
     diff, consolidating stale pure-dependency changesets into one current table

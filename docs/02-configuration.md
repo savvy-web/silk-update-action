@@ -28,6 +28,10 @@ App settings page and store it as a repository secret.
 
 ### Optional inputs
 
+#### `skip-token-revoke`
+
+Skip revoking the installation token in the post step. Default: `false`. Installation tokens expire after one hour regardless, so skipping revocation only leaves the token valid until its natural expiry.
+
 #### `config-dependencies`
 
 Config dependencies to update, one per line. These correspond to entries in your
@@ -105,11 +109,27 @@ When `vitest` updates from `3.1.0` to `3.2.5`, the peer range updates to
 
 The branch name used for the dependency update PR. Default: `pnpm/config-deps`.
 
-The action creates this branch from `main` if it does not exist, or resets it to
-`main` before applying updates.
+The action creates this branch from the source branch if it does not exist, or resets it to the source branch before applying updates (see [`source-branch`](#source-branch)).
 
 ```yaml
 branch: deps/weekly-update
+```
+
+#### `source-branch`
+
+The branch the update branch is created from and reset to on each run. Default: `main`. The pull request also targets this branch unless [`target-branch`](#target-branch) overrides it. Both refs are validated before the destructive branch reset — a missing ref fails the run early.
+
+```yaml
+source-branch: dev
+```
+
+#### `target-branch`
+
+The branch the pull request merges into. Default: empty, which follows `source-branch`. Set it only to target a different branch than the one the update was cut from — for example, cut from `dev` but merge into `main`. When changesets are enabled, this branch is also the baseline for the changeset diff.
+
+```yaml
+source-branch: dev
+target-branch: main
 ```
 
 #### `run`
@@ -134,6 +154,8 @@ supports pnpm only** — support for other package managers is planned. Values:
 `devEngines` version), or a semver range (e.g. `^11`, which may cross majors and
 adds a `packageManager` field when none exists). The version change is tracked
 as a config dependency update. Default: `true`.
+
+A pnpm bump also triggers the lockfile regeneration step, whose `pnpm install` performs the corepack switch to the new version.
 
 ```yaml
 upgrade-package-manager: false # Disable automatic package-manager upgrades
@@ -399,15 +421,13 @@ Commands specified in the `run` input execute after all dependency updates and
 
 The action manages a dedicated branch for dependency updates:
 
-1. If the branch does not exist, it is created from `main`
-2. If the branch exists, it is deleted and recreated from `main` to ensure a
-   clean state
-3. Changes are committed via the GitHub API (not `git commit`) to produce
-   verified/signed commits
-4. The branch ref is updated directly using the Git Data API
+1. The `source-branch` and `target-branch` refs are validated up front — a missing ref fails the run before any destructive operation
+2. If the branch does not exist, it is created from the source branch (`source-branch`, default `main`)
+3. If the branch exists, it is deleted and recreated from the source branch to ensure a clean state
+4. Changes are committed via the GitHub API (not `git commit`) to produce verified/signed commits
+5. The branch ref is updated directly using the Git Data API
 
-This approach ensures the PR always shows a clean diff against `main` with only
-the dependency changes.
+This approach ensures the PR always shows a clean diff against the source branch with only the dependency changes.
 
 ## Changeset integration
 
@@ -425,34 +445,19 @@ history — set `fetch-depth: 0` on `actions/checkout` (see
 [Getting started](./01-getting-started.md)). A shallow checkout cannot resolve
 the merge-base.
 
-A workspace package gets a `patch` changeset only when **both** gates pass:
+A workspace package gets a `patch` changeset only when **both** conditions hold:
 
-1. **Trigger gate** — at least one consumer-facing change must apply to the
-   package:
-   - `peerDependency` range update (from `peer-lock` or `peer-minor` syncing)
-   - `dependency` or `optionalDependency` change detected in the lockfile
+1. **Consumer-facing changes** — the package's dependency diff must contain at least one `dependency`, `optionalDependency` or `peerDependency` change (peer ranges synced by `peer-lock` or `peer-minor` count).
 
-   `devDependency`-only changes are informational rows in the changeset table
-   when a sibling trigger exists, but never trigger a changeset on their own
-   (dev dependencies are stripped from published packages).
+   `devDependency`-only changes never produce a changeset, and dev rows are dropped from the changeset table (dev dependencies are stripped from published packages).
 
-   `devEngines.runtime` upgrades (from `upgrade-runtime-*`) and package-manager
-   self-upgrades (from `upgrade-package-manager`) are tooling-level changes that appear in the PR summary
-   and commit message but never create a changeset and never run `pnpm install`.
+   `devEngines.runtime` upgrades (from `upgrade-runtime-*`) and package-manager self-upgrades (from `upgrade-package-manager`) are tooling-level changes that appear in the PR summary and commit message but never create a changeset.
 
-2. **Versionable gate** — the package must be versionable:
-   - **Publishable** packages (detected by `workspaces-effect`'s
-     `PublishabilityDetector` — non-private, or with a `publishConfig`
-     targeting a registry), or
-   - Private packages opted in via the `versionPrivate` changeset config
+2. **Versionable** — the package must be publishable (non-private, or with a `publishConfig` targeting a registry) or a private package opted in via `privatePackages.version` in `.changeset/config.json`, and must not be listed in the changeset `ignore` list.
 
-   Private packages that are not versionable are skipped silently.
+   Packages that are not versionable are skipped silently.
 
-Changeset tables include all changes for a package — both triggers and
-informational dev rows — using specific type values: `dependency`,
-`optionalDependency`, `peerDependency`, `devDependency`. Empty changesets are
-not written; config-only updates (`pnpm-workspace.yaml` `configDependencies`)
-do not produce a changeset.
+Changeset tables list the package's `dependency`, `optionalDependency` and `peerDependency` changes. Empty changesets are not written; config-only updates (`pnpm-workspace.yaml` `configDependencies`) do not produce a changeset.
 
 ## Advanced patterns
 
