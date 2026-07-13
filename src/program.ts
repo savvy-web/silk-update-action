@@ -8,7 +8,7 @@
  * @module program
  */
 
-import type { CommandRunnerError, LogLevelInput } from "@savvy-web/github-action-effects";
+import type { CommandRunnerError } from "@savvy-web/github-action-effects";
 import {
 	Action,
 	ActionEnvironment,
@@ -147,7 +147,6 @@ export const program = Effect.gen(function* () {
 	const changesets = yield* Config.boolean("changesets").pipe(Config.withDefault(true));
 	const autoMerge = yield* Config.string("auto-merge").pipe(Config.withDefault(""));
 	const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
-	const logLevel = yield* Config.string("log-level").pipe(Config.withDefault("auto"));
 	const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
 	const rawRuntimeNode = yield* Config.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
 	const rawRuntimeDeno = yield* Config.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
@@ -225,14 +224,9 @@ export const program = Effect.gen(function* () {
 		}
 	}
 
-	// Resolve log level
-	const resolvedLogLevel = Action.resolveLogLevel(logLevel as LogLevelInput);
-	// Map ActionLogLevel ("info" | "verbose" | "debug") to Effect LogLevel
-	// "info" = show info and above (default CI behavior)
-	// "verbose" = show all info (same as info for Effect's logger)
-	// "debug" = show debug and above (verbose output)
-	const effectLogLevel =
-		resolvedLogLevel === "debug" ? LogLevel.Debug : resolvedLogLevel === "verbose" ? LogLevel.Debug : LogLevel.Info;
+	// Resolve log level: normal (info) or debug when step debug logging is
+	// enabled on the runner (RUNNER_DEBUG=1 via ACTIONS_STEP_DEBUG).
+	const effectLogLevel = Action.resolveLogLevel("auto") === "debug" ? LogLevel.Debug : LogLevel.Info;
 
 	yield* Effect.logDebug("Debug mode enabled - verbose logging active");
 	yield* Effect.logDebug(

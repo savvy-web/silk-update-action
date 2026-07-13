@@ -15,7 +15,7 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
   library's in-memory `@savvy-web/github-action-effects/testing` layers
   (`ActionStateTest`, `GitHubAppTest`, `ActionOutputsTest`), covering scope
   provisioning, start-time persistence, duration reporting and
-  `skip-token-revoke` short-circuiting.
+  unconditional token revocation.
 - **Schemas and errors** (`schemas/domain.test.ts`, `errors/errors.test.ts`) —
   schema validation for the domain types and error construction, `_tag`
   matching and the `isRetryable` / `getErrorMessage` helpers.

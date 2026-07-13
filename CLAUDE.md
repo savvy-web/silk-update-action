@@ -244,8 +244,8 @@ Packages publish to both GitHub Packages and npm with provenance.
 - `PullRequest` type includes `nodeId` for GraphQL API calls
 - `@actions/core`/`@actions/github` are never imported directly; the head SHA
   comes from `ActionEnvironment` (`env.github.sha`) in `program.ts`
-- Action input is `app-client-id` (not `app-id`); `skip-token-revoke` controls
-  whether `post.ts` revokes the token
+- Action input is `app-client-id` (not `app-id`); `post.ts` always revokes the
+  token
 - `source-branch` (default `main`) is the cut-from ref and default PR target;
   `target-branch` (empty → follows `source-branch`, via `resolveTargetBranch`)
   is the PR base. Both are validated by `BranchManager.validateBranches` early

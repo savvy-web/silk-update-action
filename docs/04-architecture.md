@@ -19,7 +19,7 @@ The action runs as three separate phases, declared in its `action.yml` under `ru
 
 - **Pre** — provisions a GitHub App installation token. It signs in as the App, mints an installation token and runs a fail-fast permission check against the scopes the action needs (`contents: write`, `pull-requests: write` and `checks: write`). If the App is missing a scope, the run fails here, before any dependency is touched, instead of partway through the main phase. The pre step also records a start time and persists the token to cross-phase state so the main step can read it back.
 - **Main** — the dependency-update workflow described below. It reads the token the pre step provisioned and uses it for every GitHub API call.
-- **Post** — reports the total run duration and revokes the token. The post step always runs, even when the main step fails, so a token is never left live after a failed run. Set the `skip-token-revoke` input to leave revocation to the token's natural one-hour expiry instead. Revocation failures are swallowed so the post step never fails the workflow.
+- **Post** — reports the total run duration and revokes the token. The post step always runs, even when the main step fails, so a token is never left live after a failed run. Revocation failures are swallowed so the post step never fails the workflow.
 
 Splitting the token across phases keeps the credential short-lived and bounded to a single run, and it surfaces a misconfigured App immediately. The token is provisioned in pre, used in main and revoked in post — there is no long-lived secret in the environment for the main step to read.
 

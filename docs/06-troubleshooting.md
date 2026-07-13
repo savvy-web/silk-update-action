@@ -56,7 +56,7 @@ Common issues and their solutions.
 - Verify the dependency names in `config-dependencies` and `dependencies` match
   actual packages
 - Check that the packages have newer versions available on npm
-- Use `log-level: debug` to see detailed lockfile comparison output
+- Re-run with debug logging enabled (`ACTIONS_STEP_DEBUG`) to see detailed lockfile comparison output
 - Run `pnpm outdated` locally to verify which packages have updates
 
 ### Changes exist but action reports none
@@ -65,7 +65,7 @@ Common issues and their solutions.
 
 **Solutions**:
 
-- Enable `log-level: debug` to see the before/after lockfile structures
+- Re-run with debug logging enabled (`ACTIONS_STEP_DEBUG`) to see the before/after lockfile structures
 - Check that the dependency patterns in the `dependencies` input match the
   target packages (glob patterns must follow pnpm conventions)
 - Verify that `pnpm install` resolves correctly (check the install step in logs)
@@ -81,7 +81,7 @@ Common issues and their solutions.
 - Run the command locally after updating the dependencies to see the full error
   output
 - Check the workflow logs for the stderr output of the failed command
-- Enable `log-level: debug` for detailed error information
+- Re-run with debug logging enabled (`ACTIONS_STEP_DEBUG`) for detailed error information
 - Ensure the command is valid and available in the runner environment
 
 ### Commands pass locally but fail in CI
@@ -166,7 +166,7 @@ correctness.
 
 - Ensure pnpm is up to date on the runner
 - Check that `pnpm-lock.yaml` is committed and not in `.gitignore`
-- Enable `log-level: debug` to see the full lockfile structure
+- Re-run with debug logging enabled (`ACTIONS_STEP_DEBUG`) to see the full lockfile structure
 
 ### "Cannot compare lockfiles: one or both are null"
 
