@@ -19,7 +19,7 @@ reading internally).
   token (`GitHubToken.provision`, fail-fast scope check) and records a start
   time; `src/main.ts` is a thin wrapper calling `Action.run(program)` (no
   `{ layer }`); `src/post.ts` reports total duration and revokes the token
-  (`GitHubToken.dispose`, honoring `skip-token-revoke`). The testable `program`
+  (`GitHubToken.dispose`). The testable `program`
   Effect lives in `src/program.ts` along with `runCommands` and `runInstall`
   helpers. Cross-phase state schemas live in `src/state.ts` (`StartTimeState`,
   `STATE_KEYS`).
@@ -55,7 +55,7 @@ reading internally).
   and revocation live in `pre.ts` / `post.ts`.
 - GitHub App token lifecycle via the `GitHubToken` namespace: `provision()`
   (pre, fail-fast scope check) → `client()` (main, builds `GitHubClient`) →
-  `dispose()` (post, honoring `skip-token-revoke`, never fails the workflow).
+  `dispose()` (post, never fails the workflow).
   The envelope is persisted to `ActionState` (backed by `GITHUB_STATE`) — no
   `process.env.GITHUB_TOKEN` bridge.
 - Branch management with delete-and-recreate strategy via `BranchManager`
@@ -207,7 +207,7 @@ Using it:
   `process.env.GITHUB_TOKEN` bridge.
 - **Revokes the token even when `main` fails.** `post` always runs and disposes
   the token (guarded so it never fails the workflow). Tokens also expire after
-  1 hour, so `skip-token-revoke` is offered as an escape hatch.
+  1 hour regardless.
 - **Fails fast on missing scopes.** `pre` passes the required permissions to
   `GitHubToken.provision`, so a misconfigured App fails in `pre` rather than
   mid-run in `main`.

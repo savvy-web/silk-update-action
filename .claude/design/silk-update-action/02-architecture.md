@@ -156,7 +156,7 @@ The action runs as **three phases** (`pre` / `main` / `post`), each a separate
 Node process. `pre.ts` provisions the installation token (`GitHubToken.provision`
 with a fail-fast scope check) and records the start time to `ActionState`;
 `post.ts` reports total duration and revokes the token (`GitHubToken.dispose`,
-guarded so it never fails the workflow, honoring `skip-token-revoke`). The
+guarded so it never fails the workflow). The
 dependency-update workflow below runs entirely in the `main` phase. Steps are
 implemented in `src/program.ts`; `src/main.ts` only calls `Action.run(program)`.
 The numbering below is descriptive — `program.ts` uses its own step labels in
@@ -181,7 +181,7 @@ log messages.
   inputs: `branch`, `source-branch`, `target-branch`, `config-dependencies`,
   `dependencies`, `peer-lock`, `peer-minor`, `run`, `upgrade-package-manager`,
   `upgrade-runtime-node`, `upgrade-runtime-deno`, `upgrade-runtime-bun`,
-  `runtime-data`, `changesets`, `auto-merge`, `dry-run`, `log-level`, `timeout`.
+  `runtime-data`, `changesets`, `auto-merge`, `dry-run`, `timeout`.
 - `source-branch` (default `main`) is the ref the update branch is cut from and
   reset to. `target-branch` (default `""`) is the PR merge target; an empty
   value follows `source-branch`, resolved by `resolveTargetBranch`

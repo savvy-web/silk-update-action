@@ -28,10 +28,6 @@ App settings page and store it as a repository secret.
 
 ### Optional inputs
 
-#### `skip-token-revoke`
-
-Skip revoking the installation token in the post step. Default: `false`. Installation tokens expire after one hour regardless, so skipping revocation only leaves the token valid until its natural expiry.
-
 #### `config-dependencies`
 
 Config dependencies to update, one per line. These correspond to entries in your
@@ -268,15 +264,6 @@ and the changeset content will be wrong or empty.
 When set to `true`, the action detects changes and reports them in the GitHub
 Actions summary but does not commit, push or create a PR. Useful for testing
 configuration. Default: `false`.
-
-#### `log-level`
-
-Controls logging verbosity. Default: `auto`.
-
-- `auto` — debug when `ACTIONS_STEP_DEBUG` is enabled, info otherwise
-- `info` — buffered outcome summaries only
-- `verbose` — unbuffered operation milestones
-- `debug` — full command output and internal state (lockfile structure, git status, parsed inputs)
 
 #### `auto-merge`
 

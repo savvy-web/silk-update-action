@@ -19,8 +19,8 @@
    the requested permissions, and persists the token envelope to `ActionState`.
 2. **main** — `GitHubToken.client()` reads the envelope back from `ActionState`
    and builds the `GitHubClient` layer used by all API calls.
-3. **post** — `GitHubToken.dispose()` revokes the token (unless
-   `skip-token-revoke` is set). `post` always runs, even when `main` fails.
+3. **post** — `GitHubToken.dispose()` revokes the token. `post` always runs,
+   even when `main` fails.
 
 `ActionState` is backed by the runner's `GITHUB_STATE`, which is process-global
 across the three Node processes, so the token survives the `pre` → `main` →

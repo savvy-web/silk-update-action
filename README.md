@@ -61,7 +61,6 @@ jobs:
 | ------- | ---------- | --------- | ------------- |
 | `app-client-id` | Yes | -- | GitHub App client ID for authentication |
 | `app-private-key` | Yes | -- | GitHub App private key (PEM format) |
-| `skip-token-revoke` | No | `false` | Skip token revocation in the post step (tokens expire after 1 hour anyway) |
 | `branch` | No | `pnpm/config-deps` | Branch name for the update PR |
 | `source-branch` | No | `main` | Branch the update branch is created from and reset to; the PR also targets it unless `target-branch` is set |
 | `target-branch` | No | `""` | Branch the PR merges into; leave empty to follow `source-branch` |
@@ -77,7 +76,6 @@ jobs:
 | `run` | No | `""` | Commands to run after updates (one per line) |
 | `changesets` | No | `true` | Create changesets when `.changeset/` exists. Requires a full-history checkout (`fetch-depth: 0`) so the base-branch diff can be computed |
 | `dry-run` | No | `false` | Detect changes without committing |
-| `log-level` | No | `auto` | Logging verbosity |
 | `timeout` | No | `180` | Maximum time in seconds before cancelling |
 | `auto-merge` | No | `""` | Enable auto-merge (`merge`, `squash`, or `rebase`) |
 
@@ -92,7 +90,7 @@ jobs:
 
 ## Authentication
 
-The action authenticates as a GitHub App. It runs in three phases: a pre step provisions a short-lived installation token, the main step performs the dependency updates and the post step revokes the token. Tokens are revoked automatically; set `skip-token-revoke: true` to leave revocation to the natural 1-hour expiry instead.
+The action authenticates as a GitHub App. It runs in three phases: a pre step provisions a short-lived installation token, the main step performs the dependency updates and the post step revokes the token. Tokens are revoked automatically once the run completes.
 
 > [!IMPORTANT]
 > The `app-id` input has been renamed to `app-client-id`. Update your workflow and pass the App's client ID rather than its numeric App ID.
