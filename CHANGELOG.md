@@ -1,5 +1,23 @@
 # silk-update-action
 
+## 3.5.0
+
+### Features
+
+* Remove the dead `log-level` and `skip-token-revoke` inputs. Logging now has two modes only — normal, or debug when the runner's step-debug flag (`ACTIONS_STEP_DEBUG` / `RUNNER_DEBUG`) is enabled — matching what the previous `auto` default already did. The post phase now always revokes the GitHub App installation token, which was the default behavior. Workflows passing either input will see an unexpected-input warning; remove the lines. [#184][#184]
+
+### Dependencies
+
+* | Dependency              | Type       | Action  | From   | To     |                                                                              |
+  | ----------------------- | ---------- | ------- | ------ | ------ | ---------------------------------------------------------------------------- |
+  | @savvy-web/silk-effects | dependency | updated | ^3.2.5 | ^3.3.0 | [#184][#184] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
+
+### Patch Changes
+
+Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their contributions!
+
+[#184]: https://github.com/savvy-web/silk-update-action/pull/184
+
 ## 3.4.8
 
 ### Dependencies
