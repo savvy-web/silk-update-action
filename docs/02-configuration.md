@@ -28,10 +28,6 @@ App settings page and store it as a repository secret.
 
 ### Optional inputs
 
-#### `skip-token-revoke`
-
-Skip revoking the installation token in the post step. Default: `false`. Installation tokens expire after one hour regardless, so skipping revocation only leaves the token valid until its natural expiry.
-
 #### `config-dependencies`
 
 Config dependencies to update, one per line. These correspond to entries in your
@@ -147,15 +143,23 @@ run: |
 
 #### `upgrade-package-manager`
 
-Upgrades the project's package manager declared in the `packageManager` and
-`devEngines.packageManager` fields of the root `package.json`. **Currently
-supports pnpm only** — support for other package managers is planned. Values:
-`false` (skip), `true`/`auto` (latest within the current major, favoring the
-`devEngines` version), or a semver range (e.g. `^11`, which may cross majors and
-adds a `packageManager` field when none exists). The version change is tracked
-as a config dependency update. Default: `true`.
+Upgrades the package manager **detected for this workspace** — pnpm, bun or npm
+— declared in the `packageManager` and `devEngines.packageManager` fields of the
+root `package.json`. Values: `false` (skip), `true`/`auto` (latest within the
+current major, favoring the `devEngines` version), or a semver range (e.g. `^11`,
+which may cross majors and adds a `packageManager` field when none exists). The
+version change is tracked as a config dependency update. Default: `true`.
 
-A pnpm bump also triggers the lockfile regeneration step, whose `pnpm install` performs the corepack switch to the new version.
+pnpm and npm are managed by corepack, so their resolved version is written
+hash-pinned (`pnpm@11.0.0+sha512.<hex>`). corepack does not manage bun, so bun is
+written as a bare version.
+
+An explicit range is resolved against the **detected** package manager's release
+list. A range typed for a different manager (a pnpm-shaped `^11` in a bun repo)
+satisfies nothing and is skipped with a warning naming the mismatch.
+
+A package-manager bump also triggers the lockfile regeneration step, whose install
+performs the corepack switch to the new version (pnpm, npm).
 
 ```yaml
 upgrade-package-manager: false # Disable automatic package-manager upgrades
@@ -268,15 +272,6 @@ and the changeset content will be wrong or empty.
 When set to `true`, the action detects changes and reports them in the GitHub
 Actions summary but does not commit, push or create a PR. Useful for testing
 configuration. Default: `false`.
-
-#### `log-level`
-
-Controls logging verbosity. Default: `auto`.
-
-- `auto` — debug when `ACTIONS_STEP_DEBUG` is enabled, info otherwise
-- `info` — buffered outcome summaries only
-- `verbose` — unbuffered operation milestones
-- `debug` — full command output and internal state (lockfile structure, git status, parsed inputs)
 
 #### `auto-merge`
 

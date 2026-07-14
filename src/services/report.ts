@@ -16,7 +16,7 @@ import { Context, Effect, Layer } from "effect";
 
 type PullRequestShape = Context.Tag.Service<typeof PullRequestTag>;
 
-import type { ChangesetFile, DependencyUpdateResult, PullRequestResult } from "../schemas/domain.js";
+import type { CatalogDelta, ChangesetFile, DependencyUpdateResult, PullRequestResult } from "../schemas/domain.js";
 import { buildUpdateSubject } from "../utils/commit-subject.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -32,16 +32,19 @@ export class Report extends Context.Tag("Report")<
 			updates: ReadonlyArray<DependencyUpdateResult>,
 			changesets: ReadonlyArray<ChangesetFile>,
 			autoMerge?: "merge" | "squash" | "rebase",
+			deltas?: ReadonlyArray<CatalogDelta>,
 		) => Effect.Effect<PullRequestResult, PullRequestError>;
 		readonly generatePRBody: (
 			updates: ReadonlyArray<DependencyUpdateResult>,
 			changesets: ReadonlyArray<ChangesetFile>,
+			deltas?: ReadonlyArray<CatalogDelta>,
 		) => string;
 		readonly generateSummary: (
 			updates: ReadonlyArray<DependencyUpdateResult>,
 			changesets: ReadonlyArray<ChangesetFile>,
 			pr: PullRequestResult | null,
 			dryRun: boolean,
+			deltas?: ReadonlyArray<CatalogDelta>,
 		) => string;
 		readonly generateCommitMessage: (updates: ReadonlyArray<DependencyUpdateResult>, appSlug?: string) => string;
 	}
@@ -56,8 +59,8 @@ export const ReportLive = Layer.effect(
 	Effect.gen(function* () {
 		const pullRequest = yield* PullRequestTag;
 		return {
-			createOrUpdatePR: (branch, base, updates, changesets, autoMerge) =>
-				createOrUpdatePRImpl(pullRequest, branch, base, updates, changesets, autoMerge),
+			createOrUpdatePR: (branch, base, updates, changesets, autoMerge, deltas) =>
+				createOrUpdatePRImpl(pullRequest, branch, base, updates, changesets, autoMerge, deltas),
 			generatePRBody: generatePRBodyImpl,
 			generateSummary: generateSummaryImpl,
 			generateCommitMessage: generateCommitMessageImpl,
@@ -81,10 +84,11 @@ const createOrUpdatePRImpl = (
 	updates: ReadonlyArray<DependencyUpdateResult>,
 	changesets: ReadonlyArray<ChangesetFile>,
 	autoMerge?: "merge" | "squash" | "rebase",
+	deltas?: ReadonlyArray<CatalogDelta>,
 ): Effect.Effect<PullRequestResult, PullRequestError> =>
 	Effect.gen(function* () {
 		const title = buildUpdateSubject(updates);
-		const body = generatePRBodyImpl(updates, changesets);
+		const body = generatePRBodyImpl(updates, changesets, deltas);
 
 		const result = yield* pr.getOrCreate({
 			head: branch,
@@ -134,6 +138,7 @@ Signed-off-by: ${botName} <${botEmail}>`;
 const generatePRBodyImpl = (
 	updates: ReadonlyArray<DependencyUpdateResult>,
 	changesets: ReadonlyArray<ChangesetFile>,
+	deltas: ReadonlyArray<CatalogDelta> = [],
 ): string => {
 	const { heading, table, link, code, details, codeBlock, bold, rule } = GithubMarkdown;
 	const sections: string[] = [];
@@ -161,6 +166,29 @@ const generatePRBodyImpl = (
 			u.to,
 		]);
 		sections.push(table(["Dependency", "Type", "Action", "From", "To"], rows));
+	}
+
+	// Catalog Changes - on a compat-catalog plugin bump this table is the actual
+	// payload of the run. A "kept" delta means a user override survived the
+	// merge, not a change, so it is excluded here.
+	const changedDeltas = deltas.filter((d) => d.action !== "kept");
+	if (changedDeltas.length > 0) {
+		sections.push(heading("Catalog Changes", 3));
+		const byCatalog = new Map<string, CatalogDelta[]>();
+		for (const delta of changedDeltas) {
+			const existing = byCatalog.get(delta.catalog) ?? [];
+			existing.push(delta);
+			byCatalog.set(delta.catalog, existing);
+		}
+		for (const [catalog, catalogDeltas] of byCatalog) {
+			sections.push(heading(catalog === "default" ? "default catalog" : `${catalog} catalog`, 4));
+			sections.push(
+				table(
+					["Dependency", "Action", "From", "To"],
+					catalogDeltas.map((d) => [code(d.dependency), d.action, d.from ?? "\u2014", d.to ?? "\u2014"]),
+				),
+			);
+		}
 	}
 
 	// Changesets section - one expandable per affected package/workspace
@@ -197,6 +225,7 @@ const generateSummaryImpl = (
 	changesets: ReadonlyArray<ChangesetFile>,
 	pr: PullRequestResult | null,
 	dryRun: boolean,
+	deltas: ReadonlyArray<CatalogDelta> = [],
 ): string => {
 	const { heading, table, code, details, codeBlock, bold, list, link } = GithubMarkdown;
 	const sections: string[] = [];
@@ -237,6 +266,29 @@ const generateSummaryImpl = (
 		sections.push(table(["Dependency", "Type", "Action", "From", "To"], rows));
 	}
 
+	// Catalog Changes - on a compat-catalog plugin bump this table is the actual
+	// payload of the run. A "kept" delta means a user override survived the
+	// merge, not a change, so it is excluded here.
+	const changedDeltas = deltas.filter((d) => d.action !== "kept");
+	if (changedDeltas.length > 0) {
+		sections.push(heading("Catalog Changes", 3));
+		const byCatalog = new Map<string, CatalogDelta[]>();
+		for (const delta of changedDeltas) {
+			const existing = byCatalog.get(delta.catalog) ?? [];
+			existing.push(delta);
+			byCatalog.set(delta.catalog, existing);
+		}
+		for (const [catalog, catalogDeltas] of byCatalog) {
+			sections.push(heading(catalog === "default" ? "default catalog" : `${catalog} catalog`, 4));
+			sections.push(
+				table(
+					["Dependency", "Action", "From", "To"],
+					catalogDeltas.map((d) => [code(d.dependency), d.action, d.from ?? "\u2014", d.to ?? "\u2014"]),
+				),
+			);
+		}
+	}
+
 	// Show changeset details - one expandable per affected package/workspace
 	if (changesets.length > 0) {
 		sections.push(heading("Changesets Created", 3));
@@ -252,7 +304,7 @@ const generateSummaryImpl = (
 	if (dryRun && updates.length > 0) {
 		sections.push(heading("PR Body Preview", 3));
 		sections.push("This is what the PR body would look like:");
-		sections.push(details("View PR body", generatePRBodyImpl(updates, changesets)));
+		sections.push(details("View PR body", generatePRBodyImpl(updates, changesets, deltas)));
 	}
 
 	return sections.join("\n\n");

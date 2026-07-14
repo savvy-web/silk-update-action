@@ -1,0 +1,440 @@
+/**
+ * CatalogConfigDeps - reproduce pnpm's config-dependency workflow for bun.
+ *
+ * pnpm reads config dependencies from `pnpm-workspace.yaml` and merges each
+ * one's catalogs in memory at install time. bun has no such concept: the
+ * package named in the `config-dependencies` input is an ordinary dependency of
+ * the root manifest, so this service fetches its module, reads its `catalogs`
+ * export, and merges it into the manifest's own top-level `catalog` (the default
+ * catalog) and `catalogs` (the named ones) fields — siblings of `workspaces`,
+ * not nested inside it, which is where bun reads them from. The manifest becomes
+ * the merged artifact. A nested `workspaces.catalog` / `workspaces.catalogs`
+ * copy is still read (a repo may have been written that way) and is migrated to
+ * the top level on write — see `utils/catalogs.ts`.
+ *
+ * Because the merge is written to disk rather than recomputed each install, a
+ * later run cannot tell a deliberate user override from an entry the action
+ * itself wrote. `threeWayMergeCatalogs` separates them by diffing against the
+ * catalogs of the version that was actually installed last run — which is what
+ * the lockfile records, hence the `LockfileReader` dependency.
+ *
+ * Nothing here is fatal except a manifest that cannot be read or written: any
+ * per-dependency failure warns and skips that dependency, and the rest proceed.
+ *
+ * @module services/catalog-config-deps
+ */
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { HttpClient } from "@effect/platform";
+import type { CommandRunner } from "@savvy-web/github-action-effects";
+import { NpmRegistry } from "@savvy-web/github-action-effects";
+import { Context, Effect, Layer, Option } from "effect";
+import { LockfileReader } from "workspaces-effect";
+
+import { FileSystemError } from "../errors/errors.js";
+import type { CatalogDelta, DependencyUpdateResult } from "../schemas/domain.js";
+import type { CatalogMap } from "../utils/catalogs.js";
+import { readManifestCatalogs, threeWayMergeCatalogs, writeManifestCatalogs } from "../utils/catalogs.js";
+import { parseSpecifier } from "../utils/deps.js";
+import { detectIndent } from "../utils/pnpm.js";
+import { resolutionRangeForSpecifier, resolveLatestSatisfying } from "../utils/semver.js";
+import { fetchModuleCatalogs } from "./module-catalogs.js";
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Service Interface
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** The updates and catalog deltas produced by one config-dependency pass. */
+export interface CatalogConfigDepsResult {
+	readonly updates: ReadonlyArray<DependencyUpdateResult>;
+	readonly deltas: ReadonlyArray<CatalogDelta>;
+}
+
+export class CatalogConfigDeps extends Context.Tag("CatalogConfigDeps")<
+	CatalogConfigDeps,
+	{
+		readonly update: (
+			deps: ReadonlyArray<string>,
+			workspaceRoot?: string,
+		) => Effect.Effect<CatalogConfigDepsResult, FileSystemError>;
+	}
+>() {}
+
+export const CatalogConfigDepsLive: Layer.Layer<
+	CatalogConfigDeps,
+	never,
+	NpmRegistry | LockfileReader | HttpClient.HttpClient | CommandRunner
+> = Layer.effect(
+	CatalogConfigDeps,
+	Effect.gen(function* () {
+		// The implementation yields `fetchModuleCatalogs`, which carries its own
+		// requirements (NpmRegistry, HttpClient, CommandRunner). Capturing the
+		// context here and re-providing it keeps the service method's R = never
+		// without threading each service through by hand.
+		const context = yield* Effect.context<NpmRegistry | LockfileReader | HttpClient.HttpClient | CommandRunner>();
+		return {
+			update: (deps, workspaceRoot = process.cwd()) => updateImpl(deps, workspaceRoot).pipe(Effect.provide(context)),
+		};
+	}),
+);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Internal Helpers
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** The manifest sections a config dependency may be declared in, in lookup order. */
+const DEP_SECTIONS = ["dependencies", "devDependencies", "optionalDependencies"] as const;
+
+type Manifest = Record<string, unknown>;
+
+interface LocatedDep {
+	readonly field: (typeof DEP_SECTIONS)[number];
+	readonly specifier: string;
+}
+
+/** Find a dependency's declared specifier in the root manifest, or `null`. */
+const findDependency = (manifest: Manifest, name: string): LocatedDep | null => {
+	for (const field of DEP_SECTIONS) {
+		const section = manifest[field];
+		if (typeof section !== "object" || section === null) continue;
+		const specifier = (section as Record<string, unknown>)[name];
+		if (typeof specifier === "string") return { field, specifier };
+	}
+	return null;
+};
+
+/**
+ * Merge a new version's catalogs on top of the manifest's, plugin-wins.
+ *
+ * The degraded merge used when the base version's catalogs cannot be read (a
+ * yanked or unpublished version): `next` overwrites every key it defines,
+ * disk-only keys survive, and nothing is removed. Without a base there is no way
+ * to tell a user override from a stale entry the action wrote itself, so an
+ * override on a key the plugin still ships is lost — the caller warns about
+ * exactly that.
+ */
+const pluginWinsMerge = (
+	disk: CatalogMap,
+	next: CatalogMap,
+): { merged: CatalogMap; deltas: ReadonlyArray<CatalogDelta> } => {
+	const merged: CatalogMap = structuredClone(disk);
+	const deltas: Array<CatalogDelta> = [];
+
+	for (const [catalog, nextEntries] of Object.entries(next)) {
+		const entries: Record<string, string> = { ...(disk[catalog] ?? {}) };
+
+		for (const [dependency, incoming] of Object.entries(nextEntries)) {
+			const previous = entries[dependency];
+			if (previous === incoming) continue;
+			entries[dependency] = incoming;
+			deltas.push({
+				catalog,
+				dependency,
+				from: previous ?? null,
+				to: incoming,
+				action: previous === undefined ? "added" : "updated",
+			});
+		}
+
+		merged[catalog] = entries;
+	}
+
+	return { merged, deltas };
+};
+
+/** Merge one catalog map on top of another, entry by entry — `right` wins. */
+const mergeCatalogMaps = (left: CatalogMap, right: CatalogMap): CatalogMap => {
+	const result: CatalogMap = structuredClone(left);
+	for (const [catalog, entries] of Object.entries(right)) {
+		result[catalog] = { ...(result[catalog] ?? {}), ...entries };
+	}
+	return result;
+};
+
+/**
+ * Fold the catalog entries written by earlier config dependencies *in this run*
+ * into a dependency's merge base — but only for the keys this dependency itself
+ * ships.
+ *
+ * Config dependencies merge in listed order onto one accumulating manifest, so a
+ * later one sees the earlier one's entries already on "disk". For a key both
+ * ship, those entries would otherwise look like user overrides — diverging from
+ * the later plugin's own base — and be frozen, making the *first* listed
+ * dependency win a conflicting key instead of the last. Overlaying such a key
+ * onto the base marks it as ours, so the later plugin overwrites it, while a
+ * genuine user override (matching neither plugin's value) still diverges and
+ * still survives.
+ *
+ * The `next[catalog]?.[key] !== undefined` restriction is what makes that safe.
+ * {@link threeWayMergeCatalogs} manages every key of `base` ∪ `next`, and treats
+ * a managed key the disk agrees with `base` on but `next` omits as an upstream
+ * *removal*. Overlaying a key the current dependency does not ship would
+ * therefore hand it authority to delete an earlier dependency's entries — its
+ * own private keys, or a whole catalog it never shipped. The overlay may only
+ * ever *unfreeze* a key for update, never authorize a removal, so it is confined
+ * to keys `next` actually defines.
+ */
+const overlayOwned = (base: CatalogMap, owned: CatalogMap, next: CatalogMap): CatalogMap => {
+	const result: CatalogMap = structuredClone(base);
+
+	for (const [catalog, entries] of Object.entries(owned)) {
+		const shipped = next[catalog];
+		// A catalog this dependency does not ship at all is none of its business:
+		// overlaying it would make every one of its keys look like a removal.
+		if (shipped === undefined) continue;
+
+		const merged: Record<string, string> = { ...result[catalog] };
+		for (const [dependency, range] of Object.entries(entries)) {
+			// A key this dependency does not ship stays out of the base, so it reads as
+			// an override and is kept — never as a removal.
+			if (shipped[dependency] !== undefined) {
+				merged[dependency] = range;
+			}
+		}
+		result[catalog] = merged;
+	}
+
+	return result;
+};
+
+/**
+ * The version whose catalogs were merged into the manifest last run: the one the
+ * lockfile says is installed.
+ *
+ * With no lockfile entry (or an unreadable lockfile) the best available stand-in
+ * is the highest published version satisfying the manifest's *declared*
+ * specifier — what an install would have resolved. That literal range is
+ * deliberately not the widened resolution range used for `next`: widening is how
+ * the dependency moves forward, and applying it here would make the base equal
+ * the next version and merge nothing.
+ */
+const resolveBaseVersion = (
+	name: string,
+	specifier: { prefix: string; version: string },
+	versions: ReadonlyArray<string>,
+): Effect.Effect<string, never, LockfileReader> =>
+	Effect.gen(function* () {
+		const lockfile = yield* LockfileReader;
+		const resolved = yield* lockfile
+			.resolvedVersion(name)
+			.pipe(Effect.catchAll(() => Effect.succeed(Option.none<{ readonly version: string }>())));
+
+		if (Option.isSome(resolved)) {
+			return resolved.value.version;
+		}
+
+		yield* Effect.logWarning(
+			`CatalogConfigDeps: no lockfile entry for ${name}; falling back to the highest version satisfying "${specifier.prefix}${specifier.version}" as the merge base`,
+		);
+
+		const fallback = yield* resolveLatestSatisfying(versions, `${specifier.prefix}${specifier.version}`);
+		return fallback ?? specifier.version;
+	});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Implementation
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Everything one config dependency contributes to the run. */
+interface DepOutcome {
+	readonly catalogs: CatalogMap;
+	readonly deltas: ReadonlyArray<CatalogDelta>;
+	readonly update: DependencyUpdateResult | null;
+	readonly specifier: string | null;
+	readonly field: (typeof DEP_SECTIONS)[number] | null;
+	/** The catalogs this dependency shipped, i.e. the entries it now owns. */
+	readonly contributed: CatalogMap;
+}
+
+/** Nothing to contribute: the dependency was warned about and skipped. */
+const skipped = (catalogs: CatalogMap): DepOutcome => ({
+	catalogs,
+	deltas: [],
+	update: null,
+	specifier: null,
+	field: null,
+	contributed: {},
+});
+
+/**
+ * Resolve, fetch and merge one config dependency onto the accumulating catalogs.
+ *
+ * Never fails: every degradation warns and returns {@link skipped}, leaving the
+ * catalogs exactly as they were.
+ */
+const processDep = (
+	name: string,
+	manifest: Manifest,
+	catalogs: CatalogMap,
+	owned: CatalogMap,
+): Effect.Effect<DepOutcome, never, NpmRegistry | LockfileReader | HttpClient.HttpClient | CommandRunner> =>
+	Effect.gen(function* () {
+		const located = findDependency(manifest, name);
+		if (located === null) {
+			yield* Effect.logWarning(
+				`CatalogConfigDeps: config dependency "${name}" is not declared in the root manifest, skipping`,
+			);
+			return skipped(catalogs);
+		}
+
+		const parsed = parseSpecifier(located.specifier);
+		if (parsed === null) {
+			yield* Effect.logWarning(
+				`CatalogConfigDeps: config dependency "${name}" has a non-version specifier "${located.specifier}", skipping`,
+			);
+			return skipped(catalogs);
+		}
+
+		const registry = yield* NpmRegistry;
+		const versions = yield* registry
+			.getVersions(name)
+			.pipe(Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)));
+
+		if (versions.length === 0) {
+			yield* Effect.logWarning(`CatalogConfigDeps: could not query versions for "${name}", skipping`);
+			return skipped(catalogs);
+		}
+
+		const next = yield* resolveLatestSatisfying(versions, resolutionRangeForSpecifier(parsed.prefix, parsed.version));
+		if (next === null) {
+			yield* Effect.logWarning(
+				`CatalogConfigDeps: no published version of "${name}" satisfies "${located.specifier}", skipping`,
+			);
+			return skipped(catalogs);
+		}
+
+		const base = yield* resolveBaseVersion(name, parsed, versions);
+
+		const nextCatalogs = yield* fetchModuleCatalogs(name, next);
+		if (nextCatalogs === null) {
+			// fetchModuleCatalogs already warned with the reason. The range is not
+			// bumped either: writing a version whose catalogs we could not merge would
+			// leave the manifest describing a plugin release it never saw.
+			yield* Effect.logWarning(
+				`CatalogConfigDeps: could not read catalogs from ${name}@${next}, leaving it at ${located.specifier}`,
+			);
+			return skipped(catalogs);
+		}
+
+		const baseCatalogs = base === next ? nextCatalogs : yield* fetchModuleCatalogs(name, base);
+
+		const { merged, deltas } =
+			baseCatalogs === null
+				? pluginWinsMerge(catalogs, nextCatalogs)
+				: threeWayMergeCatalogs(overlayOwned(baseCatalogs, owned, nextCatalogs), catalogs, nextCatalogs);
+
+		if (baseCatalogs === null) {
+			yield* Effect.logWarning(
+				`CatalogConfigDeps: could not read catalogs from the installed ${name}@${base}; merging ${next} plugin-wins — its entries overwrite the manifest's, local additions survive, and nothing is removed`,
+			);
+		}
+
+		const newSpecifier = `${parsed.prefix}${next}`;
+		const update: DependencyUpdateResult | null =
+			newSpecifier === located.specifier
+				? null
+				: {
+						dependency: name,
+						from: located.specifier,
+						to: newSpecifier,
+						// Reported as a config dependency so a bun run reads exactly like a
+						// pnpm run in the PR body, commit subject and job summary.
+						type: "config",
+						package: null,
+					};
+
+		return {
+			catalogs: merged,
+			deltas,
+			update,
+			specifier: newSpecifier,
+			field: located.field,
+			contributed: nextCatalogs,
+		};
+	});
+
+/**
+ * Update every config dependency, in listed order, accumulating onto one
+ * in-memory manifest that is written to disk once at the end.
+ *
+ * Listed order is load-bearing: two config dependencies shipping the same
+ * catalog key both merge onto the same manifest, so the one listed last wins.
+ */
+const updateImpl = (
+	deps: ReadonlyArray<string>,
+	workspaceRoot: string,
+): Effect.Effect<
+	CatalogConfigDepsResult,
+	FileSystemError,
+	NpmRegistry | LockfileReader | HttpClient.HttpClient | CommandRunner
+> =>
+	Effect.gen(function* () {
+		if (deps.length === 0) return { updates: [], deltas: [] };
+
+		const pkgPath = join(workspaceRoot, "package.json");
+		const raw = yield* Effect.try({
+			try: () => readFileSync(pkgPath, "utf-8"),
+			catch: (e) => new FileSystemError({ operation: "read", path: pkgPath, reason: String(e) }),
+		});
+		const indent = detectIndent(raw);
+		const manifest = yield* Effect.try({
+			try: () => JSON.parse(raw) as Manifest,
+			catch: (e) => new FileSystemError({ operation: "read", path: pkgPath, reason: `Invalid JSON: ${e}` }),
+		});
+
+		let catalogs = readManifestCatalogs(manifest);
+		// Catalog entries written by config dependencies earlier in this run: they
+		// are the action's, not a user's overrides, so a later dependency may
+		// overwrite them (listed order decides a conflicting key).
+		let owned: CatalogMap = {};
+		const updates: Array<DependencyUpdateResult> = [];
+		const deltas: Array<CatalogDelta> = [];
+		let changed = false;
+
+		for (const name of deps) {
+			const outcome = yield* processDep(name, manifest, catalogs, owned);
+			catalogs = outcome.catalogs;
+
+			// A "kept" delta means a user override or addition survived the merge.
+			// But when two config dependencies share a catalog, a key contributed by
+			// an *earlier* dependency in this run is already on "disk" by the time a
+			// later one's own base/next diff runs — and that later diff has no idea
+			// the key is the action's own write, so it reads as a divergence from its
+			// base and gets reported "kept". Drop any such phantom before it is ever
+			// recorded: `owned` (as it stood before this dependency's own
+			// contribution is folded in) is exactly the set of keys the action wrote
+			// earlier in this run.
+			const reportableDeltas = outcome.deltas.filter(
+				(delta) => !(delta.action === "kept" && owned[delta.catalog]?.[delta.dependency] !== undefined),
+			);
+			owned = mergeCatalogMaps(owned, outcome.contributed);
+			deltas.push(...reportableDeltas);
+
+			if (outcome.update !== null && outcome.field !== null && outcome.specifier !== null) {
+				(manifest[outcome.field] as Record<string, string>)[name] = outcome.specifier;
+				updates.push(outcome.update);
+				changed = true;
+			}
+			// A "kept" delta reports that a user override survived the merge — the
+			// manifest is exactly as it was. Only added/updated/removed entries mean
+			// the merge actually moved something, so only they warrant a rewrite (and,
+			// downstream, a line in the PR body).
+			if (outcome.deltas.some((delta) => delta.action !== "kept")) {
+				changed = true;
+			}
+		}
+
+		if (changed) {
+			writeManifestCatalogs(manifest, catalogs);
+			yield* Effect.try({
+				try: () => writeFileSync(pkgPath, `${JSON.stringify(manifest, null, indent)}\n`, "utf-8"),
+				catch: (e) => new FileSystemError({ operation: "write", path: pkgPath, reason: String(e) }),
+			});
+			yield* Effect.logInfo(
+				`Updated ${updates.length} config dependencies and ${deltas.length} catalog entries in ${pkgPath}`,
+			);
+		}
+
+		return { updates, deltas };
+	});

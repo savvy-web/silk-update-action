@@ -10,10 +10,6 @@ inputs:
   app-private-key:
     description: GitHub App private key (PEM format)
     required: true
-  skip-token-revoke:
-    description: Skip token revocation in the post step (tokens expire after 1 hour anyway)
-    required: false
-    default: "false"
   branch:
     description: Branch name for dependency update PR
     required: false
@@ -70,20 +66,27 @@ inputs:
     default: ""
   upgrade-package-manager:
     description: |
-      Upgrade the project's package manager in the packageManager and
-      devEngines.packageManager fields. Currently supports pnpm only; support
-      for other package managers is planned.
+      Upgrade the package manager detected for this workspace (pnpm, bun or
+      npm) in the packageManager and devEngines.packageManager fields.
+      corepack-managed managers (pnpm, npm) are written as a hash-pinned
+      version (e.g. pnpm@11.0.0+sha512.<hex>); bun is written as a bare version,
+      because corepack does not manage bun.
       Values: false (skip), true/auto (latest within the current major,
       favoring the devEngines version), or a semver range (e.g. ^11) to move
-      to and add when no pnpm field exists.
+      to and add when no packageManager field exists. An explicit range must be
+      a range for the DETECTED package manager — a pnpm range in a bun repo
+      satisfies nothing and is skipped with a warning.
     required: false
     default: "true"
   upgrade-runtime-node:
     description: |
-      Upgrade the Node.js entry in devEngines.runtime.
+      Upgrade the Node.js entry in devEngines.runtime. Only ever upgrades an
+      entry the manifest already declares — it never adds one, and skips with a
+      warning when no entry exists.
       Values: false (skip), auto (resolve latest within the existing range,
-      no-op for static pins), or a semver range (e.g. ^22) to move to and add
-      if missing.
+      no-op for static pins), or a semver range (e.g. ^22) selecting the line to
+      resolve. The resolved version is always written EXACT (no range operator),
+      because downstream consumers of devEngines.runtime do not support ranges.
     required: false
     default: "false"
   upgrade-runtime-deno:
@@ -130,15 +133,6 @@ inputs:
       Prevents the action from hanging indefinitely on slow installs or commands.
     required: false
     default: "180"
-  log-level:
-    description: |
-      Log verbosity level.
-      - auto: debug when ACTIONS_STEP_DEBUG is enabled, info otherwise
-      - info: buffered outcome summaries only
-      - verbose: unbuffered operation milestones
-      - debug: full command output and internal state
-    required: false
-    default: auto
   auto-merge:
     description: |
       Enable auto-merge on the dependency update PR.

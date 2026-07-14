@@ -10,14 +10,14 @@ import {
 	OfflineDenoCacheLive,
 	OfflineNodeCacheLive,
 } from "runtime-resolver";
-import { Range, SemVer, satisfies } from "semver-effect";
+import { parseRange, parseValidSemVer, satisfies } from "semver-effect";
 import { describe, expect, it } from "vitest";
 import { RuntimeUpgrade, RuntimeUpgradeLive } from "../../src/services/runtime-upgrade.js";
 
 // NOTE: The plan originally used Node 20 here, but the bundled offline cache in
-// runtime-resolver@0.3.10 only contains active-LTS/current entries (24.x and 26.x).
+// runtime-resolver only contains active-LTS/current entries (24.x and 26.x).
 // Node 20 reached EOL and left the cache. We use ^24.0.0 (lowest major present)
-// as the drift-canary fixture instead, and assert /^\^24\./ accordingly.
+// as the drift-canary fixture instead.
 
 const offlineResolvers = Layer.mergeAll(
 	NodeResolverLive.pipe(Layer.provide(OfflineNodeCacheLive)),
@@ -27,7 +27,7 @@ const offlineResolvers = Layer.mergeAll(
 const layer = RuntimeUpgradeLive.pipe(Layer.provide(offlineResolvers));
 
 describe("RuntimeUpgrade integration (offline cache)", () => {
-	it("auto resolves a real Node 24.x from the bundled cache", async () => {
+	it("auto resolves a real Node 24.x from the bundled cache and writes it EXACT", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "runtime-int-"));
 		writeFileSync(
 			join(dir, "package.json"),
@@ -44,21 +44,23 @@ describe("RuntimeUpgrade integration (offline cache)", () => {
 		expect(results).toHaveLength(1);
 		const update = results[0];
 		expect(update.runtime).toBe("node");
-		expect(update.added).toBe(false);
-		expect(update.to).toMatch(/^\^24\.\d+\.\d+$/);
+		expect(update.from).toBe("^24.0.0");
+		// A REAL version was resolved from the bundled cache — and it is written bare,
+		// with no range operator carried over from the "^24.0.0" entry.
+		expect(update.to).toMatch(/^24\.\d+\.\d+$/);
 
 		// The resolved version actually satisfies the original range.
 		const ok = await Effect.runPromise(
 			Effect.gen(function* () {
-				const range = yield* Range.parse("^24.0.0");
-				const version = yield* SemVer.parse(update.to.replace(/^\^/, ""));
+				const range = yield* parseRange("^24.0.0");
+				const version = yield* parseValidSemVer(update.to);
 				return satisfies(version, range);
 			}),
 		);
 		expect(ok).toBe(true);
 
-		// And it was written to disk.
+		// And it was written to disk, exactly, with the entry's other keys intact.
 		const written = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8"));
-		expect(written.devEngines.runtime[0].version).toBe(update.to);
+		expect(written.devEngines.runtime).toEqual([{ name: "node", version: update.to, onFail: "ignore" }]);
 	});
 });

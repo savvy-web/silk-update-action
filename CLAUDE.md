@@ -216,6 +216,18 @@ The `dev -> main` PR is left open for review — **not** auto-merged; merging it
 - **Pool**: Uses forks (not threads) for Effect-TS compatibility
 - **Config**: `vitest.config.ts` supports project-based filtering via
   `--project` flag
+- **Coverage gate (what it actually enforces)**: `vitest.config.ts` sets
+  `thresholds: AgentPlugin.COVERAGE_LEVELS.strict.thresholds`, which despite the
+  name resolves to **aggregate** (whole-run) minimums of
+  `{ lines: 80, functions: 80, branches: 75, statements: 80 }` — **not** a
+  per-file gate, and nowhere near 100%. The separate `coverageTargets`
+  (90/90/85/90) are *aspirational* and are reported, not enforced. Consequence:
+  a single file — even a large orchestration module — can have **zero** test
+  execution and the gate still passes, because the rest of the suite carries the
+  aggregate. Do not treat a green `test:coverage` as evidence that a given
+  module is exercised; verify by fault injection (throw inside the code path and
+  confirm a test fails). This is exactly how `program.ts`'s `innerProgram` went
+  untested for so long.
 
 ## Conventions
 
@@ -244,8 +256,8 @@ Packages publish to both GitHub Packages and npm with provenance.
 - `PullRequest` type includes `nodeId` for GraphQL API calls
 - `@actions/core`/`@actions/github` are never imported directly; the head SHA
   comes from `ActionEnvironment` (`env.github.sha`) in `program.ts`
-- Action input is `app-client-id` (not `app-id`); `skip-token-revoke` controls
-  whether `post.ts` revokes the token
+- Action input is `app-client-id` (not `app-id`); `post.ts` always revokes the
+  token
 - `source-branch` (default `main`) is the cut-from ref and default PR target;
   `target-branch` (empty → follows `source-branch`, via `resolveTargetBranch`)
   is the PR base. Both are validated by `BranchManager.validateBranches` early
@@ -267,12 +279,16 @@ Packages publish to both GitHub Packages and npm with provenance.
 - Runtime engine bumps (`upgrade-runtime-*`) edit root `package.json`
   `devEngines.runtime` and flow into the PR/commit/summary, but never create a
   changeset and never trigger `pnpm install` (unlike the pnpm bump, which does
-  trigger install). `auto` is
-  modify-only (no-op on static pins and no-op when no entry exists); an explicit
-  semver range can add a missing entry. An explicit range only selects which
-  line to resolve — the written value **preserves the existing entry's operator**
-  (an exact pin stays exact, a caret stays caret); the range's own operator is
-  used only when adding a brand-new entry. `runtime-data: live` opts into network
+  trigger install). They **upgrade only, never add**: with no existing
+  `devEngines.runtime` entry for that runtime there is nothing to upgrade, so it
+  is skipped with a warning — in **every** mode (`auto` and an explicit semver
+  range alike). `auto` is additionally a no-op on a static pin. A range (the
+  existing entry's own version under `auto`, or the user-typed input range) only
+  selects **which line to resolve** — the written value is **always the bare
+  resolved version, exact, with no range operator** (an existing `^24.0.0` is
+  rewritten as e.g. `24.9.1`). Operator preservation was dropped deliberately:
+  `silk-runtime-action`, the next pipeline step, does not support range
+  operators in `devEngines.runtime`. `runtime-data: live` opts into network
   resolution (Auto cache, falls back to bundled). Note that `runtime-resolver`
   only resolves versions within currently-maintained (non end-of-life) runtime
   major lines — if the existing entry or target range points to an EOL line, the

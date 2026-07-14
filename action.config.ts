@@ -26,6 +26,24 @@ export default defineConfig({
 		// `workspaces-effect`'s config-dependency-hooks loader is currently
 		// tree-shaken out of this bundle, but is listed so a future import
 		// graph change can't silently break it.
+		//
+		// A third, different case: `src/services/module-catalogs.ts` (Task 5)
+		// dynamically imports a config dependency's extracted tarball entry —
+		// a path computed at runtime from a temp directory, not a package
+		// specifier. This option's rule-building only matches resolved paths
+		// under `node_modules/<name>/` (see `services/native-dynamic-imports.ts`
+		// in the builder), so it structurally cannot target first-party source
+		// under `src/`. That call site instead carries its own inline
+		// `/* webpackIgnore: true */` magic comment ahead of the `import(...)`
+		// call — the same fix this loader injects for the packages listed
+		// above, just written directly since there's no third-party module
+		// path to match against here. `module-catalogs.ts` is reachable from
+		// `dist/main.js` (via `CatalogConfigDeps`), and because a context-module
+		// rewrite only fails in production — vitest runs the source, not the
+		// bundle — `build:prod` runs `scripts/assert-native-dynamic-import.mjs`
+		// after every build, asserting the built `dist/main.js` still holds a
+		// genuine `await import(<ident>)` at that call site and not a numbered
+		// context module. Deleting the magic comment fails the build.
 		nativeDynamicImports: ["@changesets/apply-release-plan", "workspaces-effect"],
 	},
 	persistLocal: {

@@ -8,6 +8,22 @@
 
 Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
 
+- **Orchestration** (`program.inner.test.ts`) — drives `innerProgram` directly
+  against a fake app layer and asserts on the captured log stream, which is the
+  run's decision record. Pins the behavior the rest of the suite cannot see:
+  the package-manager dispatch (a bun repo routes config dependencies to
+  `CatalogConfigDeps`, a pnpm repo to `ConfigDeps`, an npm repo to neither, with
+  a warning that npm has no `catalog:` protocol); the acceptance signal (an
+  `upgrade-package-manager` range that satisfies nothing — e.g. a pnpm `^11.0.0`
+  in a bun repo — must WARN, while "disabled" and "already current" stay at
+  info); the install gate; the pnpm-only workspace-format gate; that every
+  skipped step states a reason; and that an unsupported (yarn) workspace fails
+  with `ActionInputError` from *inside* the check run, which is completed with
+  `failure` rather than bypassed. Package-manager detection is **real** here
+  (upstream `WorkspaceRoot` / `PackageManagerDetector` over a temp-dir fixture),
+  as is `PackageManagerUpgradeLive` over an in-memory registry, so the
+  dispatch and the unsatisfiable-range path are genuinely resolved rather than
+  mocked into existence.
 - **Entry points** (`main.test.ts`, `main.effect.test.ts`, `pre.test.ts`,
   `post.test.ts`) — orchestration with injected service fakes, input parsing
   and validation, dry-run behavior, and the token lifecycle. The `pre` / `post`
@@ -15,11 +31,11 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
   library's in-memory `@savvy-web/github-action-effects/testing` layers
   (`ActionStateTest`, `GitHubAppTest`, `ActionOutputsTest`), covering scope
   provisioning, start-time persistence, duration reporting and
-  `skip-token-revoke` short-circuiting.
+  unconditional token revocation.
 - **Schemas and errors** (`schemas/domain.test.ts`, `errors/errors.test.ts`) —
   schema validation for the domain types and error construction, `_tag`
   matching and the `isRetryable` / `getErrorMessage` helpers.
-- **Dependency services** (`config-deps.test.ts`, `regular-deps.test.ts`, `peer-sync.test.ts`, `pnpm-upgrade.test.ts`, `runtime-upgrade.test.ts`) — npm-registry querying, range-respecting resolution (RegularDeps resolving within the current specifier's range, ConfigDeps within the synthesized major range, neither jumping to absolute `latest`), multi-section RegularDeps scanning with accurate per-section `type` reporting, `peer-lock`/`peer-minor` range computation, pnpm self-upgrade (driven through the library's in-memory `NpmRegistryTest` layer rather than a fake `CommandRunner`), and per-runtime `devEngines.runtime` rewriting (including `auto` no-op on static pins, missing-entry insertion, shape promotion and per-runtime resolver-failure resilience).
+- **Dependency services** (`config-deps.test.ts`, `regular-deps.test.ts`, `peer-sync.test.ts`, `pnpm-upgrade.test.ts`, `runtime-upgrade.test.ts`) — npm-registry querying, range-respecting resolution (RegularDeps resolving within the current specifier's range, ConfigDeps within the synthesized major range, neither jumping to absolute `latest`), multi-section RegularDeps scanning with accurate per-section `type` reporting, `peer-lock`/`peer-minor` range computation, pnpm self-upgrade (driven through the library's in-memory `NpmRegistryTest` layer rather than a fake `CommandRunner`), and per-runtime `devEngines.runtime` rewriting (including `auto` no-op on static pins, the never-add rule — a missing entry is skipped with a warning in *every* mode, the dogfooded bun-only-manifest case included — exact-version write-back with no operator, and per-runtime resolver-failure resilience).
 - **Lockfile and changesets** (`lockfile.test.ts`, `changesets.test.ts`) —
   `lockfile.test.ts` covers catalog and importer comparison emitting
   per-importer, per-section triples. `changesets.test.ts` exercises only the
@@ -86,11 +102,23 @@ mocks `@actions/core`.
 
 ## Coverage
 
-**Coverage Exclusions:**
+**What the gate actually enforces.** `vitest.config.ts` passes
+`AgentPlugin.COVERAGE_LEVELS.strict.thresholds`, which resolves to **aggregate**
+(whole-run) minimums of `{ lines: 80, functions: 80, branches: 75, statements:
+80 }`. It is **not** a per-file gate and not 100%. `exclude: []` — nothing is
+excluded (the former `src/services/pnpm-upgrade.ts` exclusion is gone, along
+with that module). The plugin's `coverageTargets` (90/90/85/90) are reported as
+aspirational, not enforced.
 
-`src/services/pnpm-upgrade.ts` is excluded from per-file coverage thresholds in
-`vitest.config.ts` due to v8 function counting issues with Effect error callback
-patterns. The module is still tested thoroughly via `pnpm-upgrade.test.ts`.
+**The trap.** Because the gate is aggregate, an entire module can have zero test
+execution while the suite stays green — the rest of the codebase carries the
+average. This is precisely how `innerProgram` (~250 lines of orchestration in
+`src/program.ts`) sat untested behind a passing gate and a `/* v8 ignore */`
+block. A green coverage run is **not** evidence that a module is exercised.
+
+**How to actually verify a module is exercised:** fault injection. Throw inside
+the code path and confirm a test fails. If the suite still passes, that code has
+no test execution, whatever the coverage number says.
 
 ## Integration Testing
 
@@ -127,12 +155,15 @@ const discoveryLayer = WorkspaceDiscoveryLive.pipe(
   temp `package.json`. Acts as an upstream-drift canary for the bundled cache:
   it asserts `auto` resolves a real version within an existing range and writes
   it back. Because the bundled cache only carries currently-maintained majors,
-  the fixture pins `^24.0.0` (the lowest major present) rather than an EOL line.
+  the fixture pins `^24.0.0` (the lowest major present) rather than an EOL line. It also pins the
+  exact-write rule: the caret ranges the resolution, but a bare `24.x.y` is written back.
 
 The `RuntimeUpgrade` service and the pure `src/utils/runtime.ts` helpers have
 their own co-located unit suites (`runtime-upgrade.test.ts`, `runtime.test.ts`)
-covering shape promotion, `auto` no-op on static pins, missing-entry insertion
-and per-runtime resolver-failure resilience.
+covering the never-add rule (missing entry skipped with a warning in every
+mode), exact-version write-back, `auto` no-op on static pins, in-place update of
+both the array and single-object shapes, and per-runtime resolver-failure
+resilience.
 
 **External Integration Test Scenarios (live GitHub repo, future work):**
 

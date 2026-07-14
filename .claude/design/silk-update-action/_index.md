@@ -24,7 +24,7 @@ dependency ranges across workspace packages to keep them consistent.
 **Key Features:**
 
 - Upgrades pnpm itself via the `upgrade-package-manager` input (`false`/`true`/`auto`/a semver range) by editing the `packageManager` and `devEngines.packageManager` fields directly with a hash-pinned version — `true`/`auto` stay within the current major, an explicit range may cross majors
-- Upgrades `devEngines.runtime` engines (node/deno/bun) via `runtime-resolver` (`RuntimeUpgrade` service), with `auto`/explicit-range modes and offline/live data sources
+- Upgrades `devEngines.runtime` engines (node/deno/bun) via `runtime-resolver` (`RuntimeUpgrade` service), with `auto`/explicit-range modes and offline/live data sources. It only ever upgrades an entry the manifest already declares (never adds one), and always writes the bare resolved version — the range drives resolution only
 - Updates config dependencies via direct npm queries and YAML editing, resolving within a conservative range synthesized from the current major rather than jumping to npm's absolute latest
 - Updates regular dependencies via direct npm registry queries (avoids `catalogMode: strict` issues), resolving the highest version within each dependency's declared specifier range rather than the absolute latest
 - Syncs peer dependency ranges across workspace packages (`syncPeers` helper) with configurable lock/minor strategies

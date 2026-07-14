@@ -365,37 +365,39 @@ export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
 - `RuntimeName` — `"node" | "deno" | "bun"`.
 - `RuntimeUpgradeConfig` — `{ node: string; deno: string; bun: string }` where each field
   is `"false"`, `"auto"`, or an explicit semver range string.
-- `RuntimeUpgradeResult` — `{ runtime: RuntimeName; from: string | null; to: string; added: boolean }`.
+- `RuntimeUpgradeResult` — `{ runtime: RuntimeName; from: string; to: string }`. `from` is the version the manifest already declared; `to` is always a bare, exact version.
 
 **Resolution algorithm (per runtime):**
 
 1. If the mode is `"false"`, return `null` (skip).
-2. Look up the existing `devEngines.runtime` entry via `findRuntimeEntry`.
-3. **`auto` mode:** if no entry exists or it is a static pin (`isStaticVersion`), skip with a
-   warning. Otherwise use the existing version string as the target range and its leading
-   operator (`parseRuntimeOperator`) as the output operator.
-4. **Explicit range mode:** use the user-typed value as the target range. The output operator
-   follows the **existing** entry (`parseRuntimeOperator(entry.version)`) so its pattern is
-   preserved — an exact pin stays exact, a caret stays caret — even when the input range used a
-   different operator. Only when **adding** a brand-new entry (no existing entry) does the output
-   operator fall back to the one the user typed in the range.
+2. Look up the existing `devEngines.runtime` entry via `findRuntimeEntry`. **If none exists, skip
+   with a warning** naming the runtime and the input — in *every* mode. These inputs upgrade a
+   runtime the repo already declares; they never add one. (An explicit range used to add a missing
+   entry, which grew an unwanted node entry in a bun-only repo.)
+3. **`auto` mode:** if the entry is a static pin (`isStaticVersion`), skip. Otherwise the existing
+   version string is the target range.
+4. **Explicit range mode:** the user-typed value is the target range. It only selects *which line
+   to resolve* — it never changes what shape is written.
 5. Call `resolver.resolve({ semverRange: targetRange })` and get `latest`. On any error
    (`VersionNotFoundError` or network failure), log a warning and skip.
-6. Re-decorate: `operator + latest` via `redecorateVersion`. If `newVersion === from`, skip (already
-   current).
-7. Call `upsertRuntimeEntry(pkgJson, runtime, newVersion)` to write the new version into the
-   package JSON object in memory. Track whether an entry was added vs modified.
+6. If `latest` equals the current version, skip (already current).
+7. Assign `entry.version = latest` — the **bare, exact** resolved version, no operator re-attached.
+   `findRuntimeEntry` returns the live object inside `devEngines`, so this rewrites the manifest in
+   place and preserves the entry's other keys and the surrounding shape.
 8. After processing all runtimes, write back `package.json` (preserving indentation via
    `detectIndent`) only if at least one update succeeded.
 
-**Shape handling (via `upsertRuntimeEntry`):**
+**Shape handling:**
 
-- Existing array entry: version is updated in place, all other fields preserved.
-- Existing single-object entry: version is updated in place, shape stays as object.
-- New entry into existing array: new object appended, mirroring a sibling's `onFail` (or `"ignore"`
-  if none).
-- New entry when `runtime` field is absent: created as a single-element array.
-- New entry when `runtime` field is a single object: promoted to a two-element array.
+- Existing array entry: version updated in place, all other fields preserved, array shape kept.
+- Existing single-object entry: version updated in place, object shape kept.
+- No entry (array missing the runtime, single object naming another runtime, absent
+  `devEngines.runtime`, absent `devEngines`): skipped with a warning — nothing is ever added or
+  promoted.
+
+**Why exact:** `silk-runtime-action`, which consumes `devEngines.runtime` in the next pipeline
+step, does not support range operators, so any operator written here is a latent downstream
+failure. The range is a *resolution* input only.
 
 **EOL note:** `runtime-resolver`'s bundled cache and live API both exclude end-of-life major lines.
 A resolution targeting an EOL line returns `VersionNotFoundError` and is skipped with a warning.
@@ -549,19 +551,17 @@ locals are gone.
 Pure helpers for reading and rewriting `devEngines.runtime` entries. No Effect
 service dependencies — mirrors `src/utils/pnpm.ts`.
 
-- `parseRuntimeOperator(raw)` — Extract the leading range operator (`^`, `~`, `>=`, etc.)
-  from a version string; returns `""` for a bare version with no operator.
 - `isStaticVersion(raw)` — True when `raw` is a static exact version (`X.Y.Z`, optionally with
   prerelease/build) and carries no range operator, wildcard (`x`/`*`), OR-set (`||`), or partial
   form. Used to make `auto` a no-op on pinned versions.
-- `redecorateVersion(resolved, operator)` — Re-attach an operator to a resolved exact version
-  (e.g. `"^" + "24.16.0"` → `"^24.16.0"`).
 - `findRuntimeEntry(devEngines, runtime)` — Find the `devEngines.runtime` entry for `runtime`
-  (accepts object or array shape), or `null` if absent.
-- `upsertRuntimeEntry(pkgJson, runtime, version)` — Set the version for `runtime` inside
-  `pkgJson.devEngines.runtime`, mutating `pkgJson` in place. Handles all shape variants (existing
-  array entry, existing single-object entry, new entry into array, promote single-object to array,
-  create array when absent). Returns `{ added: boolean }`.
+  (accepts object or array shape), or `null` if absent. The entry returned is the **live object**
+  inside `devEngines`, so assigning to its `version` rewrites the manifest in place — which is how
+  `RuntimeUpgrade` writes, preserving both the array and single-object shapes.
+
+There is no upsert/promote helper and no operator helper: the action never adds a runtime entry,
+and always writes a bare exact version (`parseRuntimeOperator`, `redecorateVersion` and
+`upsertRuntimeEntry` were removed with those behaviors).
 
 ### src/utils/semver.ts
 

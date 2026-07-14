@@ -1,0 +1,11 @@
+{
+	"name": "@fixture/core",
+	"version": "1.0.0",
+	"dependencies": {
+		"effect": "catalog:silk",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"typescript": "^5.6.0"
+	}
+}

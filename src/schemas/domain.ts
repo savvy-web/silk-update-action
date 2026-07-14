@@ -155,6 +155,23 @@ export const PullRequestResult = Schema.Struct({
 export type PullRequestResult = typeof PullRequestResult.Type;
 
 /**
+ * One catalog entry's fate in a compat-mode merge. Drives the PR's Catalog
+ * Changes table — on a plugin bump this table is the actual payload of the run.
+ */
+export const CatalogDelta = Schema.Struct({
+	catalog: NonEmptyString,
+	dependency: NonEmptyString,
+	from: Schema.NullOr(Schema.String),
+	to: Schema.NullOr(Schema.String),
+	action: Schema.Literal("added", "updated", "removed", "kept"),
+}).annotations({
+	identifier: "CatalogDelta",
+	title: "Catalog Delta",
+});
+
+export type CatalogDelta = typeof CatalogDelta.Type;
+
+/**
  * Lockfile change detected during comparison.
  */
 export const LockfileChange = Schema.Struct({

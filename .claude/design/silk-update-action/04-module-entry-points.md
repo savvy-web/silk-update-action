@@ -33,8 +33,7 @@ execute it.
 
 `post.ts` runs after `main`, even on failure. It reports total duration from the
 saved `StartTimeState`, then revokes the token via `GitHubToken.dispose()`. The
-`skip-token-revoke` input short-circuits revocation. The whole effect is
-guarded with `Effect.catchAll` (around `dispose`) plus `Effect.catchAllDefect`
+whole effect is guarded with `Effect.catchAll` (around `dispose`) plus `Effect.catchAllDefect`
 so a post failure never fails the workflow. `PostLive` mirrors `PreLive`.
 
 ## src/main.ts - Main-Phase Entry
@@ -97,7 +96,6 @@ const upgradePackageManager = yield* Config.string("upgrade-package-manager").pi
 const changesets = yield* Config.boolean("changesets").pipe(Config.withDefault(true));
 const autoMerge = yield* Config.string("auto-merge").pipe(Config.withDefault(""));
 const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
-const logLevel = yield* Config.string("log-level").pipe(Config.withDefault("auto"));
 const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
 // upgrade-runtime-{node,deno,bun} default "false"; runtime-data default "offline".
 const rawRuntimeNode = yield* Config.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
@@ -133,7 +131,8 @@ which `runtime-resolver` cache layers `makeAppLayer` wires.
 There is no token plumbing in `program.ts`. The installation token was
 provisioned in `pre` and its envelope persisted to `ActionState`; `program`
 reads `headSha` from `ActionEnvironment`, builds the per-run layer and runs
-`innerProgram` under the log-level minimum and the timeout:
+`innerProgram` under the resolved log-level minimum (debug when the runner's
+step-debug flag is on, info otherwise) and the timeout:
 
 ```typescript
 const env = yield* ActionEnvironment;

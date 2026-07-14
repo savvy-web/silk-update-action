@@ -267,6 +267,53 @@ describe("RegularDeps.updateRegularDeps", () => {
 		expect(result.find((r) => r.dependency === "@savvy-web/utils")?.to).toBe("^1.2.0");
 	});
 
+	it("bumps a config dependency's devDependency range when nothing is excluded", async () => {
+		// The pnpm (and npm) case: config dependencies live in pnpm-workspace.yaml
+		// and ConfigDeps never touches package.json, so no exclusion set is passed
+		// and the devDependency range of a package that is *also* a config
+		// dependency is RegularDeps' to bump. Excluding it there would freeze that
+		// range forever.
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			devDependencies: { "@savvy-web/pnpm-plugin-silk": "^1.0.0" },
+		});
+
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["@savvy-web/*"], dir),
+			{ "@savvy-web/pnpm-plugin-silk": "1.5.0" },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].dependency).toBe("@savvy-web/pnpm-plugin-silk");
+		expect(readPackageJson(dir).devDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("^1.5.0");
+	});
+
+	it("skips an excluded name even when a pattern matches it", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			devDependencies: {
+				// bun's config-dependency path owns this one: it bumps the range in
+				// package.json and merges the plugin's catalogs, so RegularDeps must not
+				// bump it too.
+				"@savvy-web/pnpm-plugin-silk": "^1.0.0",
+				"@savvy-web/core": "^1.0.0",
+			},
+		});
+
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["@savvy-web/*"], dir, new Set(["@savvy-web/pnpm-plugin-silk"])),
+			{ "@savvy-web/pnpm-plugin-silk": "1.5.0", "@savvy-web/core": "1.1.0" },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].dependency).toBe("@savvy-web/core");
+		expect(readPackageJson(dir).devDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("^1.0.0");
+	});
+
 	it("skips deps with catalog: specifier", async () => {
 		const dir = makeTempDir();
 		writePackageJson(dir, {

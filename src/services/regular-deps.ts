@@ -30,9 +30,16 @@ type WorkspaceDiscoveryShape = Context.Tag.Service<typeof WorkspaceDiscovery>;
 export class RegularDeps extends Context.Tag("RegularDeps")<
 	RegularDeps,
 	{
+		/**
+		 * @param exclude - Names whose package.json range a config-dependency path
+		 *   already owns and bumps (bun's CatalogConfigDeps), skipped even when a
+		 *   pattern matches them. Omitted — the pnpm and npm case, where nothing
+		 *   else writes those ranges — excludes nothing.
+		 */
 		readonly updateRegularDeps: (
 			patterns: ReadonlyArray<string>,
 			workspaceRoot?: string,
+			exclude?: ReadonlySet<string>,
 		) => Effect.Effect<ReadonlyArray<DependencyUpdateResult>>;
 	}
 >() {}
@@ -43,8 +50,8 @@ export const RegularDepsLive = Layer.effect(
 		const registry = yield* NpmRegistry;
 		const discovery = yield* WorkspaceDiscovery;
 		return {
-			updateRegularDeps: (patterns, workspaceRoot = process.cwd()) =>
-				updateRegularDepsImpl(patterns, registry, discovery, workspaceRoot),
+			updateRegularDeps: (patterns, workspaceRoot = process.cwd(), exclude) =>
+				updateRegularDepsImpl(patterns, registry, discovery, workspaceRoot, exclude),
 		};
 	}),
 );
@@ -99,6 +106,7 @@ interface MatchedDep {
 const collectMatchingDeps = (
 	packageJsonPaths: ReadonlyArray<string>,
 	patterns: ReadonlyArray<string>,
+	exclude: ReadonlySet<string> | undefined,
 ): Effect.Effect<Map<string, MatchedDep[]>, FileSystemError> =>
 	Effect.gen(function* () {
 		const depMap = new Map<string, MatchedDep[]>();
@@ -120,6 +128,14 @@ const collectMatchingDeps = (
 
 				for (const [name, specifier] of Object.entries(deps)) {
 					if (!patterns.some((p) => matchesPattern(name, p))) continue;
+
+					// An excluded name is owned by a config-dep path that bumps the
+					// package.json range itself (bun's CatalogConfigDeps); bumping it here
+					// too would double-report it and race the same manifest write. The
+					// caller decides — under pnpm the config-dep path writes only
+					// pnpm-workspace.yaml, so nothing is excluded and these ranges are
+					// RegularDeps' to bump.
+					if (exclude?.has(name)) continue;
 
 					// Skip catalog: and workspace: specifiers
 					if (!parseSpecifier(specifier)) continue;
@@ -195,6 +211,7 @@ const updateRegularDepsImpl = (
 	registry: NpmRegistryShape,
 	discovery: WorkspaceDiscoveryShape,
 	workspaceRoot: string,
+	exclude: ReadonlySet<string> | undefined,
 ): Effect.Effect<ReadonlyArray<DependencyUpdateResult>> =>
 	Effect.gen(function* () {
 		if (patterns.length === 0) return [];
@@ -216,7 +233,7 @@ const updateRegularDepsImpl = (
 		);
 
 		// Step 2: Find all deps matching patterns across all package.json files
-		const depMap = yield* collectMatchingDeps(packageJsonPaths, patterns).pipe(
+		const depMap = yield* collectMatchingDeps(packageJsonPaths, patterns, exclude).pipe(
 			Effect.catchAll((error) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(`Failed to collect matching deps: ${error.reason}`);
