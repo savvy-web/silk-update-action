@@ -74,7 +74,7 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: savvy-web/silk-update-action@v3
+      - uses: savvy-web/silk-update-action@v4
         with:
           app-client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -143,7 +143,7 @@ To test the action without creating commits or pull requests, enable dry-run
 mode:
 
 ```yaml
-- uses: savvy-web/silk-update-action@v3
+- uses: savvy-web/silk-update-action@v4
   with:
     app-client-id: ${{ vars.APP_CLIENT_ID }}
     app-private-key: ${{ secrets.APP_PRIVATE_KEY }}

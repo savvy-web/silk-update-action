@@ -36,7 +36,7 @@ jobs:
           # (fetch-depth: 1) checkout cannot resolve.
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
-      - uses: savvy-web/silk-update-action@v3
+      - uses: savvy-web/silk-update-action@v4
         with:
           app-client-id: ${{ secrets.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
