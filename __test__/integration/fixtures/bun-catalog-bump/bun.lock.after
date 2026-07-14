@@ -1,0 +1,32 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "bun-root"
+    },
+    "packages/core": {
+      "name": "@fixture/core",
+      "version": "1.0.0",
+      "dependencies": {
+        "effect": "catalog:silk",
+        "zod": "catalog:"
+      },
+      "devDependencies": {
+        "typescript": "^5.7.0"
+      }
+    }
+  },
+  "catalog": {
+    "zod": "^3.23.0"
+  },
+  "catalogs": {
+    "silk": {
+      "effect": "^3.1.0"
+    }
+  },
+  "packages": {
+    "effect": ["effect@3.1.2", {}, "sha512-aftereffect"],
+    "typescript": ["typescript@5.7.3", {}, "sha512-afterts"],
+    "zod": ["zod@3.23.0", {}, "sha512-afterzod"]
+  }
+}

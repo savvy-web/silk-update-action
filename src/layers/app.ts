@@ -6,6 +6,7 @@
  * @module layers/app
  */
 
+import { FetchHttpClient } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
 import {
 	ActionStateLive,
@@ -38,12 +39,18 @@ import {
 	OfflineDenoCacheLive,
 	OfflineNodeCacheLive,
 } from "runtime-resolver";
-import { WorkspaceDiscoveryLive, WorkspaceRootLive } from "workspaces-effect";
+import {
+	LockfileReaderLive,
+	PackageManagerDetectorLive,
+	WorkspaceDiscoveryLive,
+	WorkspaceRootLive,
+} from "workspaces-effect";
 
 import { BranchManagerLive } from "../services/branch.js";
+import { CatalogConfigDepsLive } from "../services/catalog-config-deps.js";
 import { ChangesetsLive } from "../services/changesets.js";
 import { ConfigDepsLive } from "../services/config-deps.js";
-import { PnpmUpgradeLive } from "../services/pnpm-upgrade.js";
+import { PackageManagerUpgradeLive } from "../services/package-manager-upgrade.js";
 import { RegularDepsLive } from "../services/regular-deps.js";
 import { ReportLive } from "../services/report.js";
 import { RuntimeUpgradeLive } from "../services/runtime-upgrade.js";
@@ -105,6 +112,12 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 	const platform = NodeContext.layer;
 	const workspaceRoot = WorkspaceRootLive.pipe(Layer.provide(platform));
 	const workspaceDiscovery = WorkspaceDiscoveryLive.pipe(Layer.provide(Layer.merge(workspaceRoot, platform)));
+	const packageManagerDetector = PackageManagerDetectorLive.pipe(Layer.provide(platform));
+	// The lockfile is the record of which config-dependency version is actually
+	// installed — the merge base for CatalogConfigDeps' three-way catalog merge.
+	const lockfileReader = LockfileReaderLive.pipe(
+		Layer.provide(Layer.mergeAll(workspaceRoot, packageManagerDetector, platform)),
+	);
 
 	// DepsRegen (from @savvy-web/silk-effects) is the source of truth for
 	// dependency changesets. DepsRegenDefault is the batteries-included layer: it
@@ -123,14 +136,20 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 		npmRegistry,
 		CommandRunnerLive,
 		DryRunLive(dryRun),
+		FetchHttpClient.layer,
 	);
 
 	const domainLayers = Layer.mergeAll(
+		workspaceRoot,
 		workspaceDiscovery,
+		packageManagerDetector,
 		ChangesetsLive.pipe(Layer.provide(depsRegen)),
 		BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
-		PnpmUpgradeLive.pipe(Layer.provide(npmRegistry)),
+		PackageManagerUpgradeLive.pipe(Layer.provide(npmRegistry)),
 		ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
+		CatalogConfigDepsLive.pipe(
+			Layer.provide(Layer.mergeAll(npmRegistry, lockfileReader, FetchHttpClient.layer, CommandRunnerLive)),
+		),
 		RegularDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, workspaceDiscovery))),
 		ReportLive.pipe(Layer.provide(prLayer)),
 		RuntimeUpgradeLive.pipe(Layer.provide(makeRuntimeResolvers(options.runtimeLive))),

@@ -1,18 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	findRuntimeEntry,
-	isStaticVersion,
-	parseRuntimeOperator,
-	redecorateVersion,
-	upsertRuntimeEntry,
-} from "./runtime.js";
-
-describe("parseRuntimeOperator", () => {
-	it("extracts caret", () => expect(parseRuntimeOperator("^24.0.0")).toBe("^"));
-	it("extracts tilde", () => expect(parseRuntimeOperator("~24.5.0")).toBe("~"));
-	it("extracts >=", () => expect(parseRuntimeOperator(">=20.0.0")).toBe(">="));
-	it("returns empty for bare version", () => expect(parseRuntimeOperator("24.11.0")).toBe(""));
-});
+import { findRuntimeEntry, isStaticVersion } from "./runtime.js";
 
 describe("isStaticVersion", () => {
 	it("true for bare X.Y.Z", () => expect(isStaticVersion("24.11.0")).toBe(true));
@@ -23,11 +10,6 @@ describe("isStaticVersion", () => {
 	it("false for wildcard (24.x)", () => expect(isStaticVersion("24.x")).toBe(false));
 	it("false for comparator (>=20)", () => expect(isStaticVersion(">=20.0.0")).toBe(false));
 	it("false for OR range", () => expect(isStaticVersion("20.0.0 || 22.0.0")).toBe(false));
-});
-
-describe("redecorateVersion", () => {
-	it("reattaches caret", () => expect(redecorateVersion("24.16.0", "^")).toBe("^24.16.0"));
-	it("no operator yields bare", () => expect(redecorateVersion("24.16.0", "")).toBe("24.16.0"));
 });
 
 describe("findRuntimeEntry", () => {
@@ -44,55 +26,11 @@ describe("findRuntimeEntry", () => {
 		expect(findRuntimeEntry(undefined, "node")).toBeNull();
 		expect(findRuntimeEntry({}, "node")).toBeNull();
 	});
-});
-
-describe("upsertRuntimeEntry", () => {
-	it("modifies an existing array entry (added=false, shape preserved)", () => {
-		const pkg: Record<string, unknown> = {
-			devEngines: { runtime: [{ name: "node", version: "^24.0.0", onFail: "ignore" }] },
-		};
-		const result = upsertRuntimeEntry(pkg, "node", "^24.16.0");
-		expect(result.added).toBe(false);
-		expect((pkg.devEngines as { runtime: unknown }).runtime).toEqual([
-			{ name: "node", version: "^24.16.0", onFail: "ignore" },
-		]);
-	});
-
-	it("modifies an existing single-object entry (shape preserved)", () => {
-		const pkg: Record<string, unknown> = { devEngines: { runtime: { name: "node", version: "24.11.0" } } };
-		const result = upsertRuntimeEntry(pkg, "node", "24.16.0");
-		expect(result.added).toBe(false);
-		expect((pkg.devEngines as { runtime: unknown }).runtime).toEqual({ name: "node", version: "24.16.0" });
-	});
-
-	it("promotes a single object to an array when adding a sibling, mirroring onFail", () => {
-		const pkg: Record<string, unknown> = {
-			devEngines: { runtime: { name: "node", version: "^24.0.0", onFail: "warn" } },
-		};
-		const result = upsertRuntimeEntry(pkg, "deno", "^2.1.0");
-		expect(result.added).toBe(true);
-		expect((pkg.devEngines as { runtime: unknown }).runtime).toEqual([
-			{ name: "node", version: "^24.0.0", onFail: "warn" },
-			{ name: "deno", version: "^2.1.0", onFail: "warn" },
-		]);
-	});
-
-	it("creates devEngines.runtime as an array when absent, defaulting onFail to ignore", () => {
-		const pkg: Record<string, unknown> = { name: "x" };
-		const result = upsertRuntimeEntry(pkg, "bun", "^1.2.0");
-		expect(result.added).toBe(true);
-		expect((pkg.devEngines as { runtime: unknown }).runtime).toEqual([
-			{ name: "bun", version: "^1.2.0", onFail: "ignore" },
-		]);
-	});
-
-	it("appends to an existing array when adding a new runtime", () => {
-		const pkg: Record<string, unknown> = { devEngines: { runtime: [{ name: "node", version: "^24.0.0" }] } };
-		const result = upsertRuntimeEntry(pkg, "bun", "^1.2.0");
-		expect(result.added).toBe(true);
-		expect((pkg.devEngines as { runtime: unknown }).runtime).toEqual([
-			{ name: "node", version: "^24.0.0" },
-			{ name: "bun", version: "^1.2.0", onFail: "ignore" },
-		]);
+	it("returns the live entry object, so assigning version rewrites the manifest in place", () => {
+		const pkg = { devEngines: { runtime: [{ name: "node", version: "^24.0.0", onFail: "ignore" }] } };
+		const entry = findRuntimeEntry(pkg.devEngines, "node");
+		expect(entry).not.toBeNull();
+		if (entry) entry.version = "24.16.0";
+		expect(pkg.devEngines.runtime).toEqual([{ name: "node", version: "24.16.0", onFail: "ignore" }]);
 	});
 });

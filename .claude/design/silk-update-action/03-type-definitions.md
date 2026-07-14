@@ -70,12 +70,15 @@ export interface PnpmUpgradeResult {
 ## Module-Level Types (src/services/runtime-upgrade.ts)
 
 ```typescript
-/** Result of a single runtime upgrade. */
+/**
+ * Result of a single runtime upgrade. `from` is always the version the manifest
+ * already declared (an upgrade requires an existing entry); `to` is always a
+ * bare, exact version (no range operator).
+ */
 export interface RuntimeUpgradeResult {
  readonly runtime: RuntimeName;
- readonly from: string | null;
+ readonly from: string;
  readonly to: string;
- readonly added: boolean; // true when a new devEngines.runtime entry was created
 }
 
 /** Per-runtime mode: "false" | "auto" | a semver range. */

@@ -53,7 +53,7 @@ src/
     ├── input.test.ts
     ├── markdown.ts        # npmUrl, cleanVersion
     ├── pnpm.ts            # parsePnpmVersion, formatPnpmVersion, detectIndent
-    ├── runtime.ts         # parseRuntimeOperator, isStaticVersion, redecorateVersion, upsertRuntimeEntry
+    ├── runtime.ts         # isStaticVersion, findRuntimeEntry
     ├── runtime.test.ts
     └── semver.ts          # resolveLatestInRange
 ```
@@ -156,7 +156,7 @@ The action runs as **three phases** (`pre` / `main` / `post`), each a separate
 Node process. `pre.ts` provisions the installation token (`GitHubToken.provision`
 with a fail-fast scope check) and records the start time to `ActionState`;
 `post.ts` reports total duration and revokes the token (`GitHubToken.dispose`,
-guarded so it never fails the workflow, honoring `skip-token-revoke`). The
+guarded so it never fails the workflow). The
 dependency-update workflow below runs entirely in the `main` phase. Steps are
 implemented in `src/program.ts`; `src/main.ts` only calls `Action.run(program)`.
 The numbering below is descriptive — `program.ts` uses its own step labels in
@@ -181,7 +181,7 @@ log messages.
   inputs: `branch`, `source-branch`, `target-branch`, `config-dependencies`,
   `dependencies`, `peer-lock`, `peer-minor`, `run`, `upgrade-package-manager`,
   `upgrade-runtime-node`, `upgrade-runtime-deno`, `upgrade-runtime-bun`,
-  `runtime-data`, `changesets`, `auto-merge`, `dry-run`, `log-level`, `timeout`.
+  `runtime-data`, `changesets`, `auto-merge`, `dry-run`, `timeout`.
 - `source-branch` (default `main`) is the ref the update branch is cut from and
   reset to. `target-branch` (default `""`) is the PR merge target; an empty
   value follows `source-branch`, resolved by `resolveTargetBranch`
@@ -274,14 +274,20 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   resolves the latest version via `runtime-resolver` (either offline bundled
   cache or live network per `runtime-data`), and rewrites `devEngines.runtime`
   in place — preserving the object/array shape.
-- `auto` mode: resolve the latest version within the existing entry's range,
-  re-decorate with the existing operator. No-op if the entry is a static exact
-  pin, if no entry exists, or if the resolved version equals the current value.
-  Never adds a missing entry.
+- **Upgrade only, never add** (all modes): if no `devEngines.runtime` entry
+  exists for the runtime, it is skipped with a warning naming the runtime and
+  the input. These inputs upgrade the runtimes a repo already declares; they do
+  not introduce new ones.
+- **Always writes an exact version** (all modes): the range only selects which
+  line to resolve; the value written is the bare resolved version with no range
+  operator, because downstream consumers of `devEngines.runtime` (notably
+  `silk-runtime-action`) do not support ranges. An existing `^24.0.0` resolves
+  within `^24.0.0` and is rewritten as e.g. `24.9.1`.
+- `auto` mode: resolve the latest version within the existing entry's range.
+  No-op if the entry is a static exact pin, or if the resolved version equals
+  the current value.
 - Explicit semver range mode: resolve the latest satisfying the user-typed
-  range. Adds a new entry if missing (promoting a single-object `runtime` to
-  an array, or creating an array when absent; new entries default to the
-  sibling's `onFail` or `"ignore"`).
+  range, and write it into the existing entry (shape preserved).
 - Results flow into `runtimeUpdates` and then `allUpdates` for PR/commit/summary
   and the `has-changes` / `updates-count` outputs. Runtime bumps never trigger
   `Changesets.create` and never trigger `runInstall` — unlike the pnpm bump,

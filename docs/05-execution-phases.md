@@ -169,5 +169,4 @@ The post phase runs after the main phase, even when the main phase fails.
 
 - Reports the total run duration from the start time the pre phase recorded
 - Revokes the installation token so it is not left live after the run
-- Honors `skip-token-revoke`: when set, revocation is skipped and the token is left to expire on its own (installation tokens last one hour)
 - Guards revocation so a failure here never fails the workflow

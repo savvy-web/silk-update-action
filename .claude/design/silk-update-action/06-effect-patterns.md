@@ -227,6 +227,5 @@ Tests import `program` and `runCommands` directly without going through
 `main.ts` (which only contains the module-level `Action.run` call). Library
 services are injected via `Layer.succeed` fakes or the library's in-memory
 test layers (e.g. `PullRequestTest`) rather than `vi.mock`. `pre.ts` and
-`post.ts` have their own suites exercising token provisioning, duration
-reporting and `skip-token-revoke` short-circuiting via the library's test
-layers.
+`post.ts` have their own suites exercising token provisioning and duration
+reporting via the library's test layers.

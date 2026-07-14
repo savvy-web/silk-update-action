@@ -2,10 +2,28 @@
  * RuntimeUpgrade service for devEngines.runtime upgrades.
  *
  * Reads the root package.json, resolves the latest version satisfying a target
- * range (per runtime) via runtime-resolver, re-decorates with the caller's
- * operator, and writes back — preserving the object/array shape of
- * devEngines.runtime. Mirrors PnpmUpgrade; resolver failures are caught and
+ * range (per runtime) via runtime-resolver, and writes the resolved version
+ * back into the existing devEngines.runtime entry — preserving the object/array
+ * shape. Mirrors PackageManagerUpgrade; resolver failures are caught and
  * skipped per-runtime, never fatal.
+ *
+ * Two rules govern the write:
+ *
+ * 1. **Upgrade only, never add.** These inputs upgrade the runtimes a repo
+ *    already declares; they do not introduce new ones. When no
+ *    `devEngines.runtime` entry exists for the runtime there is nothing to
+ *    upgrade, so it is skipped with a warning — in *every* mode, `auto` and
+ *    explicit range alike. (An earlier version let an explicit range add a
+ *    missing entry, so a bun-only repo passing `upgrade-runtime-node` grew a
+ *    node entry it never asked for.)
+ * 2. **Always write an exact version.** The range — the existing entry's own
+ *    version under `auto`, or the user-typed input range — only selects *which
+ *    line to resolve*; the value written is always the bare resolved version,
+ *    with no range operator. Downstream consumers of `devEngines.runtime`
+ *    (notably silk-runtime-action, the next step in the pipeline) do not
+ *    support range operators, so any operator written here is a latent failure
+ *    downstream. An existing `"^24.0.0"` therefore resolves within `^24.0.0`
+ *    and is rewritten as e.g. `"24.9.1"`.
  *
  * @module services/runtime-upgrade
  */
@@ -17,13 +35,7 @@ import { BunResolver, DenoResolver, NodeResolver } from "runtime-resolver";
 import { FileSystemError } from "../errors/errors.js";
 import { detectIndent } from "../utils/pnpm.js";
 import type { RuntimeName } from "../utils/runtime.js";
-import {
-	findRuntimeEntry,
-	isStaticVersion,
-	parseRuntimeOperator,
-	redecorateVersion,
-	upsertRuntimeEntry,
-} from "../utils/runtime.js";
+import { findRuntimeEntry, isStaticVersion } from "../utils/runtime.js";
 
 type NodeResolverShape = Context.Tag.Service<typeof NodeResolver>;
 type DenoResolverShape = Context.Tag.Service<typeof DenoResolver>;
@@ -31,12 +43,15 @@ type BunResolverShape = Context.Tag.Service<typeof BunResolver>;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** Result of a single runtime upgrade. */
+/**
+ * Result of a single runtime upgrade. `from` is always the version the manifest
+ * already declared (an upgrade requires an existing entry) and `to` is always a
+ * bare, exact version.
+ */
 export interface RuntimeUpgradeResult {
 	readonly runtime: RuntimeName;
-	readonly from: string | null;
+	readonly from: string;
 	readonly to: string;
-	readonly added: boolean;
 }
 
 /** Per-runtime mode: "false" | "auto" | a semver range. */
@@ -107,44 +122,42 @@ const upgradeOne = (
 	Effect.gen(function* () {
 		if (mode === "false") return null;
 
+		// Upgrade only, never add: with no existing entry there is nothing to
+		// upgrade — in auto mode and explicit-range mode alike.
 		const entry = findRuntimeEntry(pkgJson.devEngines, runtime);
-		let targetRange: string;
-		let operator: string;
+		if (!entry?.version) {
+			yield* Effect.logWarning(
+				`upgrade-runtime-${runtime}: no devEngines.runtime entry exists for ${runtime}, so there is nothing to ` +
+					`upgrade (upgrade-runtime-${runtime} upgrades a runtime this repo already declares, it never adds one); skipping`,
+			);
+			return null;
+		}
 
+		// The range only selects which line to resolve: auto reuses the existing
+		// entry's own range, an explicit input range overrides it.
+		let targetRange: string;
 		if (mode === "auto") {
-			if (!entry?.version) {
-				yield* Effect.logWarning(
-					`upgrade-runtime-${runtime}: auto requested but no devEngines.runtime entry found, skipping`,
-				);
-				return null;
-			}
 			if (isStaticVersion(entry.version)) {
 				yield* Effect.logInfo(`${runtime} is pinned to ${entry.version}, auto leaves it unchanged`);
 				return null;
 			}
 			targetRange = entry.version;
-			operator = parseRuntimeOperator(entry.version);
 		} else {
-			// The explicit range selects which line to resolve; the OUTPUT operator
-			// follows the existing entry so its pattern is preserved (an exact pin
-			// stays exact, a caret stays caret). Only when adding a brand-new entry
-			// do we fall back to the operator the user typed in the range.
 			targetRange = mode;
-			operator = entry?.version !== undefined ? parseRuntimeOperator(entry.version) : parseRuntimeOperator(mode);
 		}
 
 		const resolved = yield* resolveLatest(resolver, runtime, targetRange);
 		if (resolved === null) return null;
 
-		const newVersion = redecorateVersion(resolved, operator);
-		const from = entry?.version ?? null;
-		if (from !== null && newVersion === from) {
+		// The resolved version is written bare — no operator is ever re-attached.
+		const from = entry.version;
+		if (resolved === from) {
 			yield* Effect.logInfo(`${runtime} ${from} is already current`);
 			return null;
 		}
 
-		const { added } = upsertRuntimeEntry(pkgJson, runtime, newVersion);
-		return { runtime, from, to: newVersion, added };
+		entry.version = resolved;
+		return { runtime, from, to: resolved };
 	});
 
 const upgradeImpl = (

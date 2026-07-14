@@ -1,17 +1,23 @@
 /**
- * Lockfile service for capturing and comparing pnpm lockfile state.
+ * Lockfile service for capturing and comparing lockfile state.
  *
- * Uses @pnpm/lockfile.fs to read and compare lockfile snapshots.
+ * Package-manager agnostic: reads `pnpm-lock.yaml`, `bun.lock` or
+ * `package-lock.json` and parses it through `workspaces-effect`'s
+ * `parseLockfileContent`, which normalizes all three into one `LockfileData`
+ * shape. `parseLockfileContent` is a pure parser (no memoized reader service),
+ * so a "before" and an "after" snapshot can be parsed in the same process.
  *
  * @module services/lockfile
  */
 
-import { readWantedLockfile } from "@pnpm/lockfile.fs";
-import type { CatalogSnapshots, LockfileObject, ResolvedCatalogEntry } from "@pnpm/lockfile.types";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Context, Effect, Layer } from "effect";
-import { WorkspaceDiscovery } from "workspaces-effect";
+import type { ImporterDependency, LockfileData, LockfileImporter } from "workspaces-effect";
+import { WorkspaceDiscovery, parseLockfileContent } from "workspaces-effect";
 import { LockfileError } from "../errors/errors.js";
 import type { LockfileChange } from "../schemas/domain.js";
+import type { SupportedPm } from "./package-manager.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Service Interface
@@ -20,17 +26,17 @@ import type { LockfileChange } from "../schemas/domain.js";
 export class Lockfile extends Context.Tag("Lockfile")<
 	Lockfile,
 	{
-		readonly capture: (workspaceRoot?: string) => Effect.Effect<LockfileObject | null, LockfileError>;
+		readonly capture: (pm: SupportedPm, workspaceRoot?: string) => Effect.Effect<LockfileData | null, LockfileError>;
 		readonly compare: (
-			before: LockfileObject | null,
-			after: LockfileObject | null,
+			before: LockfileData | null,
+			after: LockfileData | null,
 			workspaceRoot?: string,
 		) => Effect.Effect<ReadonlyArray<LockfileChange>, LockfileError, WorkspaceDiscovery>;
 	}
 >() {}
 
 export const LockfileLive = Layer.succeed(Lockfile, {
-	capture: (workspaceRoot = process.cwd()) => captureLockfileStateImpl(workspaceRoot),
+	capture: (pm, workspaceRoot = process.cwd()) => captureLockfileStateImpl(pm, workspaceRoot),
 	compare: (before, after, workspaceRoot = process.cwd()) => compareLockfilesImpl(before, after, workspaceRoot),
 });
 
@@ -39,24 +45,31 @@ export const LockfileLive = Layer.succeed(Lockfile, {
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Capture current lockfile state.
+ * The lockfile each supported package manager writes.
+ */
+export const LOCKFILE_NAMES: Record<SupportedPm, string> = {
+	pnpm: "pnpm-lock.yaml",
+	bun: "bun.lock",
+	npm: "package-lock.json",
+};
+
+/**
+ * Capture current lockfile state for the detected package manager.
  *
- * Standalone function exported for direct use by consumers that
- * haven't yet migrated to the Lockfile service.
+ * Returns `null` when the package manager's lockfile does not exist — a repo
+ * that has never installed still runs, it just has nothing to diff against.
  */
 export const captureLockfileState = (
+	pm: SupportedPm,
 	workspaceRoot: string = process.cwd(),
-): Effect.Effect<LockfileObject | null, LockfileError> => captureLockfileStateImpl(workspaceRoot);
+): Effect.Effect<LockfileData | null, LockfileError> => captureLockfileStateImpl(pm, workspaceRoot);
 
 /**
  * Compare two lockfile states to detect dependency changes.
- *
- * Standalone function exported for direct use by consumers that
- * haven't yet migrated to the Lockfile service.
  */
 export const compareLockfiles = (
-	before: LockfileObject | null,
-	after: LockfileObject | null,
+	before: LockfileData | null,
+	after: LockfileData | null,
 	workspaceRoot: string = process.cwd(),
 ): Effect.Effect<ReadonlyArray<LockfileChange>, LockfileError, WorkspaceDiscovery> =>
 	compareLockfilesImpl(before, after, workspaceRoot);
@@ -92,23 +105,164 @@ export const groupChangesByPackage = (changes: ReadonlyArray<LockfileChange>): M
 /**
  * Capture current lockfile state.
  */
-const captureLockfileStateImpl = (workspaceRoot: string): Effect.Effect<LockfileObject | null, LockfileError> =>
-	Effect.tryPromise({
-		try: () => readWantedLockfile(workspaceRoot, { ignoreIncompatible: true }),
-		catch: (e) =>
-			new LockfileError({
-				operation: "read",
-				reason: String(e),
-			}),
+const captureLockfileStateImpl = (
+	pm: SupportedPm,
+	workspaceRoot: string,
+): Effect.Effect<LockfileData | null, LockfileError> =>
+	Effect.gen(function* () {
+		const lockfilePath = join(workspaceRoot, LOCKFILE_NAMES[pm]);
+
+		const content = yield* Effect.try({
+			try: () => (existsSync(lockfilePath) ? readFileSync(lockfilePath, "utf8") : null),
+			catch: (e) => new LockfileError({ operation: "read", reason: String(e) }),
+		});
+
+		if (content === null) {
+			yield* Effect.logDebug(`No lockfile found at ${lockfilePath}`);
+			return null;
+		}
+
+		// A parse failure (malformed content, or content the upstream parser's
+		// strict raw schema does not recognize) degrades to a warning and `null`,
+		// same as the old `readWantedLockfile(root, { ignoreIncompatible: true })`
+		// baseline — change detection still has `git status --porcelain` to fall
+		// back on, so a lockfile the parser cannot handle must not abort the run.
+		// This is deliberately narrower than the "read" failure above: a read/IO
+		// error (e.g. EACCES, a directory where the lockfile should be) signals a
+		// real environment problem unrelated to lockfile content and must still
+		// fail the effect rather than being silently swallowed.
+		return yield* parseLockfileContent(content, lockfilePath, pm).pipe(
+			Effect.catchAll((e) =>
+				Effect.logWarning(
+					`${e.message}: ${String(e.cause)}. Lockfile-derived change detection is being skipped for this run (git status still drives change detection).`,
+				).pipe(Effect.as(null)),
+			),
+		);
 	});
 
 /**
- * Dependency snapshot from an importer (package).
+ * Map a lockfile dep section onto the LockfileChange type discriminator.
  */
-interface DependencySnapshot {
-	specifier: string;
-	version: string;
+const DEP_TYPE: Record<ImporterDependency["depType"], LockfileChange["type"]> = {
+	dependencies: "dependency",
+	devDependencies: "devDependency",
+	optionalDependencies: "optionalDependency",
+	peerDependencies: "peerDependency",
+};
+
+/**
+ * A catalog entry normalized across package managers.
+ *
+ * `version` is `null` when the lockfile does not record a resolved version for
+ * the catalog entry and it cannot be recovered unambiguously from the package
+ * list (bun and npm record resolved versions on package tuples/entries, never
+ * on the catalog itself).
+ */
+interface CatalogEntry {
+	readonly specifier: string;
+	readonly version: string | null;
 }
+
+/**
+ * Narrow a raw catalog entry (typed `unknown` upstream, since
+ * `BunExtension.catalog`/`.catalogs` are `Record<string, unknown>`) to the
+ * `{ specifier, version? }` object shape pnpm records per catalog entry.
+ *
+ * A value that is neither a string (handled separately) nor this shape is
+ * not a recognized catalog entry and must be skipped by the caller rather
+ * than cast — an unchecked cast would report `specifier: undefined` while
+ * the type claims `string`, feeding a lie into `LockfileChange.from`/`to`.
+ */
+const isCatalogEntryShape = (raw: unknown): raw is { specifier: string; version?: string | null } =>
+	typeof raw === "object" &&
+	raw !== null &&
+	"specifier" in raw &&
+	typeof (raw as { specifier: unknown }).specifier === "string";
+
+/**
+ * Index every non-workspace package by name to its resolved version.
+ *
+ * A name resolved to more than one version is recorded as `null` rather than
+ * being guessed at — bun and npm do not record a per-importer version, so this
+ * join is the only way to recover one, and an ambiguous join must not fabricate.
+ */
+const buildResolvedVersions = (data: LockfileData): Map<string, string | null> => {
+	const versions = new Map<string, string | null>();
+	for (const pkg of data.packages) {
+		if (pkg.isWorkspace) continue;
+		if (!versions.has(pkg.name)) {
+			versions.set(pkg.name, pkg.version);
+			continue;
+		}
+		if (versions.get(pkg.name) !== pkg.version) {
+			versions.set(pkg.name, null);
+		}
+	}
+	return versions;
+};
+
+/**
+ * Read the raw catalog definitions out of a lockfile's PM-specific extension.
+ *
+ * pnpm keys its default catalog as `"default"` already. bun splits the default
+ * catalog (`catalog`) from the named ones (`catalogs`), so the default is folded
+ * back under the `"default"` key here. npm has no `pmSpecific` and no catalog
+ * protocol at all, so it yields nothing — which is correct, not a gap.
+ */
+const rawCatalogs = (data: LockfileData): Record<string, Record<string, unknown>> => {
+	const ext = data.pmSpecific;
+	if (ext?._tag === "pnpm") {
+		return ext.catalogs ?? {};
+	}
+	if (ext?._tag === "bun") {
+		return {
+			...(ext.catalog ? { default: ext.catalog } : {}),
+			...(ext.catalogs ?? {}),
+		};
+	}
+	return {};
+};
+
+/**
+ * Normalize the catalogs of a lockfile into `catalog -> dep -> entry`.
+ *
+ * pnpm records `{ specifier, version }` per catalog entry; bun records the bare
+ * specifier string, so the resolved version is joined in by name through the
+ * lockfile's package list.
+ */
+const normalizeCatalogs = (data: LockfileData): Map<string, Map<string, CatalogEntry>> => {
+	const resolved = buildResolvedVersions(data);
+	const out = new Map<string, Map<string, CatalogEntry>>();
+
+	for (const [catalogName, entries] of Object.entries(rawCatalogs(data))) {
+		const normalized = new Map<string, CatalogEntry>();
+		for (const [dep, raw] of Object.entries(entries)) {
+			if (typeof raw === "string") {
+				normalized.set(dep, { specifier: raw, version: resolved.get(dep) ?? null });
+				continue;
+			}
+			if (isCatalogEntryShape(raw)) {
+				normalized.set(dep, { specifier: raw.specifier, version: raw.version ?? null });
+			}
+			// Else: neither a bare specifier string nor a { specifier } object.
+			// Skipped rather than cast into a lie.
+		}
+		out.set(catalogName, normalized);
+	}
+
+	return out;
+};
+
+/**
+ * Does an importer specifier reference this catalog?
+ *
+ * The default catalog is referenced as the bare `catalog:` (and, in bun, may
+ * also be spelled `catalog:default`).
+ */
+const referencesCatalog = (specifier: string, catalogName: string): boolean =>
+	catalogName === "default"
+		? specifier === "catalog:" || specifier === "catalog:default"
+		: specifier === `catalog:${catalogName}`;
 
 /**
  * Build a map from importer path (relative to workspace root, "." for root)
@@ -142,8 +296,8 @@ const buildImporterToPackageMap = (
  * Compare two lockfile states to detect dependency changes.
  */
 const compareLockfilesImpl = (
-	before: LockfileObject | null,
-	after: LockfileObject | null,
+	before: LockfileData | null,
+	after: LockfileData | null,
 	workspaceRoot: string,
 ): Effect.Effect<ReadonlyArray<LockfileChange>, LockfileError, WorkspaceDiscovery> =>
 	Effect.gen(function* () {
@@ -152,51 +306,23 @@ const compareLockfilesImpl = (
 			return [];
 		}
 
-		// Log lockfile structure for debugging
-		yield* Effect.logDebug("=== Lockfile Structure (Before) ===");
-		yield* Effect.logDebug(`Before catalogs: ${JSON.stringify(Object.keys(before.catalogs ?? {}))}`);
-		yield* Effect.logDebug(`Before importers: ${JSON.stringify(Object.keys(before.importers ?? {}))}`);
-		yield* Effect.logDebug(`Before lockfile keys: ${JSON.stringify(Object.keys(before))}`);
+		yield* Effect.logDebug(
+			`Comparing ${after.packageManager} lockfiles: ${before.importers.length} -> ${after.importers.length} importer(s)`,
+		);
 
-		yield* Effect.logDebug("=== Lockfile Structure (After) ===");
-		yield* Effect.logDebug(`After catalogs: ${JSON.stringify(Object.keys(after.catalogs ?? {}))}`);
-		yield* Effect.logDebug(`After importers: ${JSON.stringify(Object.keys(after.importers ?? {}))}`);
-
-		// Build importer to package map first (needed for both catalog and importer comparison)
+		// Needed by both the catalog and the importer comparison.
 		const importerToPackage = yield* buildImporterToPackageMap(workspaceRoot);
 		yield* Effect.logDebug(`Importer to package map: ${JSON.stringify(Object.fromEntries(importerToPackage))}`);
 
 		const changes: LockfileChange[] = [];
 
-		// Compare catalog snapshots
-		// NOTE: Catalogs are shared version definitions (catalog:silk, etc.)
-		// These are NOT the same as configDependencies from pnpm-workspace.yaml
-		const catalogChanges = yield* compareCatalogs(
-			before.catalogs ?? {},
-			after.catalogs ?? {},
-			after,
-			importerToPackage,
-		);
-		if (catalogChanges.length > 0) {
-			yield* Effect.logDebug(`Catalog changes detected: ${catalogChanges.length}`);
-			for (const change of catalogChanges) {
-				yield* Effect.logDebug(
-					`  - ${change.dependency} in [${change.affectedPackages.join(", ")}]: ${change.from} -> ${change.to}`,
-				);
-			}
-		}
+		// Catalogs are shared version definitions (catalog:silk, etc). They are NOT
+		// the same as pnpm's configDependencies.
+		const catalogChanges = yield* compareCatalogs(before, after, importerToPackage);
 		changes.push(...catalogChanges);
 
-		// Compare package importers (regular dependencies - non-catalog specifier changes)
+		// Non-catalog specifier changes, per importer.
 		const packageChanges = yield* compareImporters(before, after, importerToPackage);
-		if (packageChanges.length > 0) {
-			yield* Effect.logDebug(`Importer changes detected: ${packageChanges.length}`);
-			for (const change of packageChanges) {
-				yield* Effect.logDebug(
-					`  - ${change.dependency} in ${change.affectedPackages.join(", ")}: ${change.from} -> ${change.to}`,
-				);
-			}
-		}
 		changes.push(...packageChanges);
 
 		yield* Effect.logInfo(`Detected ${changes.length} dependency change(s)`);
@@ -208,68 +334,34 @@ const compareLockfilesImpl = (
  * Find each (importer, dep section) pair that consumes a catalog entry.
  *
  * Returns one record per consumer per dep section, so callers can emit a
- * LockfileChange with the precise type field. Catalog refs in
- * devDependencies are returned with type "devDependency" — downstream
- * Changesets gating treats those as informational only.
+ * LockfileChange with the precise type field. Catalog refs in devDependencies
+ * are returned with type "devDependency" — downstream Changesets gating treats
+ * those as informational only.
  */
 const findCatalogConsumers = (
-	importers: LockfileObject["importers"],
+	importers: ReadonlyArray<LockfileImporter>,
 	catalogName: string,
 	dependencyName: string,
 	importerToPackage: Map<string, string>,
 ): ReadonlyArray<{ readonly packageName: string; readonly type: LockfileChange["type"] }> => {
 	const consumers: Array<{ readonly packageName: string; readonly type: LockfileChange["type"] }> = [];
-	const catalogSpecifier = catalogName === "default" ? "catalog:" : `catalog:${catalogName}`;
-	const depSections = [
-		{ field: "dependencies", type: "dependency" as const },
-		{ field: "devDependencies", type: "devDependency" as const },
-		{ field: "optionalDependencies", type: "optionalDependency" as const },
-		{ field: "peerDependencies", type: "peerDependency" as const },
-	];
-	for (const [importerId, snapshot] of Object.entries(importers ?? {})) {
-		// In pnpm lockfile v9, the specifier for a dep lives in `snapshot.specifiers`,
-		// not inside the `dependencies` object entries (which only contain the resolved version).
-		// Check specifiers first; fall back to scanning dependency object entries for
-		// older lockfile shapes that embed { specifier, version } objects.
-		type SpecifiersRecord = Record<string, string>;
-		const specifiers = (snapshot.specifiers ?? {}) as SpecifiersRecord;
-		const specifier = specifiers[dependencyName];
 
-		if (specifier !== undefined) {
-			// Fast path: specifier found in the top-level specifiers map
-			if (specifier.startsWith(catalogSpecifier)) {
-				// Emit one record per dep section the dep is declared in.
-				// A dep in both dependencies and peerDependencies (unusual but
-				// valid) gets two records, mirroring the fallback path below.
-				for (const { field, type } of depSections) {
-					const deps = snapshot[field as keyof typeof snapshot] as Record<string, unknown> | undefined;
-					if (deps && dependencyName in deps) {
-						const packageName = importerToPackage.get(importerId) ?? importerId;
-						consumers.push({ packageName, type });
-					}
-				}
-			}
-		} else {
-			// Fallback: older lockfile shapes may embed DependencySnapshot objects
-			for (const { field, type } of depSections) {
-				const deps = snapshot[field as keyof typeof snapshot] as Record<string, DependencySnapshot> | undefined;
-				if (!deps) continue;
-				const dep = deps[dependencyName];
-				if (dep?.specifier?.startsWith(catalogSpecifier)) {
-					const packageName = importerToPackage.get(importerId) ?? importerId;
-					consumers.push({ packageName, type });
-				}
-			}
+	for (const importer of importers) {
+		for (const dep of importer.dependencies) {
+			if (dep.name !== dependencyName) continue;
+			if (!referencesCatalog(dep.specifier, catalogName)) continue;
+			consumers.push({
+				packageName: importerToPackage.get(importer.path) ?? importer.path,
+				type: DEP_TYPE[dep.depType],
+			});
 		}
 	}
+
 	return consumers;
 };
 
 /**
- * Compare catalog snapshots to detect catalog version changes.
- *
- * NOTE: Catalogs (catalog:silk, etc.) are shared version definitions.
- * These are different from configDependencies in pnpm-workspace.yaml.
+ * Compare catalog definitions to detect catalog version changes.
  *
  * Emits one LockfileChange per (catalog change, consuming importer, dep section)
  * triple. Each record carries the accurate type field (dependency, devDependency,
@@ -277,62 +369,84 @@ const findCatalogConsumers = (
  * as the trigger signal.
  */
 const compareCatalogs = (
-	before: CatalogSnapshots,
-	after: CatalogSnapshots,
-	afterLockfile: LockfileObject,
+	before: LockfileData,
+	after: LockfileData,
 	importerToPackage: Map<string, string>,
 ): Effect.Effect<ReadonlyArray<LockfileChange>, never> =>
 	Effect.gen(function* () {
 		const changes: LockfileChange[] = [];
+		const beforeCatalogs = normalizeCatalogs(before);
+		const afterCatalogs = normalizeCatalogs(after);
 
-		yield* Effect.logDebug("=== Comparing Catalogs ===");
+		for (const [catalogName, afterEntries] of afterCatalogs) {
+			const beforeEntries = beforeCatalogs.get(catalogName);
 
-		for (const [catalogName, afterEntries] of Object.entries(after)) {
-			const beforeEntries = before[catalogName] ?? {};
-
-			for (const [dep, afterEntry] of Object.entries(afterEntries as Record<string, ResolvedCatalogEntry>)) {
-				const beforeEntry = beforeEntries[dep] as ResolvedCatalogEntry | undefined;
-				const afterSpecifier = afterEntry.specifier;
+			for (const [dep, afterEntry] of afterEntries) {
+				const beforeEntry = beforeEntries?.get(dep);
 				const beforeSpecifier = beforeEntry?.specifier ?? null;
-				const afterVersion = afterEntry.version;
 				const beforeVersion = beforeEntry?.version ?? null;
 
-				if (beforeSpecifier !== afterSpecifier || beforeVersion !== afterVersion) {
-					const from = beforeSpecifier !== afterSpecifier ? beforeSpecifier : beforeVersion;
-					const to = beforeSpecifier !== afterSpecifier ? afterSpecifier : afterVersion;
+				// A specifier change is reported as the specifier move; otherwise fall
+				// back to resolved-version movement under an unchanged specifier.
+				const specifierChanged = beforeSpecifier !== afterEntry.specifier;
+				const versionChanged = beforeVersion !== afterEntry.version && afterEntry.version !== null;
+				if (!specifierChanged && !versionChanged) continue;
 
-					const consumers = findCatalogConsumers(afterLockfile.importers, catalogName, dep, importerToPackage);
+				const from = specifierChanged ? beforeSpecifier : beforeVersion;
+				const to = specifierChanged ? afterEntry.specifier : (afterEntry.version as string);
 
-					yield* Effect.logDebug(
-						`Catalog change: ${dep} (${catalogName}): ${from} -> ${to}; ${consumers.length} consumer(s)`,
-					);
+				const consumers = findCatalogConsumers(after.importers, catalogName, dep, importerToPackage);
+				yield* Effect.logDebug(
+					`Catalog change: ${dep} (${catalogName}): ${from} -> ${to}; ${consumers.length} consumer(s)`,
+				);
 
-					for (const consumer of consumers) {
-						changes.push({
-							type: consumer.type,
-							dependency: dep,
-							from,
-							to,
-							affectedPackages: [consumer.packageName],
-						});
-					}
+				for (const consumer of consumers) {
+					changes.push({
+						type: consumer.type,
+						dependency: dep,
+						from,
+						to,
+						affectedPackages: [consumer.packageName],
+					});
 				}
 			}
 		}
 
-		// Removed-catalog handling unchanged
-		for (const [catalogName, beforeEntries] of Object.entries(before)) {
-			const afterEntries = after[catalogName] ?? {};
-			for (const dep of Object.keys(beforeEntries as Record<string, unknown>)) {
-				if (!(dep in afterEntries)) {
-					const beforeEntry = (beforeEntries as Record<string, ResolvedCatalogEntry>)[dep];
-					yield* Effect.logDebug(`Catalog removed: ${dep} (${catalogName})`);
+		// Catalog entries that disappeared entirely.
+		//
+		// A removal is attributed exactly like a bump: one record per consuming
+		// importer, carrying that consumer's dep-section type. The consumers are
+		// read from the BEFORE importers — a removed catalog entry is, by
+		// definition, no longer referenced in the after state, so looking there
+		// would find nobody and silently drop every consumer from the change map.
+		// Only when the entry had no consumer at all does the single unassigned
+		// record stand in for it.
+		for (const [catalogName, beforeEntries] of beforeCatalogs) {
+			const afterEntries = afterCatalogs.get(catalogName);
+			for (const [dep, beforeEntry] of beforeEntries) {
+				if (afterEntries?.has(dep)) continue;
+
+				const consumers = findCatalogConsumers(before.importers, catalogName, dep, importerToPackage);
+				yield* Effect.logDebug(`Catalog removed: ${dep} (${catalogName}); ${consumers.length} consumer(s)`);
+
+				if (consumers.length === 0) {
 					changes.push({
 						type: "dependency",
 						dependency: dep,
 						from: beforeEntry.specifier,
 						to: "(removed)",
 						affectedPackages: [],
+					});
+					continue;
+				}
+
+				for (const consumer of consumers) {
+					changes.push({
+						type: consumer.type,
+						dependency: dep,
+						from: beforeEntry.specifier,
+						to: "(removed)",
+						affectedPackages: [consumer.packageName],
 					});
 				}
 			}
@@ -342,90 +456,72 @@ const compareCatalogs = (
 	});
 
 /**
- * Typed dependency sections to iterate when comparing importers.
+ * Key an importer dependency by (name, section), so a dep declared in more than
+ * one section of the same package is compared section by section.
  */
-const DEP_SECTIONS = [
-	{ field: "dependencies", type: "dependency" },
-	{ field: "devDependencies", type: "devDependency" },
-	{ field: "optionalDependencies", type: "optionalDependency" },
-] as const;
+const depKey = (dep: ImporterDependency): string => `${dep.name} ${dep.depType}`;
+
+const keyDependencies = (importer: LockfileImporter): Map<string, ImporterDependency> => {
+	const out = new Map<string, ImporterDependency>();
+	for (const dep of importer.dependencies) {
+		out.set(depKey(dep), dep);
+	}
+	return out;
+};
 
 /**
- * Compare package importers to detect which packages have changed dependencies.
+ * Compare importers to detect which packages have changed dependencies.
  *
- * NOTE: This only detects changes to non-catalog specifiers. Catalog specifier
- * changes (e.g., catalog:silk) don't change the specifier itself, only the
- * resolved version - those are handled by compareCatalogs.
+ * Only non-catalog specifiers are compared here — a catalog specifier does not
+ * itself change when the catalog is bumped, so compareCatalogs owns those.
+ *
+ * Specifiers, not resolved versions, are what is compared: `ImporterDependency.version`
+ * is populated by pnpm only (bun and npm record the resolved version on their
+ * package tuples/entries), and a specifier diff is the one signal every package
+ * manager records per importer.
  */
 const compareImporters = (
-	before: LockfileObject,
-	after: LockfileObject,
+	before: LockfileData,
+	after: LockfileData,
 	importerToPackage: Map<string, string>,
 ): Effect.Effect<ReadonlyArray<LockfileChange>, never> =>
 	Effect.sync(() => {
 		const changes: LockfileChange[] = [];
+		const beforeImporters = new Map(before.importers.map((importer) => [importer.path, importer]));
 
-		const afterImporters = after.importers ?? {};
-		const beforeImporters = before.importers ?? {};
+		for (const afterImporter of after.importers) {
+			const beforeImporter = beforeImporters.get(afterImporter.path);
+			if (!beforeImporter) continue;
 
-		for (const importerId of Object.keys(afterImporters)) {
-			const afterSnapshot = afterImporters[importerId as keyof typeof afterImporters];
-			const beforeSnapshot = beforeImporters[importerId as keyof typeof beforeImporters];
-			if (!beforeSnapshot || !afterSnapshot) continue;
+			const packageName = importerToPackage.get(afterImporter.path) ?? afterImporter.path;
+			const beforeDeps = keyDependencies(beforeImporter);
+			const afterDeps = keyDependencies(afterImporter);
 
-			const packageName = importerToPackage.get(importerId) ?? importerId;
+			for (const [key, dep] of afterDeps) {
+				// Catalog refs are handled by compareCatalogs.
+				if (dep.specifier.startsWith("catalog:")) continue;
 
-			// Compare specifiers (version specifiers in package.json)
-			type SpecifiersRecord = Record<string, string>;
-			const beforeSpecifiers = (beforeSnapshot.specifiers ?? {}) as SpecifiersRecord;
-			const afterSpecifiers = (afterSnapshot.specifiers ?? {}) as SpecifiersRecord;
+				const previous = beforeDeps.get(key);
+				if (previous?.specifier === dep.specifier) continue;
 
-			// Build dep-to-type map from typed sections to determine which field each dep is in
-			const depTypeMap = new Map<string, LockfileChange["type"]>();
-			for (const { field, type } of DEP_SECTIONS) {
-				const deps = (afterSnapshot[field] ?? {}) as SpecifiersRecord;
-				for (const dep of Object.keys(deps)) {
-					depTypeMap.set(dep, type);
-				}
+				changes.push({
+					type: DEP_TYPE[dep.depType],
+					dependency: dep.name,
+					from: previous?.specifier ?? null,
+					to: dep.specifier,
+					affectedPackages: [packageName],
+				});
 			}
 
-			for (const [dep, afterVersion] of Object.entries(afterSpecifiers)) {
-				const beforeVersion = beforeSpecifiers[dep];
-
-				// Skip catalog specifiers - those are handled by compareCatalogs
-				if (afterVersion.startsWith("catalog:")) continue;
-
-				if (beforeVersion !== afterVersion) {
-					changes.push({
-						type: depTypeMap.get(dep) ?? "dependency",
-						dependency: dep,
-						from: beforeVersion ?? null,
-						to: afterVersion,
-						affectedPackages: [packageName],
-					});
-				}
-			}
-
-			// Check for removed dependencies
-			for (const dep of Object.keys(beforeSpecifiers)) {
-				if (!(dep in afterSpecifiers)) {
-					// Use before snapshot to determine type of removed dep
-					let removedType: LockfileChange["type"] = "dependency";
-					for (const { field, type } of DEP_SECTIONS) {
-						const deps = (beforeSnapshot[field] ?? {}) as SpecifiersRecord;
-						if (dep in deps) {
-							removedType = type;
-							break;
-						}
-					}
-					changes.push({
-						type: removedType,
-						dependency: dep,
-						from: beforeSpecifiers[dep],
-						to: "(removed)",
-						affectedPackages: [packageName],
-					});
-				}
+			for (const [key, dep] of beforeDeps) {
+				if (afterDeps.has(key)) continue;
+				changes.push({
+					type: DEP_TYPE[dep.depType],
+					dependency: dep.name,
+					from: dep.specifier,
+					to: "(removed)",
+					affectedPackages: [packageName],
+				});
 			}
 		}
 

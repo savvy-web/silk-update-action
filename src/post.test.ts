@@ -46,8 +46,8 @@ const provisionToken = (fixtures: Fixtures): Promise<void> =>
 		Effect.runPromise,
 	);
 
-const runPost = (fixtures: Fixtures, skipTokenRevoke = false): Promise<void> => {
-	const config = ConfigProvider.fromMap(new Map([["skip-token-revoke", String(skipTokenRevoke)]]));
+const runPost = (fixtures: Fixtures): Promise<void> => {
+	const config = ConfigProvider.fromMap(new Map());
 	return post.pipe(Effect.provide(fixtures.layer), Effect.withConfigProvider(config), Effect.runPromise);
 };
 
@@ -57,13 +57,6 @@ describe("post", () => {
 		await provisionToken(fixtures);
 		await runPost(fixtures);
 		expect(fixtures.appState.revokeCalls.map(Redacted.value)).toContain("ghs_test_token_123");
-	});
-
-	it("skips revocation when skip-token-revoke is true", async () => {
-		const fixtures = makeFixtures();
-		await provisionToken(fixtures);
-		await runPost(fixtures, true);
-		expect(fixtures.appState.revokeCalls).toHaveLength(0);
 	});
 
 	it("completes cleanly when no token was provisioned", async () => {

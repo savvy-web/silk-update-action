@@ -21,7 +21,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
-		"build:prod": "github-action-builder build",
+		"build:prod": "github-action-builder build && node scripts/assert-native-dynamic-import.mjs",
 		"ci:build": "CI=\"true\" turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
 		"ci:test": "CI=\"true\" vitest run --coverage",
 		"lint": "biome check --max-diagnostics=none",
@@ -40,19 +40,17 @@
 	"dependencies": {
 		"@effect/platform": "catalog:silk",
 		"@effect/platform-node": "catalog:silk",
-		"@pnpm/lockfile.fs": "^1100.1.7",
-		"@pnpm/lockfile.types": "^1100.0.13",
 		"@savvy-web/github-action-effects": "^2.4.0",
-		"@savvy-web/silk-effects": "^3.2.5",
+		"@savvy-web/silk-effects": "^3.3.0",
 		"effect": "catalog:silk",
 		"runtime-resolver": "^0.3.22",
 		"semver-effect": "^0.3.1",
-		"workspaces-effect": "^2.0.3",
+		"workspaces-effect": "^2.1.0",
 		"yaml": "^2.9.0"
 	},
 	"devDependencies": {
 		"@savvy-web/github-action-builder": "^1.1.2",
-		"@savvy-web/silk": "^2.3.2",
+		"@savvy-web/silk": "^2.4.1",
 		"@types/node": "catalog:silk",
 		"@vitest-agent/plugin": "^1.1.8"
 	},

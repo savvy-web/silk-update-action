@@ -2,6 +2,7 @@ import type { PullRequestError } from "@savvy-web/github-action-effects";
 import { PullRequestTest } from "@savvy-web/github-action-effects";
 import { Cause, Effect, Layer, LogLevel, Logger } from "effect";
 import { describe, expect, it } from "vitest";
+import type { CatalogDelta } from "../schemas/domain.js";
 import { pnpmUpgradeUpdate } from "../utils/fixtures.test.js";
 import { Report, ReportLive } from "./report.js";
 
@@ -265,6 +266,26 @@ describe("createOrUpdatePR", () => {
 
 		expect(state.prs[0].base).toBe("dev");
 	});
+
+	it("passes deltas into the rendered PR body", async () => {
+		const state = PullRequestTest.empty();
+		state.nextNumber = 11;
+		const layer = makeReportLayer(state);
+
+		const deltas: ReadonlyArray<CatalogDelta> = [
+			{ catalog: "silk", dependency: "effect", from: "^3.20.0", to: "^3.21.0", action: "updated" },
+		];
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return yield* report.createOrUpdatePR("pnpm/config", "main", [], [], undefined, deltas);
+			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		);
+
+		const created = state.prs.find((p) => p.number === 11);
+		expect(created?.body).toContain("### Catalog Changes");
+	});
 });
 
 describe("generateCommitMessage", () => {
@@ -342,5 +363,132 @@ describe("generatePRBody", () => {
 
 		expect(body).toContain("### root workspace");
 		expect(body).toContain("pnpm");
+	});
+
+	it("renders a Catalog Changes section grouped by catalog, excluding kept deltas", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const deltas: ReadonlyArray<CatalogDelta> = [
+			{ catalog: "silk", dependency: "effect", from: "^3.20.0", to: "^3.21.0", action: "updated" },
+			{ catalog: "silk", dependency: "zod", from: null, to: "^3.24.0", action: "added" },
+			{ catalog: "silk", dependency: "lodash", from: "^4.17.0", to: null, action: "removed" },
+			// A "kept" delta is a surviving user override, not a change — it must not
+			// appear in the rendered table, or every run would show it as news.
+			{ catalog: "silk", dependency: "typescript", from: "5.0.2", to: "5.0.2", action: "kept" },
+			{ catalog: "default", dependency: "chalk", from: "^4.0.0", to: "^5.0.0", action: "updated" },
+		];
+
+		const body = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return report.generatePRBody([], [], deltas);
+			}).pipe(Effect.provide(layer)),
+		);
+
+		expect(body).toContain("### Catalog Changes");
+		expect(body).toContain("#### silk catalog");
+		expect(body).toContain("#### default catalog");
+		expect(body).toContain("effect");
+		expect(body).toContain("zod");
+		expect(body).toContain("lodash");
+		expect(body).toContain("chalk");
+		expect(body).not.toContain("typescript");
+	});
+
+	it("omits the Catalog Changes section entirely when every delta is kept", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const deltas: ReadonlyArray<CatalogDelta> = [
+			{ catalog: "silk", dependency: "typescript", from: "5.0.2", to: "5.0.2", action: "kept" },
+		];
+
+		const body = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return report.generatePRBody([], [], deltas);
+			}).pipe(Effect.provide(layer)),
+		);
+
+		expect(body).not.toContain("Catalog Changes");
+	});
+
+	it("produces byte-for-byte the same body whether deltas is omitted or an empty array", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const updates = [pnpmUpgradeUpdate];
+
+		const [omitted, empty] = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return [report.generatePRBody(updates, []), report.generatePRBody(updates, [], [])] as const;
+			}).pipe(Effect.provide(layer)),
+		);
+
+		expect(omitted).toBe(empty);
+	});
+});
+
+describe("generateSummary", () => {
+	it("renders a Catalog Changes section grouped by catalog, excluding kept deltas", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const deltas: ReadonlyArray<CatalogDelta> = [
+			{ catalog: "silk", dependency: "effect", from: "^3.20.0", to: "^3.21.0", action: "updated" },
+			{ catalog: "silk", dependency: "typescript", from: "5.0.2", to: "5.0.2", action: "kept" },
+		];
+
+		const summary = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return report.generateSummary([], [], null, false, deltas);
+			}).pipe(Effect.provide(layer)),
+		);
+
+		expect(summary).toContain("### Catalog Changes");
+		expect(summary).toContain("#### silk catalog");
+		expect(summary).toContain("effect");
+		expect(summary).not.toContain("typescript");
+	});
+
+	it("produces byte-for-byte the same summary whether deltas is omitted or an empty array", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const updates = [pnpmUpgradeUpdate];
+
+		const [omitted, empty] = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return [
+					report.generateSummary(updates, [], null, false),
+					report.generateSummary(updates, [], null, false, []),
+				] as const;
+			}).pipe(Effect.provide(layer)),
+		);
+
+		expect(omitted).toBe(empty);
+	});
+
+	it("threads deltas into the dry-run PR body preview", async () => {
+		const state = PullRequestTest.empty();
+		const layer = makeReportLayer(state);
+
+		const deltas: ReadonlyArray<CatalogDelta> = [
+			{ catalog: "silk", dependency: "effect", from: "^3.20.0", to: "^3.21.0", action: "updated" },
+		];
+
+		const summary = await Effect.runPromise(
+			Effect.gen(function* () {
+				const report = yield* Report;
+				return report.generateSummary([pnpmUpgradeUpdate], [], null, true, deltas);
+			}).pipe(Effect.provide(layer)),
+		);
+
+		expect(summary).toContain("### PR Body Preview");
+		expect(summary).toContain("Catalog Changes");
 	});
 });

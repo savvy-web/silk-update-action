@@ -1,0 +1,17 @@
+{
+	"name": "bun-root",
+	"version": "1.0.0",
+	"private": true,
+	"packageManager": "bun@1.2.21",
+	"workspaces": {
+		"packages": ["packages/*"],
+		"catalog": {
+			"zod": "^3.22.0"
+		},
+		"catalogs": {
+			"silk": {
+				"effect": "^3.0.0"
+			}
+		}
+	}
+}

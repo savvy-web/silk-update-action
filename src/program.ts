@@ -8,7 +8,9 @@
  * @module program
  */
 
-import type { CommandRunnerError, LogLevelInput } from "@savvy-web/github-action-effects";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import type { CommandRunnerError } from "@savvy-web/github-action-effects";
 import {
 	Action,
 	ActionEnvironment,
@@ -19,15 +21,20 @@ import {
 } from "@savvy-web/github-action-effects";
 import { Config, Duration, Effect, LogLevel, Logger } from "effect";
 import { parseRange } from "semver-effect";
+import { WorkspaceDiscovery } from "workspaces-effect";
 import { makeAppLayer } from "./layers/app.js";
-import type { ChangesetFile, DependencyUpdateResult, PullRequestResult } from "./schemas/domain.js";
+import type { CatalogDelta, ChangesetFile, DependencyUpdateResult, PullRequestResult } from "./schemas/domain.js";
 import { BranchManager } from "./services/branch.js";
-import { Changesets } from "./services/changesets.js";
+import { CatalogConfigDeps } from "./services/catalog-config-deps.js";
+import { Changesets, hasChangesets } from "./services/changesets.js";
 import { ConfigDeps } from "./services/config-deps.js";
-import { captureLockfileState, compareLockfiles } from "./services/lockfile.js";
+import { LOCKFILE_NAMES, captureLockfileState, compareLockfiles } from "./services/lockfile.js";
+import type { DetectedPm, SupportedPm } from "./services/package-manager.js";
+import { detectPackageManager } from "./services/package-manager.js";
+import type { PackageManagerUpgradeOutcome } from "./services/package-manager-upgrade.js";
+import { PackageManagerUpgrade } from "./services/package-manager-upgrade.js";
 import type { PeerSyncConfig } from "./services/peer-sync.js";
 import { syncPeers } from "./services/peer-sync.js";
-import { PnpmUpgrade } from "./services/pnpm-upgrade.js";
 import { RegularDeps } from "./services/regular-deps.js";
 import { Report } from "./services/report.js";
 import { RuntimeUpgrade } from "./services/runtime-upgrade.js";
@@ -87,34 +94,140 @@ export const runCommands = (commands: ReadonlyArray<string>): Effect.Effect<RunC
 	});
 
 /**
- * Regenerate the lockfile: `pnpm clean --lockfile` then
- * `pnpm install --frozen-lockfile=false`.
+ * Regenerate the lockfile and install, dispatched on the detected package manager.
  *
- * This action mutates the three inputs to pnpm resolution — the pnpm version
- * (`upgrade-package-manager`), the pnpm config (config dependencies in
- * `pnpm-workspace.yaml` and the `pnpm-plugin-silk` hooks), and dependency
- * ranges. `--fix-lockfile` only repairs broken entries against the existing
- * lockfile; it does not re-run resolution under the changed pnpm/config/ranges,
- * so it can silently carry a stale graph forward and commit an inconsistent
- * lockfile (e.g. an upstream peer range moving leaves a required peer unfilled).
- * A full regeneration is the only reliable way to produce a correct, installable
- * lockfile that reflects the new pnpm version, config, and ranges. As a
- * dependency updater obeying the declared ranges and rules, advancing
- * transitives is expected, not noise.
+ * The action mutates all three inputs to dependency resolution — the package
+ * manager version, the package manager's own config (config dependencies and
+ * their hooks), and the declared ranges — so the lockfile is regenerated from a
+ * clean slate rather than repaired in place. A repair-only install (pnpm's
+ * `--fix-lockfile`) never re-runs resolution under the changed inputs, so it can
+ * commit an inconsistent lockfile: an upstream peer range moving leaves a
+ * required peer unfilled and the consumer gets ERR_MODULE_NOT_FOUND at runtime.
+ * Advancing transitives is the expected consequence, not noise.
  *
- * `pnpm clean --lockfile` removes the lockfile and node_modules via Node.js, so
- * it unlinks cleanly across platforms (including Windows junctions) — preferable
- * to `rm -rf`. Caveat: `pnpm clean` runs a consumer's own `clean`/`purge`
- * package.json script instead of the built-in if one exists, and it requires
- * pnpm 11+. `--frozen-lockfile=false` opts out of the CI default that refuses to
- * write lockfile changes.
+ * - **pnpm:** `pnpm clean --lockfile` removes the lockfile and node_modules via
+ *   Node, unlinking cleanly across platforms (including Windows junctions).
+ *   Requires pnpm 11+, and runs a consumer's own `clean`/`purge` script over the
+ *   built-in when one exists. `--frozen-lockfile=false` opts out of the CI
+ *   default that refuses to write lockfile changes.
+ * - **bun:** `--force` re-resolves every dependency against the registry rather
+ *   than replaying the lockfile.
+ * - **npm:** npm has no clean-and-resolve mode — `npm ci` requires a lockfile to
+ *   already be correct — so the lockfile is removed and a plain install re-resolves.
+ *   The removal goes through `node:fs` rather than shelling out to `rm`, matching
+ *   the platform-agnostic unlink `pnpm clean --lockfile` performs: `rm` does not
+ *   exist on a Windows runner.
+ *
+ * Every command — and the npm lockfile removal — is anchored at `workspaceRoot`
+ * (the root the package manager was detected at), not at the process cwd: the
+ * action can legitimately be invoked from a subdirectory of the workspace.
  */
-export const runInstall = (): Effect.Effect<void, CommandRunnerError, CommandRunner> =>
+export const runInstall = (
+	pm: SupportedPm,
+	workspaceRoot: string = process.cwd(),
+): Effect.Effect<void, CommandRunnerError, CommandRunner> =>
 	Effect.gen(function* () {
 		const runner = yield* CommandRunner;
-		yield* runner.exec("pnpm", ["clean", "--lockfile"]);
-		yield* runner.exec("pnpm", ["install", "--frozen-lockfile=false"]);
+		const options = { cwd: workspaceRoot };
+
+		switch (pm) {
+			case "pnpm":
+				yield* runner.exec("pnpm", ["clean", "--lockfile"], options);
+				yield* runner.exec("pnpm", ["install", "--frozen-lockfile=false"], options);
+				return;
+			case "bun":
+				yield* runner.exec("bun", ["install", "--force"], options);
+				return;
+			case "npm":
+				yield* Effect.sync(() => {
+					rmSync(join(workspaceRoot, "package-lock.json"), { force: true });
+				});
+				yield* runner.exec("npm", ["install"], options);
+				return;
+		}
 	});
+
+/** The command line `runInstall` runs for a given package manager, for logging only. */
+const INSTALL_LABEL: Record<SupportedPm, string> = {
+	pnpm: "pnpm clean --lockfile && pnpm install --frozen-lockfile=false",
+	bun: "bun install --force",
+	npm: "rm -f package-lock.json && npm install",
+};
+
+/**
+ * Best-effort re-derivation of which signal the upstream
+ * `PackageManagerDetector` (from `workspaces-effect`) most likely used to
+ * settle on `detected.pm`, for the Run-context log line only.
+ *
+ * `DetectedPm` does not carry this itself — the upstream detector logs its
+ * decision internally (at debug level, and only on the devEngines branch),
+ * but does not return it. This function is therefore NOT a source of truth:
+ * it is a cheap, best-effort re-check of the same signals the detector
+ * consults, in the same priority order (devEngines.packageManager, then
+ * pnpm-workspace.yaml / bun.lock / a package.json workspaces field). Any
+ * read failure degrades to `null` — it never invents an answer.
+ */
+const describePmEvidence = (detected: DetectedPm): string | null => {
+	try {
+		const raw = readFileSync(`${detected.root}/package.json`, "utf-8");
+		const pkg = JSON.parse(raw) as { devEngines?: { packageManager?: unknown }; workspaces?: unknown };
+		const rawEntry = pkg.devEngines?.packageManager;
+		const entry = Array.isArray(rawEntry) ? rawEntry[0] : rawEntry;
+		if (entry && typeof entry === "object" && (entry as { name?: unknown }).name === detected.pm) {
+			return "devEngines.packageManager.name";
+		}
+		if (detected.pm === "npm" && "workspaces" in pkg && pkg.workspaces != null) {
+			return "package.json workspaces field";
+		}
+	} catch {
+		// Best-effort only — fall through to the lockfile/config-file checks.
+	}
+	if (detected.pm === "pnpm" && existsSync(`${detected.root}/pnpm-workspace.yaml`)) {
+		return "pnpm-workspace.yaml";
+	}
+	if (detected.pm === "bun" && (existsSync(`${detected.root}/bun.lock`) || existsSync(`${detected.root}/bun.lockb`))) {
+		return "bun.lock";
+	}
+	return null;
+};
+
+/** Per-catalog tally of a config-dependency merge's delta actions. */
+interface CatalogActionCounts {
+	added: number;
+	updated: number;
+	removed: number;
+	kept: number;
+}
+
+/** Group catalog deltas by catalog name, tallying each action. */
+const groupCatalogDeltas = (deltas: ReadonlyArray<CatalogDelta>): Map<string, CatalogActionCounts> => {
+	const byCatalog = new Map<string, CatalogActionCounts>();
+	for (const delta of deltas) {
+		const counts = byCatalog.get(delta.catalog) ?? { added: 0, updated: 0, removed: 0, kept: 0 };
+		counts[delta.action] += 1;
+		byCatalog.set(delta.catalog, counts);
+	}
+	return byCatalog;
+};
+
+/** Verbose per-catalog tally, for the config-dependencies step log. */
+const formatCatalogCounts = (counts: CatalogActionCounts): string => {
+	const parts: string[] = [];
+	if (counts.updated > 0) parts.push(`${counts.updated} updated`);
+	if (counts.added > 0) parts.push(`${counts.added} added`);
+	if (counts.removed > 0) parts.push(`${counts.removed} removed`);
+	if (counts.kept > 0) parts.push(`${counts.kept} kept`);
+	return parts.length > 0 ? parts.join(", ") : "no changes";
+};
+
+/** Compact +/~/- tally (kept omitted), for the closing Result block. */
+const formatCatalogCountsCompact = (counts: CatalogActionCounts): string => {
+	const parts: string[] = [];
+	if (counts.added > 0) parts.push(`+${counts.added}`);
+	if (counts.updated > 0) parts.push(`~${counts.updated}`);
+	if (counts.removed > 0) parts.push(`-${counts.removed}`);
+	return parts.length > 0 ? parts.join(" ") : "no changes";
+};
 
 /**
  * Main action program (the `main` phase).
@@ -124,7 +237,7 @@ export const runInstall = (): Effect.Effect<void, CommandRunnerError, CommandRun
  * pre/post phases — provisioned via `GitHubToken.provision` in `pre.ts` and
  * read here through the app layer's `GitHubToken.client()`.
  */
-/* v8 ignore start -- orchestration code tested via integration */
+/* v8 ignore start -- input parsing + real layer wiring; exercised end-to-end on the runner, not in-process */
 export const program = Effect.gen(function* () {
 	// Parse inputs via Config API
 	yield* Effect.logInfo("Starting Silk Update Action");
@@ -147,7 +260,6 @@ export const program = Effect.gen(function* () {
 	const changesets = yield* Config.boolean("changesets").pipe(Config.withDefault(true));
 	const autoMerge = yield* Config.string("auto-merge").pipe(Config.withDefault(""));
 	const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
-	const logLevel = yield* Config.string("log-level").pipe(Config.withDefault("auto"));
 	const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
 	const rawRuntimeNode = yield* Config.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
 	const rawRuntimeDeno = yield* Config.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
@@ -225,14 +337,9 @@ export const program = Effect.gen(function* () {
 		}
 	}
 
-	// Resolve log level
-	const resolvedLogLevel = Action.resolveLogLevel(logLevel as LogLevelInput);
-	// Map ActionLogLevel ("info" | "verbose" | "debug") to Effect LogLevel
-	// "info" = show info and above (default CI behavior)
-	// "verbose" = show all info (same as info for Effect's logger)
-	// "debug" = show debug and above (verbose output)
-	const effectLogLevel =
-		resolvedLogLevel === "debug" ? LogLevel.Debug : resolvedLogLevel === "verbose" ? LogLevel.Debug : LogLevel.Info;
+	// Resolve log level: normal (info) or debug when step debug logging is
+	// enabled on the runner (RUNNER_DEBUG=1 via ACTIONS_STEP_DEBUG).
+	const effectLogLevel = Action.resolveLogLevel("auto") === "debug" ? LogLevel.Debug : LogLevel.Info;
 
 	yield* Effect.logDebug("Debug mode enabled - verbose logging active");
 	yield* Effect.logDebug(
@@ -273,6 +380,7 @@ export const program = Effect.gen(function* () {
 			"auto-merge": autoMerge as "" | "merge" | "squash" | "rebase",
 			run,
 			runtime: { node: rawRuntimeNode, deno: rawRuntimeDeno, bun: rawRuntimeBun },
+			runtimeData,
 		},
 		dryRun,
 		headSha,
@@ -286,25 +394,54 @@ export const program = Effect.gen(function* () {
 			}),
 		);
 });
+/* v8 ignore stop */
+
+/**
+ * Inputs consumed by {@link innerProgram}, already parsed and validated by
+ * {@link program}.
+ */
+export interface InnerProgramInputs {
+	branch: string;
+	sourceBranch: string;
+	targetBranch: string;
+	"config-dependencies": ReadonlyArray<string>;
+	dependencies: ReadonlyArray<string>;
+	"peer-lock": ReadonlyArray<string>;
+	"peer-minor": ReadonlyArray<string>;
+	"upgrade-package-manager": string;
+	changesets: boolean;
+	"auto-merge": "" | "merge" | "squash" | "rebase";
+	run: ReadonlyArray<string>;
+	runtime: { node: string; deno: string; bun: string };
+	/** `"offline"` | `"live"` — reported in the Run-context log line only. */
+	runtimeData: string;
+}
 
 /**
  * Inner program that runs with all services provided.
+ *
+ * Every step is named, not numbered — there is no fixed sequence once the
+ * package manager, config-dependency and install steps each dispatch on the
+ * detected package manager. A step that does not run always logs that it
+ * did not, and why: `changesets: false`, "no .changeset/ directory" and
+ * "nothing to install" must never look like silence. Decisions (which path a
+ * dispatch point took, and on what evidence; a resolution's input range,
+ * resolved value, current value and verdict) are logged at info; per-item
+ * evidence (registry queries, per-file writes) stays at debug so the info
+ * stream reads end to end as a decision log.
+ *
+ * Exported for testability — `program.inner.test.ts` drives it directly with a
+ * fake app layer (mock domain services, the library's in-memory ActionOutputs /
+ * CheckRun test layers, and the real upstream WorkspaceRoot /
+ * PackageManagerDetector over a temp-dir fixture) and captures the log stream to
+ * assert on the decisions above: which package manager each dispatch point
+ * routed to, that the install and workspace-format gates opened only when they
+ * should, that every skipped step said so with a reason, and that an
+ * unsatisfiable `upgrade-package-manager` range warns rather than passing for a
+ * routine skip.
  */
-const innerProgram = (
-	inputs: {
-		branch: string;
-		sourceBranch: string;
-		targetBranch: string;
-		"config-dependencies": ReadonlyArray<string>;
-		dependencies: ReadonlyArray<string>;
-		"peer-lock": ReadonlyArray<string>;
-		"peer-minor": ReadonlyArray<string>;
-		"upgrade-package-manager": string;
-		changesets: boolean;
-		"auto-merge": "" | "merge" | "squash" | "rebase";
-		run: ReadonlyArray<string>;
-		runtime: { node: string; deno: string; bun: string };
-	},
+export const innerProgram = (
+	inputs: InnerProgramInputs,
 	dryRun: boolean,
 	headSha: string,
 	appLayer: ReturnType<typeof makeAppLayer>,
@@ -323,56 +460,161 @@ const innerProgram = (
 			yield* checkRunService.withCheckRun(checkRunName, headSha, (checkRunId) =>
 				Effect.provide(
 					Effect.gen(function* () {
-						// Validate refs before any destructive branch operation, then manage branch
-						yield* Effect.logInfo("Step 1: Managing branch");
+						// Detect the package manager once, up front: every dispatch below
+						// (config deps, install, package-manager upgrade) reads this one
+						// value. It runs inside withCheckRun — like validateBranches, and
+						// for the same reason — so an unsupported workspace (yarn, or no
+						// workspace root at all) fails with a check run in the GitHub UI
+						// rather than an invisible early exit.
+						const detected = yield* detectPackageManager();
+						const evidence = describePmEvidence(detected);
+						const lockfileName = LOCKFILE_NAMES[detected.pm];
+
+						// Cheap, already-provided lookup used only to enrich the Run
+						// context line with a package count — never fails the run.
+						const discovery = yield* WorkspaceDiscovery;
+						const packageCount = yield* discovery.listPackages(detected.root).pipe(
+							Effect.map((pkgs) => pkgs.length),
+							Effect.catchAll(() => Effect.succeed(null)),
+						);
+
+						yield* Effect.logInfo("Run context");
+						yield* Effect.logInfo(
+							`  package manager  ${detected.pm}${detected.version ? ` ${detected.version}` : ""}${
+								evidence ? `   (${evidence})` : ""
+							}`,
+						);
+						yield* Effect.logInfo(
+							`  workspace root   ${detected.root}${
+								packageCount !== null ? ` (${packageCount} package${packageCount === 1 ? "" : "s"})` : ""
+							}`,
+						);
+						yield* Effect.logInfo(`  lockfile         ${lockfileName}`);
+						yield* Effect.logInfo(
+							`  branches         update ${inputs.branch} ← source ${inputs.sourceBranch} → target ${inputs.targetBranch}`,
+						);
+						yield* Effect.logInfo(
+							`  mode             ${dryRun ? "dry run" : "live"} · changesets ${
+								inputs.changesets ? "on" : "off"
+							} · runtime data ${inputs.runtimeData}`,
+						);
+
+						// ── branch ────────────────────────────────────────────────────
+						// Validate refs before any destructive branch operation, then manage branch.
 						const branchManager = yield* BranchManager;
 						yield* branchManager.validateBranches(inputs.sourceBranch, inputs.targetBranch);
 						const branchResult = yield* branchManager.manage(inputs.branch, inputs.sourceBranch);
-						yield* Effect.logInfo(`Branch: ${branchResult.branch} (created: ${branchResult.created})`);
+						yield* Effect.logInfo(
+							`Step: branch — ${branchResult.branch} ${
+								branchResult.created ? "created" : "exists, reset"
+							} from ${branchResult.baseRef}`,
+						);
 
-						// Capture lockfile state before updates
-						yield* Effect.logInfo("Step 2: Capturing lockfile state (before)");
-						const lockfileBefore = yield* captureLockfileState();
+						// ── lockfile snapshot (before) ──────────────────────────────────
+						// Every step below reads and writes at `detected.root` — the resolved
+						// workspace root — not at the process cwd. They are not the same thing:
+						// the action can be invoked from a subdirectory of the workspace, and a
+						// helper defaulting to `process.cwd()` would then read (and rewrite) the
+						// wrong manifests, or none at all.
+						const lockfileBefore = yield* captureLockfileState(detected.pm, detected.root);
+						if (lockfileBefore) {
+							yield* Effect.logInfo(
+								`Step: lockfile snapshot (before) — read ${lockfileName} (${lockfileBefore.packages.length} packages)`,
+							);
+						} else {
+							yield* Effect.logInfo(
+								`Step: lockfile snapshot (before) — SKIPPED: no ${lockfileName} found (first install)`,
+							);
+						}
 						yield* Effect.logDebug(
 							`Lockfile state (before): ${JSON.stringify({
-								packages: Object.keys(lockfileBefore?.packages || {}).length,
-								importers: Object.keys(lockfileBefore?.importers || {}).length,
+								packages: lockfileBefore?.packages.length ?? 0,
+								importers: lockfileBefore?.importers.length ?? 0,
 							})}`,
 						);
 
-						// Upgrade pnpm (if enabled)
-						const configUpdatesFromPnpm: DependencyUpdateResult[] = [];
-						if (inputs["upgrade-package-manager"] !== "false") {
-							yield* Effect.logInfo("Step 3: Upgrading pnpm");
-							const pnpmUpgradeService = yield* PnpmUpgrade;
-							const pnpmUpgrade = yield* pnpmUpgradeService.upgrade(inputs["upgrade-package-manager"]).pipe(
-								Effect.catchAll((error) => {
-									return Effect.gen(function* () {
-										yield* Effect.logWarning(`Failed to upgrade pnpm: ${error.reason}`);
-										return null;
-									});
-								}),
+						// ── package manager ─────────────────────────────────────────────
+						const configUpdatesFromPackageManager: DependencyUpdateResult[] = [];
+						let pmSkipReason: string | null = null;
+						const pmMode = inputs["upgrade-package-manager"];
+						if (pmMode === "false") {
+							pmSkipReason = "disabled (upgrade-package-manager: false)";
+							yield* Effect.logInfo(`Step: package manager — SKIPPED: ${pmSkipReason}`);
+						} else {
+							yield* Effect.logInfo(
+								`Step: package manager — upgrade-package-manager "${pmMode}" applies to ${detected.pm}`,
 							);
+							const packageManagerUpgradeService = yield* PackageManagerUpgrade;
+							const outcome: PackageManagerUpgradeOutcome = yield* packageManagerUpgradeService
+								.upgrade(pmMode, detected.pm, detected.root)
+								.pipe(
+									Effect.catchAll((error) =>
+										Effect.gen(function* () {
+											yield* Effect.logWarning(`Failed to upgrade ${detected.pm}: ${error.reason}`);
+											const fallback: PackageManagerUpgradeOutcome = {
+												applied: false,
+												pm: detected.pm,
+												reference: null,
+												referenceSource: null,
+												targetRange: null,
+												kind: "error",
+												reason: `read/write error: ${error.reason}`,
+											};
+											return fallback;
+										}),
+									),
+								);
 
-							if (pnpmUpgrade) {
-								yield* Effect.logInfo(`pnpm: ${pnpmUpgrade.from ?? "added"} -> ${pnpmUpgrade.to}`);
-								configUpdatesFromPnpm.push({
-									dependency: "pnpm",
-									from: pnpmUpgrade.from,
-									to: pnpmUpgrade.to,
+							const refPart =
+								outcome.reference !== null
+									? `reference ${outcome.reference}${
+											outcome.referenceSource
+												? ` (${outcome.referenceSource === "devEngines" ? "devEngines.packageManager" : "packageManager"})`
+												: ""
+										}`
+									: "reference none found";
+							const rangePart = outcome.targetRange !== null ? ` · range "${outcome.targetRange}"` : "";
+
+							if (outcome.applied) {
+								yield* Effect.logInfo(`  ${refPart}${rangePart} → resolved ${outcome.to}`);
+								yield* Effect.logInfo(`  ${detected.pm}: ${outcome.from ?? "added"} -> ${outcome.to}`);
+								configUpdatesFromPackageManager.push({
+									dependency: detected.pm,
+									from: outcome.from,
+									to: outcome.to,
 									type: "config",
 									package: null,
 								});
+							} else if (outcome.kind === "unsatisfiable") {
+								// The acceptance signal. Nothing in this package manager's release
+								// list satisfies the configured range — overwhelmingly because the
+								// range was typed for a *different* package manager than the one
+								// detected here (a pnpm "^11.0.0" in a bun repo, copy-pasted from
+								// another repo's workflow). A misconfigured workflow must not scroll
+								// past at the same level as a benign "disabled" or "already current"
+								// skip, so this one kind — and only this one — reports at warning.
+								pmSkipReason = outcome.reason;
+								yield* Effect.logWarning(`  ${refPart}${rangePart} → no upgrade`);
+								yield* Effect.logWarning(
+									`  SKIPPED: no ${outcome.pm} release satisfies the range "${outcome.targetRange}" — this ` +
+										`workspace uses ${outcome.pm}, so check that the upgrade-package-manager range is a ` +
+										`${outcome.pm} range`,
+								);
 							} else {
-								yield* Effect.logInfo("pnpm is already up-to-date");
+								yield* Effect.logInfo(`  ${refPart}${rangePart} → no upgrade`);
+								pmSkipReason = outcome.reason;
+								yield* Effect.logInfo(`  SKIPPED: ${outcome.reason}`);
 							}
 						}
 
-						// Upgrade runtimes (devEngines.runtime)
-						yield* Effect.logInfo("Step 3b: Upgrading runtimes");
+						// ── runtimes ─────────────────────────────────────────────────────
 						const runtimeUpdates: DependencyUpdateResult[] = [];
+						const runtimeModeParts = (["node", "deno", "bun"] as const).map(
+							(rt) => `${rt}: ${inputs.runtime[rt] === "false" ? "not requested" : `"${inputs.runtime[rt]}"`}`,
+						);
+						yield* Effect.logInfo(`Step: runtimes — ${runtimeModeParts.join(" · ")}`);
 						const runtimeUpgradeService = yield* RuntimeUpgrade;
-						const runtimeResults = yield* runtimeUpgradeService.upgrade(inputs.runtime).pipe(
+						const runtimeResults = yield* runtimeUpgradeService.upgrade(inputs.runtime, detected.root).pipe(
 							Effect.catchAll((error) =>
 								Effect.gen(function* () {
 									yield* Effect.logWarning(`Failed to upgrade runtimes: ${error.reason}`);
@@ -381,7 +623,7 @@ const innerProgram = (
 							),
 						);
 						for (const r of runtimeResults) {
-							yield* Effect.logInfo(`${r.runtime}: ${r.from ?? "added"} -> ${r.to}`);
+							yield* Effect.logInfo(`  ${r.runtime}: ${r.from} -> ${r.to}`);
 							runtimeUpdates.push({
 								dependency: r.runtime,
 								from: r.from,
@@ -391,52 +633,160 @@ const innerProgram = (
 							});
 						}
 
-						// Update config dependencies
-						yield* Effect.logInfo("Step 4: Updating config dependencies");
-						const workspaceBefore = yield* readWorkspaceYaml().pipe(Effect.catchAll(() => Effect.succeed(null)));
+						// ── config dependencies ─────────────────────────────────────────
+						const workspaceBefore = yield* readWorkspaceYaml(detected.root).pipe(
+							Effect.catchAll(() => Effect.succeed(null)),
+						);
 						yield* Effect.logDebug(`pnpm-workspace.yaml (before): ${JSON.stringify(workspaceBefore)}`);
 
-						const configDepsService = yield* ConfigDeps;
-						const configUpdates = yield* configDepsService.updateConfigDeps(inputs["config-dependencies"]);
+						let configUpdates: ReadonlyArray<DependencyUpdateResult> = [];
+						let configDeltas: ReadonlyArray<CatalogDelta> = [];
+
+						if (inputs["config-dependencies"].length === 0) {
+							yield* Effect.logInfo("Step: config dependencies — SKIPPED: no config-dependencies configured");
+						} else {
+							// Config dependencies are a pnpm concept (pnpm-workspace.yaml). bun
+							// has no equivalent, so CatalogConfigDeps reproduces the workflow by
+							// merging the plugin's catalogs export into package.json. npm has no
+							// catalog: protocol at all, so there is nothing to reproduce.
+							switch (detected.pm) {
+								case "pnpm": {
+									yield* Effect.logInfo("Step: config dependencies — pnpm mode (pnpm-workspace.yaml)");
+									const configDepsService = yield* ConfigDeps;
+									configUpdates = yield* configDepsService.updateConfigDeps(
+										inputs["config-dependencies"],
+										detected.root,
+									);
+									for (const u of configUpdates) {
+										yield* Effect.logInfo(`  ${u.dependency} ${u.from ?? "added"} -> ${u.to}`);
+									}
+									break;
+								}
+								case "bun": {
+									yield* Effect.logInfo(
+										"Step: config dependencies — compat catalog mode (bun; catalogs live in package.json)",
+									);
+									// bun owns the package.json range for a config dependency
+									// itself (CatalogConfigDeps bumps it below), so a
+									// `dependencies` glob that also matches it must not bump it
+									// a second time in the regular-deps pass below.
+									const ownedByConfig = inputs["config-dependencies"].filter((name) =>
+										inputs.dependencies.some((pattern) => matchesPattern(name, pattern)),
+									);
+									for (const name of ownedByConfig) {
+										yield* Effect.logInfo(`  ${name} SKIPPED: owned by config-dependencies`);
+									}
+									const catalogConfigDeps = yield* CatalogConfigDeps;
+									const catalogResult = yield* catalogConfigDeps.update(inputs["config-dependencies"], detected.root);
+									configUpdates = catalogResult.updates;
+									configDeltas = catalogResult.deltas;
+									for (const u of configUpdates) {
+										yield* Effect.logInfo(`  ${u.dependency} ${u.from ?? "added"} -> ${u.to}`);
+									}
+									for (const [catalog, counts] of groupCatalogDeltas(configDeltas)) {
+										yield* Effect.logInfo(`  catalog "${catalog}": ${formatCatalogCounts(counts)}`);
+									}
+									break;
+								}
+								case "npm": {
+									yield* Effect.logWarning(
+										`Skipping ${inputs["config-dependencies"].length} config dependencies: npm does not implement the catalog: protocol. ` +
+											"Config dependencies are supported for pnpm (pnpm-workspace.yaml) and bun (package.json catalogs).",
+									);
+									yield* Effect.logInfo(
+										`Step: config dependencies — SKIPPED: npm has no catalog: protocol (${inputs["config-dependencies"].length} requested)`,
+									);
+									break;
+								}
+							}
+						}
 						yield* Effect.logDebug(`Config dependency updates: ${JSON.stringify(configUpdates)}`);
+						if (configDeltas.length > 0) {
+							yield* Effect.logDebug(`Catalog deltas: ${JSON.stringify(configDeltas)}`);
+						}
 
-						// Update regular dependencies
-						yield* Effect.logInfo("Step 5: Updating regular dependencies");
-						const regularDepsService = yield* RegularDeps;
-						const regularUpdates = yield* regularDepsService.updateRegularDeps(inputs.dependencies);
+						// ── regular dependencies ────────────────────────────────────────
+						let regularUpdates: ReadonlyArray<DependencyUpdateResult> = [];
+						if (inputs.dependencies.length === 0) {
+							yield* Effect.logInfo("Step: regular dependencies — SKIPPED: no dependencies patterns configured");
+						} else {
+							yield* Effect.logInfo(`Step: regular dependencies — patterns ${inputs.dependencies.join(", ")}`);
+							const regularDepsService = yield* RegularDeps;
+							// bun is the only package manager whose config-dep path owns the
+							// package.json entry: CatalogConfigDeps bumps the range there itself,
+							// so a `dependencies` glob that also matches it must not bump it a
+							// second time and race the same manifest write. Under pnpm the config
+							// deps live in pnpm-workspace.yaml and ConfigDeps never touches
+							// package.json; under npm they are skipped entirely. Excluding them
+							// there would freeze the package.json range of a package that is both
+							// a config dependency and a devDependency, forever.
+							regularUpdates = yield* regularDepsService.updateRegularDeps(
+								inputs.dependencies,
+								detected.root,
+								detected.pm === "bun" ? new Set(inputs["config-dependencies"]) : undefined,
+							);
+							for (const u of regularUpdates) {
+								yield* Effect.logInfo(`  ${u.dependency} ${u.from ?? "added"} -> ${u.to}`);
+							}
+						}
 
-						// Sync peer dependencies
+						// ── peer sync ────────────────────────────────────────────────────
 						const peerSyncConfig: PeerSyncConfig = {
 							lock: inputs["peer-lock"],
 							minor: inputs["peer-minor"],
 						};
-						yield* Effect.logInfo("Step 5b: Syncing peer dependencies");
-						const peerUpdates = yield* syncPeers(peerSyncConfig, regularUpdates);
-						if (peerUpdates.length > 0) {
-							yield* Effect.logInfo(`Synced ${peerUpdates.length} peer dependency range(s)`);
+						let peerUpdates: ReadonlyArray<DependencyUpdateResult> = [];
+						const peerConfigured = inputs["peer-lock"].length > 0 || inputs["peer-minor"].length > 0;
+						if (!peerConfigured) {
+							yield* Effect.logInfo("Step: peer sync — SKIPPED: no peer-lock or peer-minor patterns configured");
+						} else {
+							yield* Effect.logInfo(
+								`Step: peer sync — peer-lock ${inputs["peer-lock"].join(", ") || "none"} · peer-minor ${
+									inputs["peer-minor"].join(", ") || "none"
+								}`,
+							);
+							peerUpdates = yield* syncPeers(peerSyncConfig, regularUpdates, detected.root);
+							yield* Effect.logInfo(`  synced ${peerUpdates.length} peer dependency range(s)`);
 						}
 
-						// Reconcile lockfile and install
-						if (
+						// ── install ──────────────────────────────────────────────────────
+						const shouldInstall =
 							configUpdates.length > 0 ||
 							regularUpdates.length > 0 ||
-							configUpdatesFromPnpm.length > 0 ||
-							peerUpdates.length > 0
-						) {
-							yield* Effect.logInfo("Step 6: Regenerating lockfile and installing");
-							yield* runInstall();
+							configUpdatesFromPackageManager.length > 0 ||
+							peerUpdates.length > 0;
+						if (shouldInstall) {
+							yield* Effect.logInfo(
+								`Step: install — ${INSTALL_LABEL[detected.pm]}  (config + regular updates pending)`,
+							);
+							yield* runInstall(detected.pm, detected.root);
+						} else {
+							yield* Effect.logInfo(
+								"Step: install — SKIPPED: nothing to install (no dependency, config or package-manager updates)",
+							);
 						}
 
-						// Format pnpm-workspace.yaml
-						yield* Effect.logInfo("Step 7: Formatting pnpm-workspace.yaml");
-						yield* formatWorkspaceYaml();
+						// ── workspace formatting ────────────────────────────────────────
+						// pnpm-only: a bun or npm repo has no pnpm-workspace.yaml to format.
+						if (detected.pm === "pnpm") {
+							yield* Effect.logInfo("Step: workspace formatting — formatting pnpm-workspace.yaml");
+							yield* formatWorkspaceYaml(detected.root);
 
-						const workspaceAfter = yield* readWorkspaceYaml().pipe(Effect.catchAll(() => Effect.succeed(null)));
-						yield* Effect.logDebug(`pnpm-workspace.yaml (after): ${JSON.stringify(workspaceAfter)}`);
+							const workspaceAfter = yield* readWorkspaceYaml(detected.root).pipe(
+								Effect.catchAll(() => Effect.succeed(null)),
+							);
+							yield* Effect.logDebug(`pnpm-workspace.yaml (after): ${JSON.stringify(workspaceAfter)}`);
+						} else {
+							yield* Effect.logInfo(
+								`Step: workspace formatting — SKIPPED: not a pnpm workspace (detected ${detected.pm})`,
+							);
+						}
 
-						// Run custom commands (if specified)
-						if (inputs.run.length > 0) {
-							yield* Effect.logInfo("Step 8: Running custom commands");
+						// ── custom commands ─────────────────────────────────────────────
+						if (inputs.run.length === 0) {
+							yield* Effect.logInfo("Step: custom commands — SKIPPED: no run commands configured");
+						} else {
+							yield* Effect.logInfo(`Step: custom commands — ${inputs.run.length} command(s)`);
 							const runCommandsResult = yield* runCommands(inputs.run);
 
 							if (runCommandsResult.failed.length > 0) {
@@ -457,30 +807,35 @@ const innerProgram = (
 							}
 						}
 
-						// Capture lockfile state after updates
-						yield* Effect.logInfo("Step 9: Capturing lockfile state (after)");
-						const lockfileAfter = yield* captureLockfileState();
+						// ── lockfile snapshot (after) ───────────────────────────────────
+						const lockfileAfter = yield* captureLockfileState(detected.pm, detected.root);
+						if (lockfileAfter) {
+							yield* Effect.logInfo(
+								`Step: lockfile snapshot (after) — read ${lockfileName} (${lockfileAfter.packages.length} packages)`,
+							);
+						} else {
+							yield* Effect.logInfo(`Step: lockfile snapshot (after) — SKIPPED: no ${lockfileName} found`);
+						}
 						yield* Effect.logDebug(
 							`Lockfile state (after): ${JSON.stringify({
-								packages: Object.keys(lockfileAfter?.packages || {}).length,
-								importers: Object.keys(lockfileAfter?.importers || {}).length,
+								packages: lockfileAfter?.packages.length ?? 0,
+								importers: lockfileAfter?.importers.length ?? 0,
 							})}`,
 						);
 
-						// Detect changes
-						yield* Effect.logInfo("Step 10: Detecting changes");
-						const changes = yield* compareLockfiles(lockfileBefore, lockfileAfter);
+						// ── changes ──────────────────────────────────────────────────────
+						const changes = yield* compareLockfiles(lockfileBefore, lockfileAfter, detected.root);
 						yield* Effect.logDebug(`Detected changes: ${JSON.stringify(changes)}`);
 
 						const allUpdates = [
-							...configUpdatesFromPnpm,
+							...configUpdatesFromPackageManager,
 							...runtimeUpdates,
 							...configUpdates,
 							...regularUpdates,
 							...peerUpdates,
 						];
 						yield* Effect.logDebug(
-							`Total updates: ${allUpdates.length} (config: ${configUpdates.length + configUpdatesFromPnpm.length}, dev: ${regularUpdates.length}, peer: ${peerUpdates.length})`,
+							`Total updates: ${allUpdates.length} (config: ${configUpdates.length + configUpdatesFromPackageManager.length}, dev: ${regularUpdates.length}, peer: ${peerUpdates.length})`,
 						);
 
 						// Check if there are any changes via git status.
@@ -498,11 +853,18 @@ const innerProgram = (
 							"status",
 							"--porcelain",
 						]);
-						const hasChanges = statusResult.stdout.trim().length > 0;
+						const changedLines = statusResult.stdout.trim().length > 0 ? statusResult.stdout.trim().split("\n") : [];
+						const hasChanges = changedLines.length > 0;
 						yield* Effect.logDebug(`Git status has changes: ${hasChanges}`);
 
+						yield* Effect.logInfo(
+							`Step: changes — ${allUpdates.length} dependency change(s), ${changes.length} lockfile change(s), ${changedLines.length} file(s) modified`,
+						);
+
 						if (!hasChanges && changes.length === 0) {
-							yield* Effect.logInfo("No dependency updates available");
+							yield* Effect.logInfo(
+								"Step: changes — SKIPPED: no changes detected; changesets, commit and pull request steps do not run",
+							);
 
 							yield* checkRunService.complete(checkRunId, "neutral", {
 								title: "No Updates",
@@ -515,10 +877,19 @@ const innerProgram = (
 							return;
 						}
 
-						// Create changesets (if enabled)
-						let changesets: ReadonlyArray<ChangesetFile> = [];
-						if (inputs.changesets) {
-							yield* Effect.logInfo("Step 11: Creating changesets");
+						// ── changesets ───────────────────────────────────────────────────
+						let changesetFiles: ReadonlyArray<ChangesetFile> = [];
+						let changesetsSkipReason: string | null = null;
+						if (!inputs.changesets) {
+							changesetsSkipReason = "disabled (changesets: false)";
+							yield* Effect.logInfo(`Step: changesets — SKIPPED: ${changesetsSkipReason}`);
+						} else if (!hasChangesets(detected.root)) {
+							changesetsSkipReason = "no .changeset/ directory";
+							yield* Effect.logInfo(`Step: changesets — SKIPPED: ${changesetsSkipReason}`);
+						} else {
+							yield* Effect.logInfo(
+								`Step: changesets — regenerating from merge-base(${inputs.targetBranch}) -> worktree diff`,
+							);
 							// DepsRegen diffs against merge-base(target-branch); make sure that
 							// history is available locally before it runs (no-op on a
 							// fetch-depth: 0 checkout of the target).
@@ -528,34 +899,33 @@ const innerProgram = (
 							// merge-base(target-branch) → worktree and consolidates/dedupes
 							// existing pure-dep changesets. The per-run `changes`/
 							// `regularUpdates`/`peerUpdates` still drive reporting below.
-							changesets = yield* changesetsService.create(process.cwd(), inputs.targetBranch);
-						} else {
-							yield* Effect.logInfo("Step 11: Skipping changesets (disabled)");
+							changesetFiles = yield* changesetsService.create(detected.root, inputs.targetBranch);
+							yield* Effect.logInfo(`  wrote ${changesetFiles.length} changeset(s)`);
 						}
 
-						// Commit and push
+						// ── commit ───────────────────────────────────────────────────────
 						const report = yield* Report;
 						if (dryRun) {
-							yield* Effect.logInfo("Step 12: [DRY RUN] Skipping commit and push");
+							yield* Effect.logInfo("Step: commit — SKIPPED: dry run");
 						} else {
-							yield* Effect.logInfo("Step 12: Committing via GitHub API");
+							yield* Effect.logInfo(`Step: commit — ${changedLines.length} file(s) -> ${inputs.branch}`);
 							const commitMessage = report.generateCommitMessage(allUpdates);
 							yield* branchManager.commitChanges(commitMessage, inputs.branch);
 						}
 
-						// Create/update PR
+						// ── pull request ────────────────────────────────────────────────
 						let pr: PullRequestResult | null = null;
 						if (dryRun) {
-							yield* Effect.logInfo("Step 13: [DRY RUN] Skipping PR creation/update");
+							yield* Effect.logInfo("Step: pull request — SKIPPED: dry run");
 						} else {
-							yield* Effect.logInfo("Step 13: Creating/updating PR");
 							pr = yield* report
 								.createOrUpdatePR(
 									inputs.branch,
 									inputs.targetBranch,
 									allUpdates,
-									changesets,
+									changesetFiles,
 									inputs["auto-merge"] || undefined,
+									configDeltas,
 								)
 								.pipe(
 									Effect.catchAll((error) =>
@@ -565,10 +935,36 @@ const innerProgram = (
 										}),
 									),
 								);
+							yield* Effect.logInfo(
+								`Step: pull request — ${pr ? (pr.created ? `created #${pr.number}` : `updated #${pr.number}`) : "FAILED (see warning above)"}`,
+							);
+						}
+
+						// ── Result ───────────────────────────────────────────────────────
+						yield* Effect.logInfo("Result");
+						if (allUpdates.length > 0) {
+							const updateLines = allUpdates.map((u) => `${u.dependency} ${u.from ?? "added"} -> ${u.to} (${u.type})`);
+							yield* Effect.logInfo(`  updated   ${updateLines.join(", ")}`);
+						}
+						if (configDeltas.length > 0) {
+							const catalogLines = Array.from(
+								groupCatalogDeltas(configDeltas),
+								([catalog, counts]) => `${catalog}: ${formatCatalogCountsCompact(counts)}`,
+							);
+							yield* Effect.logInfo(`  catalogs  ${catalogLines.join(", ")}`);
+						}
+						const skippedSummary: string[] = [];
+						if (pmSkipReason !== null) skippedSummary.push(`package-manager upgrade (${pmSkipReason})`);
+						if (!peerConfigured) skippedSummary.push("peer sync (not configured)");
+						if (detected.pm !== "pnpm") skippedSummary.push("workspace formatting (not pnpm)");
+						if (inputs.run.length === 0) skippedSummary.push("custom commands (not configured)");
+						if (changesetsSkipReason !== null) skippedSummary.push(`changesets (${changesetsSkipReason})`);
+						if (skippedSummary.length > 0) {
+							yield* Effect.logInfo(`  skipped   ${skippedSummary.join(" · ")}`);
 						}
 
 						// Update check run
-						const summaryText = report.generateSummary(allUpdates, changesets, pr, dryRun);
+						const summaryText = report.generateSummary(allUpdates, changesetFiles, pr, dryRun, configDeltas);
 						yield* checkRunService.complete(checkRunId, "success", {
 							title: "Dependency Updates Complete",
 							summary: summaryText,
@@ -598,4 +994,3 @@ const innerProgram = (
 		}),
 		appLayer,
 	);
-/* v8 ignore stop */
