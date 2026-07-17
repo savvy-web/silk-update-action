@@ -24,7 +24,7 @@ src/
 ├── layers/
 │   └── app.ts             # makeAppLayer(dryRun, { runtimeLive }) - layer composition
 ├── services/
-│   ├── branch.ts          # BranchManager service (Context.Tag)
+│   ├── branch.ts          # BranchManager service (Context.Service)
 │   ├── branch.test.ts
 │   ├── changesets.ts      # Changesets service (thin adapter over silk DepsRegen)
 │   ├── changesets.test.ts
@@ -68,30 +68,40 @@ src/
   `program.ts` so tests can import it without triggering module-level
   execution. The build (`@savvy-web/github-action-builder`) derives the three
   entry points from the `runs` block in `action.yml`.
+- **Effect v4 / `@effected` kit:** the action runs on Effect v4
+  (`effect@4.0.0-beta.98`) and the `@effected/*` first-party libraries
+  (`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`,
+  `@effected/lockfiles`, `@effected/yaml`). This is a runtime/toolchain
+  migration — `action.yml` inputs and outputs are unchanged.
 - **Effect-first services:** All domain logic is wrapped in Effect services with
-  `Context.Tag` + `Layer`. Services are defined in `src/services/`, pure helpers
-  in `src/utils/`. Two services (`PeerSync`, `WorkspaceYaml`) export standalone
-  helpers without their own Tag.
+  `Context.Service` (v4; was `Context.Tag`) + `Layer`. Services are defined in
+  `src/services/`, pure helpers in `src/utils/`. Two services (`PeerSync`,
+  `WorkspaceYaml`) export standalone helpers without their own service tag.
 - **Layer composition:** `src/layers/app.ts` exports
   `makeAppLayer(dryRun, { runtimeLive })` which wires all library layers (from
-  `@savvy-web/github-action-effects`), upstream `WorkspaceDiscoveryLive` +
-  `WorkspaceRootLive` from `workspaces-effect` (provided by `NodeContext.layer`
-  from `@effect/platform-node`), silk's `Changesets.DepsRegenDefault` from
-  `@savvy-web/silk-effects` (a batteries-included Layer needing only platform
-  services, which bundles the point-in-time workspace reader, ConfigInspector,
-  WorkspaceDiscovery, the adaptive PublishabilityDetector and ChangesetConfig
-  internally), runtime-resolver cache layers (`Offline*CacheLive` or
-  `Auto*CacheLive` depending on `runtimeLive`), and domain service layers
-  together. The `GitHubClient` layer is built from `GitHubToken.client()`,
-  which reads the installation token envelope `pre` persisted to `ActionState`
-  — there is no bare `GitHubClientLive` and no `process.env.GITHUB_TOKEN`
-  bridge.
+  `@savvy-web/github-action-effects`), the root-bound `WorkspaceDiscovery.layer()`
+  and `WorkspaceRoot.layer` (plus `PackageManagerDetector.layer` and
+  `LockfileReader.layer()`) from `@effected/workspaces` (provided by
+  `NodeServices.layer` from `@effect/platform-node`), silk's
+  `Changesets.DepsRegenDefault` from `@savvy-web/silk-effects` (a
+  batteries-included Layer needing only platform services, which bundles the
+  point-in-time workspace reader, ConfigInspector, WorkspaceDiscovery, the
+  adaptive PublishabilityDetector and ChangesetConfig internally),
+  `@effected/runtimes` resolver layers (`*Resolver.layerOffline` or the live
+  `*Resolver.layer` depending on `runtimeLive`), and domain service layers
+  together. In Effect v4 the workspace layers are **root-bound at layer build**
+  (statics on the classes) rather than the old `*Live` layers, and
+  `NodeServices.layer` replaces `NodeContext.layer`. The `GitHubClient` layer is
+  built from `GitHubToken.client()`, which reads the installation token envelope
+  `pre` persisted to `ActionState` — there is no bare `GitHubClientLive` and no
+  `process.env.GITHUB_TOKEN` bridge.
 - **No barrel re-exports:** Direct imports everywhere. No `index.ts` files.
 - **Tests co-located:** Each `.ts` file has a `.test.ts` sibling in the same directory.
 - **Workspace enumeration:** All direct workspace enumeration goes through the
-  upstream `WorkspaceDiscovery` Tag from `workspaces-effect`, consumed by
-  `RegularDeps`, `PeerSync` and `Lockfile` via its `listPackages(cwd?)` and
-  `importerMap(cwd?)` methods. `Changesets` no longer enumerates directly — its
+  `WorkspaceDiscovery` service from `@effected/workspaces`, consumed by
+  `RegularDeps`, `PeerSync` and `Lockfile` via its arg-less `listPackages()` and
+  `importerMap()` methods (the root is bound when `WorkspaceDiscovery.layer()`
+  is built). `Changesets` no longer enumerates directly — its
   workspace/point-in-time reads happen inside silk's `DepsRegen`.
 
 ## Data Flow
@@ -188,9 +198,10 @@ log messages.
   (`utils/branch.ts`).
 - The `upgrade-runtime-*` inputs (`false` | `auto` | a semver range) and the
   `upgrade-package-manager` input (`false` | `true` | `auto` | a semver range) are validated
-  via the standalone `parseRange` from `semver-effect` when an explicit range is provided
+  via `Range.parse` from `@effected/semver` when an explicit range is provided
   (any value that is not one of the input's allowed keywords). The
   `runtime-data` input selects the resolver layer wired in `makeAppLayer`.
+- `timeout` is parsed with `Config.int` (v4; was `Config.integer`).
 
 ### Step 2: Wire Layers
 
@@ -209,20 +220,22 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   `GitBranchLive`, `GitCommitLive`, `CheckRunLive`, `PullRequestLive`,
   `GitHubGraphQLLive`. Plus `NpmRegistryLive`, `CommandRunnerLive`,
   `DryRunLive(dryRun)`.
-- Workspace layers from `workspaces-effect`: `WorkspaceDiscoveryLive`,
-  `WorkspaceRootLive` (both provided with `NodeContext.layer` from
+- Workspace layers from `@effected/workspaces`: `WorkspaceDiscovery.layer()`,
+  `WorkspaceRoot.layer`, `PackageManagerDetector.layer`, `LockfileReader.layer()`
+  (all root-bound at build; provided with `NodeServices.layer` from
   `@effect/platform-node` for FileSystem/Path).
 - Silk changeset layer from `@savvy-web/silk-effects`:
   `Changesets.DepsRegenDefault`, the batteries-included Layer backing the
   `Changesets` service. It bundles the point-in-time workspace reader,
   ConfigInspector, WorkspaceDiscovery, the adaptive PublishabilityDetector and
   ChangesetConfig internally, so `makeAppLayer` only provides platform services
-  (`NodeContext.layer`).
+  (`NodeServices.layer`).
 - Domain layers: `BranchManagerLive`, `PnpmUpgradeLive`, `ConfigDepsLive`,
   `RegularDepsLive`, `ChangesetsLive`, `ReportLive`, `RuntimeUpgradeLive`.
-- Runtime resolver layers from `runtime-resolver`: `Offline*CacheLive` (default,
-  bundled data, no network/auth) or `Auto*CacheLive` (live, falls back to
-  bundled), selected by the `runtimeLive` flag passed to `makeAppLayer`.
+- Runtime resolver layers from `@effected/runtimes`: `*Resolver.layerOffline`
+  (default, bundled snapshot, no network/auth) or `*Resolver.layer` (live, falls
+  back to the bundled snapshot), selected by the `runtimeLive` flag passed to
+  `makeAppLayer`.
 
 ### Step 3: Create Check Run
 
@@ -243,9 +256,10 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 
 ### Step 5: Capture Lockfile State (Before)
 
-- `captureLockfileState()` reads current `pnpm-lock.yaml` using
-  `@pnpm/lockfile.fs`. Standalone function exported alongside the
-  `Lockfile` service Tag for direct use by `program.ts`.
+- `captureLockfileState(pm, workspaceRoot?)` reads the detected package
+  manager's lockfile and parses it with `@effected/lockfiles`'
+  `Lockfile.parse(content, { format })` (a pure parser). Standalone function
+  exported alongside the `Lockfile` service for direct use by `program.ts`.
 
 ### Step 6: Upgrade pnpm (conditional)
 
@@ -271,9 +285,9 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 
 - Conditional on any `upgrade-runtime-node/deno/bun` input being non-`false`.
 - `RuntimeUpgrade.upgrade(config, workspaceRoot?)` reads root `package.json`,
-  resolves the latest version via `runtime-resolver` (either offline bundled
-  cache or live network per `runtime-data`), and rewrites `devEngines.runtime`
-  in place — preserving the object/array shape.
+  resolves the latest version via `@effected/runtimes` (`resolve({ range })`,
+  either offline bundled snapshot or live network per `runtime-data`), and
+  rewrites `devEngines.runtime` in place — preserving the object/array shape.
 - **Upgrade only, never add** (all modes): if no `devEngines.runtime` entry
   exists for the runtime, it is skipped with a warning naming the runtime and
   the input. These inputs upgrade the runtimes a repo already declares; they do
@@ -292,7 +306,7 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   and the `has-changes` / `updates-count` outputs. Runtime bumps never trigger
   `Changesets.create` and never trigger `runInstall` — unlike the pnpm bump,
   whose `configUpdatesFromPnpm` is in the install gate.
-- `runtime-resolver` only resolves versions within currently-maintained
+- `@effected/runtimes` only resolves versions within currently-maintained
   (non-EOL) runtime major lines. Resolution for an EOL line returns a
   `VersionNotFoundError`, which is caught per-runtime and emits a warning —
   the other runtimes still run.
@@ -323,7 +337,7 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   forward across `0.x` and adopts the first stable `1.x` rather than being
   trapped in `0.5.x`.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
-  `workspaces-effect`.
+  `@effected/workspaces`.
 - Matches patterns and updates specifiers.
 - Skips `catalog:` and `workspace:` specifiers.
 - Iterates `dependencies`, `devDependencies`, and `optionalDependencies`
@@ -340,7 +354,7 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
 - For each devDep update matching `peer-lock` or `peer-minor` input:
   - `peer-lock`: Sync peer range on every version bump.
   - `peer-minor`: Sync peer range only on minor+ bumps (floor patch to .0).
-- Uses the standalone `parseValidSemVer` from `semver-effect` for version parsing.
+- Uses the standalone `parseValidSemVer` from `@effected/semver` for version parsing.
 - Produces `DependencyUpdateResult[]` records of type `peerDependency` that
   flow into `allUpdates` for PR / commit / summary reporting. They no longer
   feed the changeset step — DepsRegen derives changeset content from its own

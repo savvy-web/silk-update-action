@@ -11,9 +11,11 @@ dependencies, and `devEngines.runtime` entries (node/deno/bun). It runs as
 via `GitHubToken.provision`, `src/main.ts` is a thin `Action.run(program)`
 wrapper, and `src/post.ts` reports duration and revokes the token. The actual
 Effect program and helpers (`runCommands`, `runInstall`) live in
-`src/program.ts`; cross-phase state lives in `src/state.ts`. It uses Effect-TS
-for typed error handling, service injection, and retry logic. Domain logic is
-wrapped as Effect services (`Context.Tag` + `Layer`) in `src/services/`, with
+`src/program.ts`; cross-phase state lives in `src/state.ts`. It runs on
+**Effect v4** (`effect@4.0.0-beta.98`, from `catalog:effect`) and the
+`@effected/*` first-party kit, using Effect-TS for typed error handling, service
+injection, and retry logic. Domain logic is wrapped as Effect services
+(class-based `Context.Service` + `Layer`) in `src/services/`, with
 layer composition in `src/layers/app.ts`
 (`makeAppLayer(dryRun, { runtimeLive })` — builds `GitHubClient` from
 `GitHubToken.client()`, reading the token the pre phase persisted to
@@ -77,22 +79,23 @@ pnpm vitest run --testNamePattern="parsePnpmVersion"
   (report duration + revoke token). `src/program.ts` holds the testable Effect
   program plus `runCommands` and `runInstall` helpers
 - **Cross-phase state**: `src/state.ts` (`StartTimeState`, `STATE_KEYS`)
-- **Services**: `src/services/` (domain services with `Context.Tag` + `Layer`)
+- **Services**: `src/services/` (domain services with `Context.Service` + `Layer`)
 - **Schemas**: `src/schemas/domain.ts` (Effect Schema definitions)
-- **Errors**: `src/errors/errors.ts` (Schema.TaggedError definitions)
-- **Layers**: `src/layers/app.ts` (`makeAppLayer(dryRun)` wires all layers;
-  builds `GitHubClient` from `GitHubToken.client()` via a self-contained
-  `ActionStateLive ∘ NodeContext.layer` + `Layer.orDie`)
+- **Errors**: `src/errors/errors.ts` (`Schema.TaggedErrorClass` definitions)
+- **Layers**: `src/layers/app.ts` (`makeAppLayer(dryRun, { runtimeLive })` wires
+  all layers; builds `GitHubClient` from `GitHubToken.client()` via a
+  self-contained `ActionStateLive ∘ NodeServices.layer` + `Layer.orDie`)
 - **Utils**: `src/utils/` (pure helpers: deps, input, markdown, pnpm, runtime, semver)
 - **Shared Configs**: `lib/configs/`
 - **Build**: Turbo for caching; `typecheck` depends on `build`
 
 ### Effect-TS Patterns
 
-- **Library services**: From `@savvy-web/github-action-effects` (`^2.4.0`): `CommandRunner`, `GitBranch`, `GitCommit`, `CheckRun`, `GitHubClient`, `NpmRegistry`, `PullRequest`, `GithubMarkdown`, `GitHubToken`. `pre.ts` and `post.ts` provide `GitHubAppLive ∘ OctokitAuthAppLive ∘ FetchHttpClient.layer` for `GitHubToken.provision`/`dispose`.
-- **Domain services**: `BranchManager`, `PnpmUpgrade`, `ConfigDeps`, `RegularDeps`, `Report`, `Lockfile`, `Changesets`, `RuntimeUpgrade`. Workspace enumeration uses `WorkspaceDiscovery` from `workspaces-effect` (`^2.0.3`) directly (no local `Workspaces` Tag), still consumed by `RegularDeps`, `PeerSync`, and `Lockfile`. Stateless helpers: `WorkspaceYaml`, `PeerSync`. `PnpmUpgrade`, `ConfigDeps`, and `RegularDeps` all query npm via the `NpmRegistry` service. `RuntimeUpgrade` depends on `runtime-resolver`'s `NodeResolver`, `DenoResolver`, and `BunResolver` services; wired with either offline bundled cache layers (`Offline*CacheLive`, the default) or live network layers (`Auto*CacheLive`) depending on the `runtime-data` input.
-- **Changesets adapter**: `services/changesets.ts` is a thin adapter over `Changesets.DepsRegen` from `@savvy-web/silk-effects`, which is the source of truth for dependency changesets. silk-effects 3 swapped its embedded changesets engine to the @changesets v3 `next` prereleases (hence the `@changesets/config@4` `$schema` in `.changeset/config.json`); the consumed DepsRegen surface is unchanged. Since silk-effects 3.2.1, `DepsRegen.plan` refreshes workspace discovery at plan time, so the changeset step sees manifests edited earlier in the run (fixes the silent zero-changeset bug). `create(workspaceRoot, base)` runs `depsRegen.plan({ cwd, base }) → execute` and maps written files to `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR `privatePackages.version`, minus the `ignore` list) lives upstream in DepsRegen — this repo no longer carries `changeset-config.ts` / `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`; `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector, WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/CommandExecutor via `NodeContext.layer`) to satisfy.
-- **Errors**: `Schema.TaggedError` (`PnpmError`, `GitHubApiError`, `FileSystemError`)
+- **Library services**: From `@savvy-web/github-action-effects` (`^3.0.0`, the Effect-v4 line — its services are `Context.Service` classes exposing companion `*Shape` interfaces like `NpmRegistryShape`): `CommandRunner`, `GitBranch`, `GitCommit`, `CheckRun`, `GitHubClient`, `NpmRegistry`, `PullRequest`, `GithubMarkdown`, `GitHubToken`. `pre.ts` and `post.ts` provide `GitHubAppLive ∘ OctokitAuthAppLive ∘ FetchHttpClient.layer` (FetchHttpClient from `effect/unstable/http` in v4) for `GitHubToken.provision`/`dispose`.
+- **Domain services**: `BranchManager`, `PnpmUpgrade`, `ConfigDeps`, `RegularDeps`, `Report`, `Lockfile`, `Changesets`, `RuntimeUpgrade`. Workspace enumeration uses `WorkspaceDiscovery` from `@effected/workspaces` (`^0.3.0`) directly (no local `Workspaces` Tag), still consumed by `RegularDeps`, `PeerSync`, and `Lockfile`. In v4 the workspace layers are root-bound `.layer` / `.layer(opts)` statics (bind the root at build; methods are arg-less), not `*Live` layers. Stateless helpers: `WorkspaceYaml`, `PeerSync`. `PnpmUpgrade`, `ConfigDeps`, and `RegularDeps` all query npm via the `NpmRegistry` service. Lockfile parsing uses `@effected/lockfiles`' pure `Lockfile.parse(content, { format })` (reads `.extension`, `.specifier.raw`, `.format`). `RuntimeUpgrade` depends on `@effected/runtimes`' `NodeResolver`, `DenoResolver`, and `BunResolver` services (`resolve({ range })` → `.latest`); wired with either bundled offline layers (`*Resolver.layerOffline`, the default) or live network layers (`*Resolver.layer`, falls back to the bundled snapshot) depending on the `runtime-data` input.
+- **Changesets adapter**: `services/changesets.ts` is a thin adapter over `Changesets.DepsRegen` from `@savvy-web/silk-effects` (`^4.0.0`, the Effect-v4 line), which is the source of truth for dependency changesets. silk-effects' embedded changesets engine tracks the @changesets v3 `next` prereleases (hence the `@changesets/config@4` `$schema` in `.changeset/config.json`); the consumed DepsRegen surface is unchanged. `DepsRegen.plan` refreshes workspace discovery at plan time, so the changeset step sees manifests edited earlier in the run (fixes the silent zero-changeset bug). `create(workspaceRoot, base)` runs `depsRegen.plan({ cwd, base }) → execute` and maps written files to `ChangesetFile[]`. All gating (versionable-minus-ignored: publishable OR `privatePackages.version`, minus the `ignore` list) lives upstream in DepsRegen — this repo no longer carries `changeset-config.ts` / `publishability.ts` shims or its own predicate. `makeAppLayer` wires it as `SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform))`; `DepsRegenDefault` bundles PointInTimeWorkspace, ConfigInspector, WorkspaceDiscovery, silk's adaptive `PublishabilityDetector`, and `ChangesetConfig` internally, leaving only platform services (FileSystem/Path/CommandExecutor via `NodeServices.layer`) to satisfy.
+- **Errors**: `Schema.TaggedErrorClass` (`PnpmError`, `GitHubApiError`, `FileSystemError`)
+- **Effect v4 API spellings** used throughout (the migration renamed these): services are class-based `Context.Service` (was `Context.Tag`); the Node platform bundle is `NodeServices.layer` (was `NodeContext.layer`); `FileSystem`/`Path` import from `effect`, `HttpClient`/`FetchHttpClient` from `effect/unstable/http` (the old `@effect/platform` package is dissolved into core `effect`); `Config.int` (was `Config.integer`); `Effect.catch` (was `Effect.catchAll`); `Effect.result` returning a `Result` (was `Effect.either`); `Effect.timeoutOrElse` (was `Effect.timeoutFail`); log levels are string literals (`"Info"`/`"Debug"`/`"Warn"`) set via `References.MinimumLogLevel`.
 - **Entry**: `Action.run(program)` from `main.ts` (no `{ layer }` — `program`
   needs only the core services `Action.run` injects); inputs parsed via Effect
   `Config.*` API inside `program.ts`.
@@ -115,26 +118,22 @@ We author every first-party dependency in the table below, so a bug or missing A
 | `@savvy-web/github-action-effects` | `savvy-web/github-action-effects` | `../github-action-effects` | direct → `pnpm link` |
 | `@savvy-web/github-action-builder` | `savvy-web/github-action-builder` | `../github-action-builder` | direct (build tool) → `pnpm link` |
 | `@savvy-web/silk-effects` | `savvy-web/systems` (monorepo, `packages/silk-effects`) | `../systems` (pkg: `../systems/packages/silk-effects`) | direct → `pnpm link` |
-| `runtime-resolver` | `spencerbeggs/runtime-resolver` | `../../spencerbeggs/runtime-resolver` | direct → `pnpm link` |
-| `semver-effect` | `spencerbeggs/semver-effect` | `../../spencerbeggs/semver-effect` | direct + transitive → override |
-| `workspaces-effect` | `spencerbeggs/workspaces-effect` | `../../spencerbeggs/workspaces-effect` | direct + transitive → override |
-| `jsonc-effect` | `spencerbeggs/jsonc-effect` | `../../spencerbeggs/jsonc-effect` | transitive (via silk-effects) → override |
-| `yaml-effect` | `spencerbeggs/yaml-effect` | `../../spencerbeggs/yaml-effect` | transitive (via silk-effects) → override |
+| `@effected/*` (`workspaces`, `runtimes`, `semver`, `lockfiles`, `yaml` + transitives) | `spencerbeggs/effected` (single monorepo) | `../../spencerbeggs/effected` (pkg: `packages/<name>`) | direct + transitive → override |
 
-`@savvy-web/silk-effects` itself depends on `workspaces-effect`, `semver-effect`, `jsonc-effect`, and `yaml-effect`, and `runtime-resolver` also depends on `semver-effect`. So `workspaces-effect` and `semver-effect` resolve **both directly and transitively** (they need the override), `jsonc-effect` / `yaml-effect` are transitive-only (override too), and the rest are direct-only (`pnpm link`) — the **Link mechanism** column records which is which. (`json-schema-effect` is a sibling repo used by other actions but is **not** a dependency of this one.)
+As of the Effect v4 migration the first-party Effect-native libraries are the `@effected/*` kit, all living in **one monorepo** (`spencerbeggs/effected`) rather than the former per-package `*-effect` repos. This action directly imports `@effected/workspaces`, `@effected/runtimes`, `@effected/semver`, `@effected/lockfiles`, and `@effected/yaml`; several also resolve **transitively** — `@savvy-web/silk-effects` depends on `@effected/workspaces` + `@effected/yaml` (and `@effected/git`/`glob`/`jsonc`/`package-json`/`walker`), `@effected/workspaces` depends on `@effected/lockfiles` + `@effected/yaml`, and `@effected/runtimes` depends on `@effected/semver`. Because they resolve both directly and transitively, they need `link:` **overrides** (a bare `pnpm link` would leave duplicate transitive copies) — the **Link mechanism** column records this. The `@savvy-web/*` libraries remain direct-only (`pnpm link`).
 
 **Two ways to link a local library build:**
 
 - **Direct-only dependency → `pnpm link`.** e.g. `pnpm link ../github-action-effects` symlinks `node_modules/@savvy-web/github-action-effects` to the local build. Verify the linked `package.json` via `node:fs` (NOT `require(...package.json)` — the `exports` map does not expose `./package.json`), or `pnpm why <pkg>`.
-- **Also a transitive dependency → `pnpm-workspace.yaml` override.** A bare `pnpm link` redirects only the direct import, leaving the transitive copy (e.g. `workspaces-effect` pulled in by `silk-effects`) on the registry version and bundling **two** copies. A `link:` override forces every resolution to one local copy:
+- **Also a transitive dependency → `pnpm-workspace.yaml` override.** A bare `pnpm link` redirects only the direct import, leaving the transitive copy (e.g. `@effected/workspaces` pulled in by `silk-effects`) on the registry version and bundling **two** copies. A `link:` override forces every resolution to one local copy:
 
   ```yaml
   # pnpm-workspace.yaml
   overrides:
-    workspaces-effect: "link:../../spencerbeggs/workspaces-effect/dist/dev/pkg"
+    "@effected/workspaces": "link:../../spencerbeggs/effected/packages/workspaces/dist/dev/pkg"
   ```
 
-  then `pnpm install`. `dist/dev/pkg` is the rslib-builder link target (`publishConfig.directory` + `linkDirectory: true`). Effect resolves services by the tag's string id, so the one provided layer is shared even across duplicate copies — but the override keeps the bundle to a single copy. Verify every resolution points at the link: `find node_modules -name workspaces-effect`.
+  then `pnpm install`. `dist/dev/pkg` is the rslib-builder link target (`publishConfig.directory` + `linkDirectory: true`). Effect resolves services by the tag's string id, so the one provided layer is shared even across duplicate copies — but the override keeps the bundle to a single copy. Verify every resolution points at the link: `find node_modules -path "*@effected/workspaces"`.
 
 **Procedure (either mechanism):**
 
@@ -148,7 +147,7 @@ We author every first-party dependency in the table below, so a bug or missing A
 
 **Committing while a link/override is active:** commit the **full dogfood state** to `dev` — `src` + rebuilt `dist` + changeset **and** the `pnpm-workspace.yaml` override + `pnpm-lock.yaml`. The override holds a machine-specific link path, so `dev` only installs cleanly with the sibling repos checked out at the paths in the table above; that is the accepted dogfooding trade-off, and the cleanup in step 7 reverts it. No CI runs on a plain `dev` push, so the committed `dev` source may reference an unpublished library API until it publishes — expected during dogfooding. Commits must be GPG-signed with the GitHub-verified key for `C. Spencer Beggs <spencer@savvyweb.systems>` or the signature ruleset rejects them.
 
-**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^3.2.1`, `workspaces-effect@^2.0.3`, `semver-effect@^0.3.1`, `runtime-resolver@^0.3.22`, `@savvy-web/github-action-effects@^2.4.0`, all unlinked). The stale-discovery fix (DepsRegen silently writing zero changesets) shipped in `workspaces-effect@2.0.3` / `@savvy-web/silk-effects@3.2.1` and is bundled into the committed `dist`.
+**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^4.0.0`, `@savvy-web/github-action-effects@^3.0.0`, `@effected/workspaces@^0.3.0`, `@effected/runtimes@^0.1.0`, `@effected/semver@^0.1.0`, `@effected/lockfiles@^0.1.2`, `@effected/yaml@^0.2.0`, `effect@4.0.0-beta.98` via `catalog:effect`, all unlinked). The Effect v4 / `@effected`-kit migration (`b9225b4`) is bundled into the committed `dist`.
 
 ## Development & Release Cycle
 
@@ -214,20 +213,25 @@ The `dev -> main` PR is left open for review — **not** auto-merged; merging it
 
 - **Framework**: Vitest with v8 coverage
 - **Pool**: Uses forks (not threads) for Effect-TS compatibility
-- **Config**: `vitest.config.ts` supports project-based filtering via
-  `--project` flag
-- **Coverage gate (what it actually enforces)**: `vitest.config.ts` sets
-  `thresholds: AgentPlugin.COVERAGE_LEVELS.strict.thresholds`, which despite the
-  name resolves to **aggregate** (whole-run) minimums of
-  `{ lines: 80, functions: 80, branches: 75, statements: 80 }` — **not** a
-  per-file gate, and nowhere near 100%. The separate `coverageTargets`
-  (90/90/85/90) are *aspirational* and are reported, not enforced. Consequence:
-  a single file — even a large orchestration module — can have **zero** test
-  execution and the gate still passes, because the rest of the suite carries the
-  aggregate. Do not treat a green `test:coverage` as evidence that a given
-  module is exercised; verify by fault injection (throw inside the code path and
-  confirm a test fails). This is exactly how `program.ts`'s `innerProgram` went
-  untested for so long.
+- **Config**: `vitest.config.ts` includes both the co-located unit tests
+  (`src/**/*.test.ts`) and the integration suites (`__test__/**/*.test.ts`)
+- **Plain config (Effect v4 migration)**: `vitest.config.ts` currently uses a
+  plain `defineConfig` and **no longer loads `@vitest-agent/plugin`**. The latest
+  `@vitest-agent/plugin@1.1.9` is an Effect-v3 package — importing `AgentPlugin`
+  transitively loads a v3-only `SqliteClient` that calls the removed
+  `Context.GenericTag` at config-eval and crashes the whole run (v3 and v4 cannot
+  coexist). The plugin is still in `devDependencies` pending a v4-line release;
+  restore the AgentPlugin config once it ships.
+- **Coverage gate (what it actually enforces)**: `vitest.config.ts` sets inline
+  `thresholds: { lines: 80, functions: 80, branches: 75, statements: 80 }` — the
+  same **aggregate** (whole-run) minimums `AgentPlugin.COVERAGE_LEVELS.strict`
+  used to resolve to (no longer referenced by name). It is **not** a per-file
+  gate, and nowhere near 100%. Consequence: a single file — even a large
+  orchestration module — can have **zero** test execution and the gate still
+  passes, because the rest of the suite carries the aggregate. Do not treat a
+  green `test:coverage` as evidence that a given module is exercised; verify by
+  fault injection (throw inside the code path and confirm a test fails). This is
+  exactly how `program.ts`'s `innerProgram` went untested for so long.
 
 ## Conventions
 
@@ -274,7 +278,7 @@ Packages publish to both GitHub Packages and npm with provenance.
   needs local history for the base ref: the workflow checkout must use
   `fetch-depth: 0`, and `BranchManager.ensureBaseHistory(target-branch)` runs as
   a preflight (best-effort fetch/unshallow) before `Changesets.create`
-- `action.config.ts` declares pre/main/post entries, `build.ignore`s cyclonedx optional plugins (xmlbuilder2/libxmljs2/ajv-formats-draft2019), and lists `build.nativeDynamicImports` (`@changesets/apply-release-plan`, `workspaces-effect`) so rspack preserves their fully dynamic `await import()` in the bundle instead of miscompiling it into a context module — rationale in `@./.claude/design/silk-update-action/01-dependencies.md` and the `action.config.ts` comment
+- `action.config.ts` declares pre/main/post entries, `build.ignore`s cyclonedx optional plugins (xmlbuilder2/libxmljs2/ajv-formats-draft2019), and lists `build.nativeDynamicImports` (`@changesets/apply-release-plan` only) so rspack preserves its fully dynamic `await import()` in the bundle instead of miscompiling it into a context module. `@effected/workspaces`' `ConfigDependencyHooks` loader has the same computed-import pattern and IS reachable in this bundle, but is deliberately **not** listed — registering it makes the builder's ignore-loader throw and fails the build; rspack emits a benign "Critical dependency" warning instead (inert unless the config-dependency-hooks path runs, which this action never does). Rationale in `@./.claude/design/silk-update-action/01-dependencies.md` and the `action.config.ts` comment
 - `upgrade-package-manager` is a **string** input (`false` | `true` | `auto` | a semver range), validated like the `upgrade-runtime-*` inputs — not a boolean. Default `"true"`. It currently upgrades **pnpm only** (support for other package managers is planned); the implementing service is still `PnpmUpgrade`. This input was renamed from `update-pnpm` in the v2 rebrand. `true`/`auto` resolve the latest pnpm within the **current major** (favoring the `devEngines.packageManager` version); an explicit range (e.g. `^11`) may cross majors and can add a `packageManager` field when none exists. `PnpmUpgrade` queries pnpm versions and integrity via the `NpmRegistry` service — **not** a raw `npm view` shell-out, which hit EACCES against the root-owned `~/.npm` cache on GitHub macOS runners (the integrity fetch is best-effort; on failure the version is written without a hash). `PnpmUpgrade` no longer runs `corepack use` — it edits root `package.json` directly, writing the resolved version with the corepack-canonical `+sha512.<hex>` hash (derived from the npm registry integrity via `corepackHashFromIntegrity` in `src/utils/pnpm.ts`) into **both** `packageManager` and `devEngines.packageManager.version`. The corepack switch happens via the existing `runInstall`, which now **regenerates** the lockfile (`pnpm clean --lockfile` then `pnpm install --frozen-lockfile=false`) rather than `--fix-lockfile`: the action changes all three pnpm resolution inputs (pnpm version, config deps + `pnpm-plugin-silk` hooks, dependency ranges), and `--fix-lockfile` only repairs entries without re-resolving, so it could commit an inconsistent lockfile (e.g. an unfilled peer → `ERR_MODULE_NOT_FOUND`). `pnpm clean` needs **pnpm 11+** and runs a consumer's own `clean`/`purge` script over the built-in if one exists. Unlike the runtime bump, the pnpm bump **does** trigger `runInstall` (gated on `configUpdatesFromPnpm.length > 0`); like the runtime bump it never creates a changeset.
 - Runtime engine bumps (`upgrade-runtime-*`) edit root `package.json`
   `devEngines.runtime` and flow into the PR/commit/summary, but never create a
@@ -289,8 +293,13 @@ Packages publish to both GitHub Packages and npm with provenance.
   rewritten as e.g. `24.9.1`). Operator preservation was dropped deliberately:
   `silk-runtime-action`, the next pipeline step, does not support range
   operators in `devEngines.runtime`. `runtime-data: live` opts into network
-  resolution (Auto cache, falls back to bundled). Note that `runtime-resolver`
-  only resolves versions within currently-maintained (non end-of-life) runtime
-  major lines — if the existing entry or target range points to an EOL line, the
-  resolution will fail and the runtime bump is skipped with a warning. This
-  applies to both offline and live data sources.
+  resolution (live layer, falls back to bundled snapshot). Note that
+  `@effected/runtimes` only resolves versions within currently-maintained (non
+  end-of-life) runtime major lines — if the existing entry or target range points
+  to an EOL line, the resolution will fail and the runtime bump is skipped with a
+  warning. This applies to both offline and live data sources.
+- `@effected/workspaces`' `PackageManagerDetector` is **stricter** than the old
+  `workspaces-effect`: a bun or pnpm repo is recognized from its **lockfile
+  conjoined with the manifest**, not from `devEngines.packageManager` alone. A
+  repo that names a package manager only in `devEngines` with no lockfile is
+  detected as **npm**.

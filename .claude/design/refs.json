@@ -4,14 +4,14 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/silk-update-action/01-dependencies.md",
-			"hash": "a9b1520eb8244be5ce76a1fe9e478abe7dbf71fa39eea11fe1cd98f661fdd160",
-			"recordedAt": "2026-07-10"
+			"hash": "5a9ba98db060a9ea3a4c819d0b083079604f29ebd23e83ddd8fd2ef48c0b7d73",
+			"recordedAt": "2026-07-17"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/silk-update-action/_index.md",
-			"hash": "37bb9632eb203c6d6a4b47676f48926c4edae91910bc77c2fe8fdcb1dc523c6e",
-			"recordedAt": "2026-07-02"
+			"hash": "a6a1f6af4d32d3ad3c79b3f28703598b5984056401fb8675c3f795f49a06c3f5",
+			"recordedAt": "2026-07-17"
 		}
 	]
 }

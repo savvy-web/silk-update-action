@@ -5,13 +5,17 @@
 ## Current State
 
 The action is Effect-first and runs as three phases (`pre` / `main` / `post`)
-around the `GitHubToken` token lifecycle. All domain logic is wrapped as Effect
-services with `Context.Tag` + `Layer`, plus a few standalone helper modules
-(`PeerSync`, `WorkspaceYaml`). Layer composition is centralized in
-`src/layers/app.ts`. Workspace enumeration comes from `workspaces-effect`, and
-the dependency-changeset step delegates to `@savvy-web/silk-effects`'
-`Changesets.DepsRegen` (which owns publishability detection and changeset-config
-reading internally).
+around the `GitHubToken` token lifecycle. It runs on **Effect v4**
+(`effect@4.0.0-beta.98`) and the `@effected/*` first-party kit
+(`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`,
+`@effected/lockfiles`, `@effected/yaml`) — a runtime/toolchain migration that
+left `action.yml` inputs/outputs unchanged. All domain logic is wrapped as Effect
+services with `Context.Service` (v4; was `Context.Tag`) + `Layer`, plus a few
+standalone helper modules (`PeerSync`, `WorkspaceYaml`). Layer composition is
+centralized in `src/layers/app.ts`. Workspace enumeration comes from
+`@effected/workspaces`, and the dependency-changeset step delegates to
+`@savvy-web/silk-effects`' `Changesets.DepsRegen` (which owns publishability
+detection and changeset-config reading internally).
 
 **Architecture:**
 
@@ -30,16 +34,16 @@ reading internally).
   `services/changeset-config.ts` and `services/publishability.ts` re-export
   shims are deleted, since `ChangesetConfig` and the `PublishabilityDetector`
   overrides are now internal to DepsRegen. Stateless helpers (`PeerSync`,
-  `WorkspaceYaml`) export functions without their own Tag. Workspace enumeration
-  goes through `WorkspaceDiscovery` from `workspaces-effect` directly (for
-  `RegularDeps`, `PeerSync` and `Lockfile`).
+  `WorkspaceYaml`) export functions without their own service tag. Workspace
+  enumeration goes through `WorkspaceDiscovery` from `@effected/workspaces`
+  directly (for `RegularDeps`, `PeerSync` and `Lockfile`).
 - **Layer composition:** `makeAppLayer(dryRun, { runtimeLive })` in
   `src/layers/app.ts` wires all library and domain layers together. The
   `GitHubClient` is built from `GitHubToken.client()` (over a self-contained
   `ActionStateLive`, `Layer.orDie`), which reads the token envelope `pre`
   persisted to `ActionState` — there is no bare `GitHubClientLive` and no
   `process.env.GITHUB_TOKEN` bridge. `runtimeLive` selects the bundled offline
-  vs live `runtime-resolver` resolver layers consumed by `RuntimeUpgradeLive`.
+  vs live `@effected/runtimes` resolver layers consumed by `RuntimeUpgradeLive`.
 - **Pure helpers:** `src/utils/` contains stateless functions (`deps.ts`,
   `input.ts`, `markdown.ts`, `pnpm.ts`, `runtime.ts`, `semver.ts`).
 - **No barrel re-exports:** Direct imports everywhere, no `index.ts` files.
@@ -70,7 +74,7 @@ reading internally).
   npm's absolute latest (`>=1.0.0` stays within the major; `<1.0.0` may adopt the
   first stable major but never crosses two majors at once).
 - Regular dependency updates via `RegularDeps` service (uses `NpmRegistry`
-  and `WorkspaceDiscovery` from `workspaces-effect`). Resolves the highest
+  and `WorkspaceDiscovery` from `@effected/workspaces`). Resolves the highest
   published version **satisfying the current specifier treated as a range** via
   `resolveLatestSatisfying` rather than npm's absolute `latest` dist-tag, so
   `^4.0.0` stays within major 4, `>=4.0.0` may advance across a major, and an
@@ -81,7 +85,7 @@ reading internally).
   `optionalDependencies` independently and reports the real section type per
   update — `peerDependencies` are managed by `syncPeers`.
 - Peer dependency range syncing via `syncPeers` (`peer-lock` and
-  `peer-minor` strategies, powered by `semver-effect`).
+  `peer-minor` strategies, powered by `@effected/semver`).
 - pnpm self-upgrade via `PnpmUpgrade` service, driven by the `upgrade-package-manager`
   input (`false` | `true` | `auto` | a semver range, default `"true"`). The
   input is named generically for consistency with `upgrade-runtime-*` and to
@@ -98,7 +102,7 @@ reading internally).
 - `devEngines.runtime` upgrades via `RuntimeUpgrade` service (node/deno/bun),
   driven by the `upgrade-runtime-node/deno/bun` inputs (`false` | `auto` | a
   semver range) and `runtime-data` (`offline` bundled cache vs `live`). Resolves
-  versions via `runtime-resolver` within currently-maintained (non-EOL) majors;
+  versions via `@effected/runtimes` within currently-maintained (non-EOL) majors;
   `auto` no-ops on a static pin or already-current value. **Upgrade only, never
   add:** a runtime with no existing `devEngines.runtime` entry is skipped with a
   warning in every mode. **Always exact:** the range only selects which line to
@@ -172,7 +176,8 @@ GitHub Actions should be resilient. If updating 10 dependencies, and 2 fail, we 
 2. Report all failures at the end
 3. Still create a PR with successful updates
 
-Effect makes this pattern easy with `Effect.all`, `Effect.either`, and custom error types.
+Effect makes this pattern easy with `Effect.all`, `Effect.result` (v4; was
+`Effect.either`), and custom error types.
 
 **Resource Management:**
 
@@ -189,9 +194,10 @@ mocked via `Layer.succeed()` without complex mocking frameworks.
 
 ### Why Effect-First Service Architecture?
 
-**Dependency injection:** `Context.Tag` + `Layer` provides compile-time verified
-dependency injection. Each service declares its dependencies in its Layer, and
-the compiler ensures all dependencies are satisfied.
+**Dependency injection:** `Context.Service` (v4; was `Context.Tag`) + `Layer`
+provides compile-time verified dependency injection. Each service declares its
+dependencies in its Layer, and the compiler ensures all dependencies are
+satisfied.
 
 **Testability:** Mock any service by providing `Layer.succeed(Tag, mockImpl)`.
 No need for complex mocking frameworks or module mocking.

@@ -58,7 +58,7 @@ Gating semantics (silk vs vanilla mode, `versionPrivate`/`isIgnored`/`fixed`
 plumbing, the publishability rules) live in `@savvy-web/silk-effects` and are
 exercised here indirectly through `changeset-emission.int.test.ts` (below),
 which doubles as an upstream-drift canary. Workspace discovery is exercised via
-`__test__/integration/workspaces.int.test.ts`, which runs `WorkspaceDiscoveryLive`
+`__test__/integration/workspaces.int.test.ts`, which runs `WorkspaceDiscovery.layer()`
 against real fixtures.
 
 ## Test Patterns
@@ -77,7 +77,7 @@ under `@savvy-web/github-action-effects/testing` (`ActionStateTest`,
 `GitHubAppTest`, `ActionOutputsTest`) rather than `Layer.succeed` stubs, so the
 real `GitHubToken.provision` / `dispose` flow runs against a shared
 `ActionState`. Config inputs are injected with `Effect.withConfigProvider` over
-a `ConfigProvider.fromMap`.
+a `ConfigProvider.fromUnknown` (v4; was `ConfigProvider.fromMap`).
 
 **Mock service layers:** Domain service tests create mock library services via
 `Layer.succeed()`:
@@ -102,13 +102,21 @@ mocks `@actions/core`.
 
 ## Coverage
 
-**What the gate actually enforces.** `vitest.config.ts` passes
-`AgentPlugin.COVERAGE_LEVELS.strict.thresholds`, which resolves to **aggregate**
+**What the gate actually enforces.** `vitest.config.ts` sets **aggregate**
 (whole-run) minimums of `{ lines: 80, functions: 80, branches: 75, statements:
-80 }`. It is **not** a per-file gate and not 100%. `exclude: []` — nothing is
+80 }` — the same numbers `AgentPlugin.COVERAGE_LEVELS.strict.thresholds` used to
+resolve to. It is **not** a per-file gate and not 100%. `exclude: []` — nothing is
 excluded (the former `src/services/pnpm-upgrade.ts` exclusion is gone, along
-with that module). The plugin's `coverageTargets` (90/90/85/90) are reported as
-aspirational, not enforced.
+with that module).
+
+**Temporary plain config (Effect v4 migration).** The config **no longer loads
+`@vitest-agent/plugin`**: the latest `@vitest-agent/plugin@1.1.9` is an Effect
+v3 package (importing `AgentPlugin` transitively loads a v3-only
+`SqliteClient` that calls the removed `Context.GenericTag` at config-eval and
+crashes the whole run — v3 and v4 cannot coexist). The migration swaps in a
+plain `defineConfig` that keeps the identical aggregate coverage gate; restore
+the AgentPlugin config once a v4-line `@vitest-agent/plugin` ships. (The package
+is still listed in `devDependencies` pending that release.)
 
 **The trap.** Because the gate is aggregate, an entire module can have zero test
 execution while the suite stays green — the rest of the codebase carries the
@@ -124,12 +132,12 @@ no test execution, whatever the coverage number says.
 
 **In-Repo Integration Suites (`__test__/integration/`):**
 
-Each suite builds its own `discoveryLayer` from `NodeContext.layer` directly:
+Each suite builds its own `discoveryLayer` from `NodeServices.layer` directly:
 
 ```typescript
-const platform = NodeContext.layer;
-const discoveryLayer = WorkspaceDiscoveryLive.pipe(
- Layer.provide(Layer.merge(WorkspaceRootLive.pipe(Layer.provide(platform)), platform)),
+const platform = NodeServices.layer;
+const discoveryLayer = WorkspaceDiscovery.layer().pipe(
+ Layer.provide(Layer.merge(WorkspaceRoot.layer.pipe(Layer.provide(platform)), platform)),
 );
 ```
 
@@ -151,8 +159,8 @@ const discoveryLayer = WorkspaceDiscoveryLive.pipe(
   ignore, `versionPrivate`) lives in `@savvy-web/silk-effects` — this suite is
   the upstream-drift canary for the wiring, consolidation and catalog-awareness.
 - `runtime-upgrade.int.test.ts` — Runs `RuntimeUpgrade.upgrade` against the
-  real `Offline*CacheLive` layers from `runtime-resolver` (no network) over a
-  temp `package.json`. Acts as an upstream-drift canary for the bundled cache:
+  real `*Resolver.layerOffline` layers from `@effected/runtimes` (no network)
+  over a temp `package.json`. Acts as an upstream-drift canary for the bundled snapshot:
   it asserts `auto` resolves a real version within an existing range and writes
   it back. Because the bundled cache only carries currently-maintained majors,
   the fixture pins `^24.0.0` (the lowest major present) rather than an EOL line. It also pins the

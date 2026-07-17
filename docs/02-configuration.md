@@ -214,7 +214,7 @@ upgrade-runtime-bun: ^1
 
 Data source used by the runtime version resolver. Default: `offline`.
 
-- `offline` — use only the bundled `runtime-resolver` cache; no network access
+- `offline` — use only the bundled runtime version cache; no network access
   or authentication required
 - `live` — fetch the latest runtime data from the network, falling back to the
   bundled cache on failure
