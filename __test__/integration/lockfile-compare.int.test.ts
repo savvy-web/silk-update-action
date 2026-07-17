@@ -11,18 +11,22 @@
 
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
+import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import { WorkspaceDiscoveryLive, WorkspaceRootLive } from "workspaces-effect";
 import { captureLockfileState, compareLockfiles } from "../../src/services/lockfile.js";
 import type { SupportedPm } from "../../src/services/package-manager.js";
 import { loadFixture } from "./utils/load-fixture.js";
 
-const platform = NodeContext.layer;
-const discoveryLayer = WorkspaceDiscoveryLive.pipe(
-	Layer.provide(Layer.merge(WorkspaceRootLive.pipe(Layer.provide(platform)), platform)),
-);
+const platform = NodeServices.layer;
+
+// @effected/workspaces binds the discovery root at layer-build time, so the
+// discovery layer must be built against the fixture dir (not process.cwd()).
+const discoveryLayerFor = (cwd: string) =>
+	WorkspaceDiscovery.layer({ cwd }).pipe(
+		Layer.provide(Layer.merge(WorkspaceRoot.layer.pipe(Layer.provide(platform)), platform)),
+	);
 
 /**
  * Stage the `<lockfile>.before` / `<lockfile>.after` pair over the real lockfile
@@ -35,7 +39,9 @@ const captureAndCompare = async (fixturePath: string, pm: SupportedPm, lockfileN
 	copyFileSync(join(fixturePath, `${lockfileName}.after`), join(fixturePath, lockfileName));
 	const after = await Effect.runPromise(captureLockfileState(pm, fixturePath));
 
-	return Effect.runPromise(compareLockfiles(before, after, fixturePath).pipe(Effect.provide(discoveryLayer)));
+	return Effect.runPromise(
+		compareLockfiles(before, after, fixturePath).pipe(Effect.provide(discoveryLayerFor(fixturePath))),
+	);
 };
 
 describe("Lockfile.compare integration - pnpm", () => {
@@ -50,7 +56,7 @@ describe("Lockfile.compare integration - pnpm", () => {
 		const after = await Effect.runPromise(captureLockfileState("pnpm", fixture.path));
 
 		const changes = await Effect.runPromise(
-			compareLockfiles(before, after, fixture.path).pipe(Effect.provide(discoveryLayer)),
+			compareLockfiles(before, after, fixture.path).pipe(Effect.provide(discoveryLayerFor(fixture.path))),
 		);
 
 		const lodashChange = changes.find((c) => c.dependency === "lodash");

@@ -2,19 +2,21 @@
  * Lockfile service for capturing and comparing lockfile state.
  *
  * Package-manager agnostic: reads `pnpm-lock.yaml`, `bun.lock` or
- * `package-lock.json` and parses it through `workspaces-effect`'s
- * `parseLockfileContent`, which normalizes all three into one `LockfileData`
- * shape. `parseLockfileContent` is a pure parser (no memoized reader service),
- * so a "before" and an "after" snapshot can be parsed in the same process.
+ * `package-lock.json` and parses it through `@effected/lockfiles`'
+ * `Lockfile.parse(content, { format })`, which normalizes all three into one
+ * `Lockfile` model. `Lockfile.parse` is a pure parser (no memoized reader
+ * service), so a "before" and an "after" snapshot can be parsed in the same
+ * process.
  *
  * @module services/lockfile
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ImporterDependency, LockfileImporter } from "@effected/lockfiles";
+import { Lockfile as LockfileModel } from "@effected/lockfiles";
+import { WorkspaceDiscovery } from "@effected/workspaces";
 import { Context, Effect, Layer } from "effect";
-import type { ImporterDependency, LockfileData, LockfileImporter } from "workspaces-effect";
-import { WorkspaceDiscovery, parseLockfileContent } from "workspaces-effect";
 import { LockfileError } from "../errors/errors.js";
 import type { LockfileChange } from "../schemas/domain.js";
 import type { SupportedPm } from "./package-manager.js";
@@ -23,17 +25,17 @@ import type { SupportedPm } from "./package-manager.js";
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class Lockfile extends Context.Tag("Lockfile")<
+export class Lockfile extends Context.Service<
 	Lockfile,
 	{
-		readonly capture: (pm: SupportedPm, workspaceRoot?: string) => Effect.Effect<LockfileData | null, LockfileError>;
+		readonly capture: (pm: SupportedPm, workspaceRoot?: string) => Effect.Effect<LockfileModel | null, LockfileError>;
 		readonly compare: (
-			before: LockfileData | null,
-			after: LockfileData | null,
+			before: LockfileModel | null,
+			after: LockfileModel | null,
 			workspaceRoot?: string,
 		) => Effect.Effect<ReadonlyArray<LockfileChange>, LockfileError, WorkspaceDiscovery>;
 	}
->() {}
+>()("Lockfile") {}
 
 export const LockfileLive = Layer.succeed(Lockfile, {
 	capture: (pm, workspaceRoot = process.cwd()) => captureLockfileStateImpl(pm, workspaceRoot),
@@ -62,14 +64,14 @@ export const LOCKFILE_NAMES: Record<SupportedPm, string> = {
 export const captureLockfileState = (
 	pm: SupportedPm,
 	workspaceRoot: string = process.cwd(),
-): Effect.Effect<LockfileData | null, LockfileError> => captureLockfileStateImpl(pm, workspaceRoot);
+): Effect.Effect<LockfileModel | null, LockfileError> => captureLockfileStateImpl(pm, workspaceRoot);
 
 /**
  * Compare two lockfile states to detect dependency changes.
  */
 export const compareLockfiles = (
-	before: LockfileData | null,
-	after: LockfileData | null,
+	before: LockfileModel | null,
+	after: LockfileModel | null,
 	workspaceRoot: string = process.cwd(),
 ): Effect.Effect<ReadonlyArray<LockfileChange>, LockfileError, WorkspaceDiscovery> =>
 	compareLockfilesImpl(before, after, workspaceRoot);
@@ -108,7 +110,7 @@ export const groupChangesByPackage = (changes: ReadonlyArray<LockfileChange>): M
 const captureLockfileStateImpl = (
 	pm: SupportedPm,
 	workspaceRoot: string,
-): Effect.Effect<LockfileData | null, LockfileError> =>
+): Effect.Effect<LockfileModel | null, LockfileError> =>
 	Effect.gen(function* () {
 		const lockfilePath = join(workspaceRoot, LOCKFILE_NAMES[pm]);
 
@@ -131,10 +133,10 @@ const captureLockfileStateImpl = (
 		// error (e.g. EACCES, a directory where the lockfile should be) signals a
 		// real environment problem unrelated to lockfile content and must still
 		// fail the effect rather than being silently swallowed.
-		return yield* parseLockfileContent(content, lockfilePath, pm).pipe(
-			Effect.catchAll((e) =>
+		return yield* LockfileModel.parse(content, { format: pm }).pipe(
+			Effect.catch((e) =>
 				Effect.logWarning(
-					`${e.message}: ${String(e.cause)}. Lockfile-derived change detection is being skipped for this run (git status still drives change detection).`,
+					`Failed to parse ${lockfilePath}: ${e.message}. Lockfile-derived change detection is being skipped for this run (git status still drives change detection).`,
 				).pipe(Effect.as(null)),
 			),
 		);
@@ -186,7 +188,7 @@ const isCatalogEntryShape = (raw: unknown): raw is { specifier: string; version?
  * being guessed at — bun and npm do not record a per-importer version, so this
  * join is the only way to recover one, and an ambiguous join must not fabricate.
  */
-const buildResolvedVersions = (data: LockfileData): Map<string, string | null> => {
+const buildResolvedVersions = (data: LockfileModel): Map<string, string | null> => {
 	const versions = new Map<string, string | null>();
 	for (const pkg of data.packages) {
 		if (pkg.isWorkspace) continue;
@@ -209,8 +211,8 @@ const buildResolvedVersions = (data: LockfileData): Map<string, string | null> =
  * back under the `"default"` key here. npm has no `pmSpecific` and no catalog
  * protocol at all, so it yields nothing — which is correct, not a gap.
  */
-const rawCatalogs = (data: LockfileData): Record<string, Record<string, unknown>> => {
-	const ext = data.pmSpecific;
+const rawCatalogs = (data: LockfileModel): Record<string, Record<string, unknown>> => {
+	const ext = data.extension;
 	if (ext?._tag === "pnpm") {
 		return ext.catalogs ?? {};
 	}
@@ -230,7 +232,7 @@ const rawCatalogs = (data: LockfileData): Record<string, Record<string, unknown>
  * specifier string, so the resolved version is joined in by name through the
  * lockfile's package list.
  */
-const normalizeCatalogs = (data: LockfileData): Map<string, Map<string, CatalogEntry>> => {
+const normalizeCatalogs = (data: LockfileModel): Map<string, Map<string, CatalogEntry>> => {
 	const resolved = buildResolvedVersions(data);
 	const out = new Map<string, Map<string, CatalogEntry>>();
 
@@ -272,12 +274,12 @@ const referencesCatalog = (specifier: string, catalogName: string): boolean =>
  * through to the bare importer id.
  */
 const buildImporterToPackageMap = (
-	workspaceRoot: string,
+	_workspaceRoot: string,
 ): Effect.Effect<Map<string, string>, LockfileError, WorkspaceDiscovery> =>
 	Effect.gen(function* () {
 		const discovery = yield* WorkspaceDiscovery;
-		const importerMap = yield* discovery.importerMap(workspaceRoot).pipe(
-			Effect.catchAll((e) =>
+		const importerMap = yield* discovery.importerMap().pipe(
+			Effect.catch((e) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(`Failed to read workspace importer map: ${String(e)}`);
 					return new Map();
@@ -296,8 +298,8 @@ const buildImporterToPackageMap = (
  * Compare two lockfile states to detect dependency changes.
  */
 const compareLockfilesImpl = (
-	before: LockfileData | null,
-	after: LockfileData | null,
+	before: LockfileModel | null,
+	after: LockfileModel | null,
 	workspaceRoot: string,
 ): Effect.Effect<ReadonlyArray<LockfileChange>, LockfileError, WorkspaceDiscovery> =>
 	Effect.gen(function* () {
@@ -307,7 +309,7 @@ const compareLockfilesImpl = (
 		}
 
 		yield* Effect.logDebug(
-			`Comparing ${after.packageManager} lockfiles: ${before.importers.length} -> ${after.importers.length} importer(s)`,
+			`Comparing ${after.format} lockfiles: ${before.importers.length} -> ${after.importers.length} importer(s)`,
 		);
 
 		// Needed by both the catalog and the importer comparison.
@@ -349,7 +351,7 @@ const findCatalogConsumers = (
 	for (const importer of importers) {
 		for (const dep of importer.dependencies) {
 			if (dep.name !== dependencyName) continue;
-			if (!referencesCatalog(dep.specifier, catalogName)) continue;
+			if (!referencesCatalog(dep.specifier.raw, catalogName)) continue;
 			consumers.push({
 				packageName: importerToPackage.get(importer.path) ?? importer.path,
 				type: DEP_TYPE[dep.depType],
@@ -369,8 +371,8 @@ const findCatalogConsumers = (
  * as the trigger signal.
  */
 const compareCatalogs = (
-	before: LockfileData,
-	after: LockfileData,
+	before: LockfileModel,
+	after: LockfileModel,
 	importerToPackage: Map<string, string>,
 ): Effect.Effect<ReadonlyArray<LockfileChange>, never> =>
 	Effect.gen(function* () {
@@ -481,8 +483,8 @@ const keyDependencies = (importer: LockfileImporter): Map<string, ImporterDepend
  * manager records per importer.
  */
 const compareImporters = (
-	before: LockfileData,
-	after: LockfileData,
+	before: LockfileModel,
+	after: LockfileModel,
 	importerToPackage: Map<string, string>,
 ): Effect.Effect<ReadonlyArray<LockfileChange>, never> =>
 	Effect.sync(() => {
@@ -499,16 +501,16 @@ const compareImporters = (
 
 			for (const [key, dep] of afterDeps) {
 				// Catalog refs are handled by compareCatalogs.
-				if (dep.specifier.startsWith("catalog:")) continue;
+				if (dep.specifier.raw.startsWith("catalog:")) continue;
 
 				const previous = beforeDeps.get(key);
-				if (previous?.specifier === dep.specifier) continue;
+				if (previous?.specifier.raw === dep.specifier.raw) continue;
 
 				changes.push({
 					type: DEP_TYPE[dep.depType],
 					dependency: dep.name,
-					from: previous?.specifier ?? null,
-					to: dep.specifier,
+					from: previous?.specifier.raw ?? null,
+					to: dep.specifier.raw,
 					affectedPackages: [packageName],
 				});
 			}
@@ -518,7 +520,7 @@ const compareImporters = (
 				changes.push({
 					type: DEP_TYPE[dep.depType],
 					dependency: dep.name,
-					from: dep.specifier,
+					from: dep.specifier.raw,
 					to: "(removed)",
 					affectedPackages: [packageName],
 				});

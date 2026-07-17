@@ -33,7 +33,7 @@ import type { ChangesetFile } from "../schemas/domain.js";
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class Changesets extends Context.Tag("Changesets")<
+export class Changesets extends Context.Service<
 	Changesets,
 	{
 		/**
@@ -50,7 +50,7 @@ export class Changesets extends Context.Tag("Changesets")<
 			base: string,
 		) => Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError>;
 	}
->() {}
+>()("Changesets") {}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Module-Level Exports
@@ -83,7 +83,7 @@ export const ChangesetsLive = Layer.effect(
 const createChangesetsImpl = (
 	workspaceRoot: string,
 	base: string,
-	depsRegen: typeof SilkChangesets.DepsRegen.Service,
+	depsRegen: SilkChangesets.DepsRegenShape,
 ): Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError> =>
 	Effect.gen(function* () {
 		if (!hasChangesets(workspaceRoot)) {

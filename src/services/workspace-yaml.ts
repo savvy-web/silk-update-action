@@ -8,8 +8,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { Yaml } from "@effected/yaml";
 import { Context, Effect, Layer } from "effect";
-import { parse, stringify } from "yaml";
 
 import { FileSystemError } from "../errors/errors.js";
 
@@ -41,7 +41,9 @@ const SORTABLE_MAP_KEYS = new Set(["configDependencies"]);
 export const STRINGIFY_OPTIONS = {
 	indent: 2,
 	lineWidth: 0, // Disable line wrapping
-	singleQuote: false,
+	// Indent block sequences one level under their mapping key, matching the
+	// legacy `yaml` npm package's default output (byte-parity with prior runs).
+	indentSequences: true,
 } as const;
 
 /**
@@ -93,13 +95,13 @@ export const sortContent = (content: PnpmWorkspaceContent): PnpmWorkspaceContent
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class WorkspaceYaml extends Context.Tag("WorkspaceYaml")<
+export class WorkspaceYaml extends Context.Service<
 	WorkspaceYaml,
 	{
 		readonly format: (workspaceRoot?: string) => Effect.Effect<void, FileSystemError>;
 		readonly read: (workspaceRoot?: string) => Effect.Effect<PnpmWorkspaceContent | null, FileSystemError>;
 	}
->() {}
+>()("WorkspaceYaml") {}
 
 export const WorkspaceYamlLive = Layer.succeed(WorkspaceYaml, {
 	format: (workspaceRoot = process.cwd()) => formatWorkspaceYamlImpl(workspaceRoot),
@@ -153,19 +155,29 @@ const formatWorkspaceYamlImpl = (workspaceRoot: string): Effect.Effect<void, Fil
 				}),
 		});
 
-		const parsed = yield* Effect.try({
-			try: () => parse(content) as PnpmWorkspaceContent,
-			catch: (e) =>
-				new FileSystemError({
-					operation: "read",
-					path: filepath,
-					reason: `Invalid YAML: ${e}`,
-				}),
-		});
+		const parsed = (yield* Yaml.parse(content).pipe(
+			Effect.mapError(
+				(e) =>
+					new FileSystemError({
+						operation: "read",
+						path: filepath,
+						reason: `Invalid YAML: ${e}`,
+					}),
+			),
+		)) as PnpmWorkspaceContent;
 
 		// Sort and format
 		const sorted = sortContent(parsed);
-		const formatted = stringify(sorted, STRINGIFY_OPTIONS);
+		const formatted = yield* Yaml.stringify(sorted, STRINGIFY_OPTIONS).pipe(
+			Effect.mapError(
+				(e) =>
+					new FileSystemError({
+						operation: "write",
+						path: filepath,
+						reason: `Failed to stringify YAML: ${e}`,
+					}),
+			),
+		);
 
 		// Write back
 		yield* Effect.try({
@@ -202,13 +214,14 @@ const readWorkspaceYamlImpl = (workspaceRoot: string): Effect.Effect<PnpmWorkspa
 				}),
 		});
 
-		return yield* Effect.try({
-			try: () => parse(content) as PnpmWorkspaceContent,
-			catch: (e) =>
-				new FileSystemError({
-					operation: "read",
-					path: filepath,
-					reason: `Invalid YAML: ${e}`,
-				}),
-		});
+		return (yield* Yaml.parse(content).pipe(
+			Effect.mapError(
+				(e) =>
+					new FileSystemError({
+						operation: "read",
+						path: filepath,
+						reason: `Invalid YAML: ${e}`,
+					}),
+			),
+		)) as PnpmWorkspaceContent;
 	});

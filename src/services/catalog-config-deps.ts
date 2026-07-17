@@ -26,11 +26,11 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { HttpClient } from "@effect/platform";
+import { LockfileReader } from "@effected/workspaces";
 import type { CommandRunner } from "@savvy-web/github-action-effects";
 import { NpmRegistry } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer, Option } from "effect";
-import { LockfileReader } from "workspaces-effect";
+import type { HttpClient } from "effect/unstable/http";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { CatalogDelta, DependencyUpdateResult } from "../schemas/domain.js";
@@ -51,7 +51,7 @@ export interface CatalogConfigDepsResult {
 	readonly deltas: ReadonlyArray<CatalogDelta>;
 }
 
-export class CatalogConfigDeps extends Context.Tag("CatalogConfigDeps")<
+export class CatalogConfigDeps extends Context.Service<
 	CatalogConfigDeps,
 	{
 		readonly update: (
@@ -59,7 +59,7 @@ export class CatalogConfigDeps extends Context.Tag("CatalogConfigDeps")<
 			workspaceRoot?: string,
 		) => Effect.Effect<CatalogConfigDepsResult, FileSystemError>;
 	}
->() {}
+>()("CatalogConfigDeps") {}
 
 export const CatalogConfigDepsLive: Layer.Layer<
 	CatalogConfigDeps,
@@ -218,7 +218,7 @@ const resolveBaseVersion = (
 		const lockfile = yield* LockfileReader;
 		const resolved = yield* lockfile
 			.resolvedVersion(name)
-			.pipe(Effect.catchAll(() => Effect.succeed(Option.none<{ readonly version: string }>())));
+			.pipe(Effect.catch(() => Effect.succeed(Option.none<{ readonly version: string }>())));
 
 		if (Option.isSome(resolved)) {
 			return resolved.value.version;
@@ -289,7 +289,7 @@ const processDep = (
 		const registry = yield* NpmRegistry;
 		const versions = yield* registry
 			.getVersions(name)
-			.pipe(Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)));
+			.pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)));
 
 		if (versions.length === 0) {
 			yield* Effect.logWarning(`CatalogConfigDeps: could not query versions for "${name}", skipping`);

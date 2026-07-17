@@ -35,7 +35,7 @@ export const resolveLatestSatisfying = (
 		if (stableVersions.length === 0) return null;
 
 		const result = yield* SemverResolver.latestInRange(stableVersions, range).pipe(
-			Effect.catchAll(() => Effect.succeed(null as string | null)),
+			Effect.catch(() => Effect.succeed(null as string | null)),
 		);
 		return result;
 	});

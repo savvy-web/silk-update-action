@@ -10,9 +10,10 @@
  */
 
 import { existsSync, writeFileSync } from "node:fs";
+import { Yaml } from "@effected/yaml";
+import type { NpmRegistryShape } from "@savvy-web/github-action-effects";
 import { NpmRegistry } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
-import { stringify } from "yaml";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
@@ -20,13 +21,11 @@ import { parseConfigEntry } from "../utils/deps.js";
 import { configDepUpgradeRange, resolveLatestSatisfying } from "../utils/semver.js";
 import { STRINGIFY_OPTIONS, readWorkspaceYaml, sortContent } from "./workspace-yaml.js";
 
-type NpmRegistryShape = Context.Tag.Service<typeof NpmRegistry>;
-
 // ══════════════════════════════════════════════════════════════════════════════
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class ConfigDeps extends Context.Tag("ConfigDeps")<
+export class ConfigDeps extends Context.Service<
 	ConfigDeps,
 	{
 		readonly updateConfigDeps: (
@@ -34,7 +33,7 @@ export class ConfigDeps extends Context.Tag("ConfigDeps")<
 			workspaceRoot?: string,
 		) => Effect.Effect<ReadonlyArray<DependencyUpdateResult>>;
 	}
->() {}
+>()("ConfigDeps") {}
 
 export const ConfigDepsLive = Layer.effect(
 	ConfigDeps,
@@ -55,7 +54,7 @@ export const ConfigDepsLive = Layer.effect(
  * (rather than failing) when the registry query errors.
  */
 const queryVersions = (packageName: string, registry: NpmRegistryShape): Effect.Effect<ReadonlyArray<string>> =>
-	registry.getVersions(packageName).pipe(Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)));
+	registry.getVersions(packageName).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)));
 
 /**
  * Query npm for the integrity hash of a specific package version.
@@ -70,7 +69,7 @@ const queryIntegrity = (
 ): Effect.Effect<string | null> =>
 	Effect.gen(function* () {
 		const info = yield* registry.getPackageInfo(packageName, version).pipe(
-			Effect.catchAll((error) =>
+			Effect.catch((error) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(
 						`queryIntegrity: npm registry query failed for ${packageName}@${version}: ${JSON.stringify({ pkg: error.pkg, operation: error.operation, reason: error.reason })}`,
@@ -111,7 +110,7 @@ const updateConfigDepsImpl = (
 		}
 
 		const content = yield* readWorkspaceYaml(workspaceRoot).pipe(
-			Effect.catchAll((error) =>
+			Effect.catch((error) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(`Failed to read pnpm-workspace.yaml: ${error.reason}`);
 					return null;
@@ -200,17 +199,21 @@ const updateConfigDepsImpl = (
 		// Write back if changed
 		if (changed) {
 			const sorted = sortContent(content);
-			const formatted = stringify(sorted, STRINGIFY_OPTIONS);
+			const formatted = yield* Yaml.stringify(sorted, STRINGIFY_OPTIONS).pipe(
+				Effect.catch((e) => Effect.as(Effect.logWarning(`Failed to stringify pnpm-workspace.yaml: ${e}`), null)),
+			);
 
-			yield* Effect.try({
-				try: () => writeFileSync(filepath, formatted, "utf-8"),
-				catch: (e) =>
-					new FileSystemError({
-						operation: "write",
-						path: filepath,
-						reason: String(e),
-					}),
-			}).pipe(Effect.catchAll((error) => Effect.logWarning(`Failed to write pnpm-workspace.yaml: ${error.reason}`)));
+			if (formatted !== null) {
+				yield* Effect.try({
+					try: () => writeFileSync(filepath, formatted, "utf-8"),
+					catch: (e) =>
+						new FileSystemError({
+							operation: "write",
+							path: filepath,
+							reason: String(e),
+						}),
+				}).pipe(Effect.catch((error) => Effect.logWarning(`Failed to write pnpm-workspace.yaml: ${error.reason}`)));
+			}
 		}
 
 		return results;

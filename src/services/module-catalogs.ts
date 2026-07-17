@@ -23,14 +23,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { HttpClient } from "@effect/platform";
+import type { CommandRunnerShape } from "@savvy-web/github-action-effects";
 import { CommandRunner, NpmRegistry } from "@savvy-web/github-action-effects";
-import type { Context } from "effect";
 import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import type { CatalogMap } from "../utils/catalogs.js";
 import { normalizeCatalogs } from "../utils/catalogs.js";
-
-type CommandRunnerShape = Context.Tag.Service<typeof CommandRunner>;
 
 /**
  * Resolve a conditional-exports object to a file, preferring `import` over
@@ -173,7 +171,7 @@ const readCatalogsFromTarball = (
 	runner: CommandRunnerShape,
 ): Effect.Effect<CatalogMap | null> =>
 	Effect.gen(function* () {
-		const response = yield* http.get(tarballUrl).pipe(Effect.catchAll(() => Effect.succeed(null)));
+		const response = yield* http.get(tarballUrl).pipe(Effect.catch(() => Effect.succeed(null)));
 
 		if (response === null) {
 			yield* Effect.logWarning(`fetchModuleCatalogs: failed to download tarball for ${pkg}@${version}, skipping`);
@@ -193,7 +191,7 @@ const readCatalogsFromTarball = (
 
 		const buffer = yield* response.arrayBuffer.pipe(
 			Effect.map((data) => Buffer.from(data)),
-			Effect.catchAll(() => Effect.succeed(null)),
+			Effect.catch(() => Effect.succeed(null)),
 		);
 
 		if (buffer === null) {
@@ -221,7 +219,7 @@ const readCatalogsFromTarball = (
 			catch: (error) => error,
 		}).pipe(
 			Effect.as(true),
-			Effect.catchAll((error) =>
+			Effect.catch((error) =>
 				Effect.logWarning(
 					`fetchModuleCatalogs: failed to write tarball for ${pkg}@${version} to disk, skipping: ${String(error)}`,
 				).pipe(Effect.as(false)),
@@ -234,7 +232,7 @@ const readCatalogsFromTarball = (
 
 		const extracted = yield* runner.exec("tar", ["-xzf", tarballPath, "-C", dir]).pipe(
 			Effect.as(true),
-			Effect.catchAll(() => Effect.succeed(false)),
+			Effect.catch(() => Effect.succeed(false)),
 		);
 
 		if (!extracted) {
@@ -243,7 +241,7 @@ const readCatalogsFromTarball = (
 		}
 
 		const mod = yield* importPackageEntry(join(dir, "package")).pipe(
-			Effect.catchAll((error) =>
+			Effect.catch((error) =>
 				Effect.logWarning(
 					`fetchModuleCatalogs: could not import an entry module for ${pkg}@${version}, skipping: ${String(error)}`,
 				).pipe(Effect.as(null)),
@@ -290,7 +288,7 @@ export const fetchModuleCatalogs = (
 	Effect.gen(function* () {
 		const registry = yield* NpmRegistry;
 
-		const info = yield* registry.getPackageInfo(pkg, version).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+		const info = yield* registry.getPackageInfo(pkg, version).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 		if (info?.tarball === undefined) {
 			yield* Effect.logWarning(`fetchModuleCatalogs: ${pkg}@${version} has no published tarball URL, skipping`);
@@ -304,7 +302,7 @@ export const fetchModuleCatalogs = (
 			try: () => mkdtempSync(join(tmpdir(), "silk-cfgdep-")),
 			catch: (error) => error,
 		}).pipe(
-			Effect.catchAll((error) =>
+			Effect.catch((error) =>
 				Effect.logWarning(
 					`fetchModuleCatalogs: failed to create a temp directory for ${pkg}@${version}, skipping: ${String(error)}`,
 				).pipe(Effect.as(null)),

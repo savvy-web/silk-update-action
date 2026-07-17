@@ -5,28 +5,34 @@
  * leaf packages for both single-leaf and multi-leaf fixtures.
  */
 
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
+import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import { WorkspaceDiscovery, WorkspaceDiscoveryLive, WorkspaceRootLive } from "workspaces-effect";
 import { loadFixture } from "./utils/load-fixture.js";
 
-const platform = NodeContext.layer;
-const discoveryLayer = WorkspaceDiscoveryLive.pipe(
-	Layer.provide(Layer.merge(WorkspaceRootLive.pipe(Layer.provide(platform)), platform)),
-);
+const platform = NodeServices.layer;
 
-const runWith = <A, E>(eff: Effect.Effect<A, E, WorkspaceDiscovery>): Promise<A> =>
-	Effect.runPromise(Effect.provide(eff, discoveryLayer));
+// @effected/workspaces binds the discovery root at layer-build time, so the
+// fixture cwd is passed to `WorkspaceDiscovery.layer({ cwd })` rather than to
+// `listPackages`/`importerMap` (which take no arguments in v4).
+const discoveryLayerFor = (cwd: string) =>
+	WorkspaceDiscovery.layer({ cwd }).pipe(
+		Layer.provide(Layer.merge(WorkspaceRoot.layer.pipe(Layer.provide(platform)), platform)),
+	);
+
+const runWith = <A, E>(cwd: string, eff: Effect.Effect<A, E, WorkspaceDiscovery>): Promise<A> =>
+	Effect.runPromise(Effect.provide(eff, discoveryLayerFor(cwd)));
 
 describe("WorkspaceDiscovery integration", () => {
 	it("listPackages returns the root and leaf for a single-leaf private root fixture", async () => {
 		const fixture = loadFixture("single-package-private-root");
 
 		const packages = await runWith(
+			fixture.path,
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceDiscovery;
-				return yield* ws.listPackages(fixture.path);
+				return yield* ws.listPackages();
 			}),
 		);
 
@@ -38,9 +44,10 @@ describe("WorkspaceDiscovery integration", () => {
 		const fixture = loadFixture("single-package-private-root");
 
 		const map = await runWith(
+			fixture.path,
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceDiscovery;
-				return yield* ws.importerMap(fixture.path);
+				return yield* ws.importerMap();
 			}),
 		);
 
@@ -52,9 +59,10 @@ describe("WorkspaceDiscovery integration", () => {
 		const fixture = loadFixture("multi-package-public-root");
 
 		const packages = await runWith(
+			fixture.path,
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceDiscovery;
-				return yield* ws.listPackages(fixture.path);
+				return yield* ws.listPackages();
 			}),
 		);
 

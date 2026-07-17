@@ -1,16 +1,9 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, LogLevel, Logger } from "effect";
-import {
-	BunResolverLive,
-	DenoResolverLive,
-	NodeResolverLive,
-	OfflineBunCacheLive,
-	OfflineDenoCacheLive,
-	OfflineNodeCacheLive,
-} from "runtime-resolver";
-import { parseRange, parseValidSemVer, satisfies } from "semver-effect";
+import { BunResolver, DenoResolver, NodeResolver } from "@effected/runtimes";
+import { Range, SemVer } from "@effected/semver";
+import { Effect, Layer, References } from "effect";
 import { describe, expect, it } from "vitest";
 import { RuntimeUpgrade, RuntimeUpgradeLive } from "../../src/services/runtime-upgrade.js";
 
@@ -19,11 +12,7 @@ import { RuntimeUpgrade, RuntimeUpgradeLive } from "../../src/services/runtime-u
 // Node 20 reached EOL and left the cache. We use ^24.0.0 (lowest major present)
 // as the drift-canary fixture instead.
 
-const offlineResolvers = Layer.mergeAll(
-	NodeResolverLive.pipe(Layer.provide(OfflineNodeCacheLive)),
-	DenoResolverLive.pipe(Layer.provide(OfflineDenoCacheLive)),
-	BunResolverLive.pipe(Layer.provide(OfflineBunCacheLive)),
-);
+const offlineResolvers = Layer.mergeAll(NodeResolver.layerOffline, DenoResolver.layerOffline, BunResolver.layerOffline);
 const layer = RuntimeUpgradeLive.pipe(Layer.provide(offlineResolvers));
 
 describe("RuntimeUpgrade integration (offline cache)", () => {
@@ -38,7 +27,7 @@ describe("RuntimeUpgrade integration (offline cache)", () => {
 			Effect.gen(function* () {
 				const service = yield* RuntimeUpgrade;
 				return yield* service.upgrade({ node: "auto", deno: "false", bun: "false" }, dir);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(results).toHaveLength(1);
@@ -52,9 +41,9 @@ describe("RuntimeUpgrade integration (offline cache)", () => {
 		// The resolved version actually satisfies the original range.
 		const ok = await Effect.runPromise(
 			Effect.gen(function* () {
-				const range = yield* parseRange("^24.0.0");
-				const version = yield* parseValidSemVer(update.to);
-				return satisfies(version, range);
+				const range = yield* Range.parse("^24.0.0");
+				const version = yield* SemVer.parse(update.to);
+				return range.test(version);
 			}),
 		);
 		expect(ok).toBe(true);

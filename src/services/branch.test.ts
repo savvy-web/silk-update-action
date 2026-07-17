@@ -6,7 +6,7 @@ import {
 	GitBranchTest,
 	GitCommitTest,
 } from "@savvy-web/github-action-effects";
-import { Effect, Either, Layer, LogLevel, Logger } from "effect";
+import { Effect, Layer, References, Result } from "effect";
 import { describe, expect, it } from "vitest";
 import { BranchManager, BranchManagerLive } from "./branch.js";
 
@@ -54,7 +54,10 @@ const runWithBranchManager = <A, E>(
 		state,
 		commitState,
 		result: Effect.runPromise(
-			Effect.either(effect).pipe(Effect.provide(serviceLayer), Logger.withMinimumLogLevel(LogLevel.None)),
+			Effect.result(effect).pipe(
+				Effect.provide(serviceLayer),
+				Effect.provideService(References.MinimumLogLevel, "None"),
+			),
 		),
 	};
 };
@@ -72,12 +75,12 @@ describe("BranchManager.manage", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
-		if (Either.isRight(either)) {
-			expect(either.right.branch).toBe("pnpm/config");
-			expect(either.right.created).toBe(true);
-			expect(either.right.upToDate).toBe(true);
-			expect(either.right.baseRef).toBe("main");
+		expect(Result.isSuccess(either)).toBe(true);
+		if (Result.isSuccess(either)) {
+			expect(either.success.branch).toBe("pnpm/config");
+			expect(either.success.created).toBe(true);
+			expect(either.success.upToDate).toBe(true);
+			expect(either.success.baseRef).toBe("main");
 		}
 		// Branch should have been created in the test state
 		expect(state.branches.get("pnpm/config")).toBe("main-sha-123");
@@ -98,11 +101,11 @@ describe("BranchManager.manage", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
-		if (Either.isRight(either)) {
-			expect(either.right.branch).toBe("pnpm/config");
-			expect(either.right.created).toBe(false);
-			expect(either.right.upToDate).toBe(true);
+		expect(Result.isSuccess(either)).toBe(true);
+		if (Result.isSuccess(either)) {
+			expect(either.success.branch).toBe("pnpm/config");
+			expect(either.success.created).toBe(false);
+			expect(either.success.upToDate).toBe(true);
 		}
 		// Branch should have been recreated with main SHA
 		expect(state.branches.get("pnpm/config")).toBe("main-sha-456");
@@ -150,15 +153,15 @@ describe("BranchManager.manage", () => {
 		const serviceLayer = BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(branchLayer, commitLayer, cmdLayer)));
 
 		const either = await Effect.runPromise(
-			Effect.either(
+			Effect.result(
 				Effect.gen(function* () {
 					const manager = yield* BranchManager;
 					return yield* manager.manage("pnpm/config", "main");
 				}),
-			).pipe(Effect.provide(serviceLayer), Logger.withMinimumLogLevel(LogLevel.None)),
+			).pipe(Effect.provide(serviceLayer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
-		expect(Either.isRight(either)).toBe(true);
+		expect(Result.isSuccess(either)).toBe(true);
 	});
 
 	it("defaults to 'main' when no default branch specified", async () => {
@@ -173,9 +176,9 @@ describe("BranchManager.manage", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
-		if (Either.isRight(either)) {
-			expect(either.right.baseRef).toBe("main");
+		expect(Result.isSuccess(either)).toBe(true);
+		if (Result.isSuccess(either)) {
+			expect(either.success.baseRef).toBe("main");
 		}
 	});
 });
@@ -197,7 +200,7 @@ describe("BranchManager.commitChanges", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
+		expect(Result.isSuccess(either)).toBe(true);
 		// No commits should have been created
 		expect(commitState.commits).toHaveLength(0);
 	});
@@ -227,7 +230,7 @@ describe("BranchManager.commitChanges", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
+		expect(Result.isSuccess(either)).toBe(true);
 		// A tree and commit should have been created via commitFiles
 		expect(commitState.trees.length).toBeGreaterThanOrEqual(1);
 		expect(commitState.commits).toHaveLength(1);
@@ -264,7 +267,7 @@ describe("BranchManager.commitChanges", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
+		expect(Result.isSuccess(either)).toBe(true);
 		// Should have created a tree with the deletion entry
 		expect(commitState.trees).toHaveLength(1);
 		expect(commitState.trees[0].entries).toEqual([{ path: "deleted-file.ts", mode: "100644", sha: null }]);
@@ -294,7 +297,7 @@ describe("BranchManager.commitChanges", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
+		expect(Result.isSuccess(either)).toBe(true);
 		// No commit should be created since no files could be read
 		expect(commitState.commits).toHaveLength(0);
 	});
@@ -329,7 +332,7 @@ describe("BranchManager.commitChanges", () => {
 
 		const either = await result;
 
-		expect(Either.isRight(either)).toBe(true);
+		expect(Result.isSuccess(either)).toBe(true);
 		// No commit should be created from a mode-only change.
 		expect(commitState.commits).toHaveLength(0);
 		expect(commitState.trees).toHaveLength(0);
@@ -349,7 +352,7 @@ describe("BranchManager.validateBranches", () => {
 			}),
 			branches,
 		);
-		expect(Either.isRight(await result)).toBe(true);
+		expect(Result.isSuccess(await result)).toBe(true);
 	});
 
 	it("succeeds when target equals source (skips redundant check)", async () => {
@@ -361,7 +364,7 @@ describe("BranchManager.validateBranches", () => {
 			}),
 			branches,
 		);
-		expect(Either.isRight(await result)).toBe(true);
+		expect(Result.isSuccess(await result)).toBe(true);
 	});
 
 	it("fails with ActionInputError when source branch is missing", async () => {
@@ -374,10 +377,10 @@ describe("BranchManager.validateBranches", () => {
 			branches,
 		);
 		const either = await result;
-		expect(Either.isLeft(either)).toBe(true);
-		if (Either.isLeft(either)) {
-			expect(either.left._tag).toBe("ActionInputError");
-			expect((either.left as { inputName: string }).inputName).toBe("source-branch");
+		expect(Result.isFailure(either)).toBe(true);
+		if (Result.isFailure(either)) {
+			expect(either.failure._tag).toBe("ActionInputError");
+			expect((either.failure as { inputName: string }).inputName).toBe("source-branch");
 		}
 	});
 
@@ -391,10 +394,10 @@ describe("BranchManager.validateBranches", () => {
 			branches,
 		);
 		const either = await result;
-		expect(Either.isLeft(either)).toBe(true);
-		if (Either.isLeft(either)) {
-			expect(either.left._tag).toBe("ActionInputError");
-			expect((either.left as { inputName: string }).inputName).toBe("target-branch");
+		expect(Result.isFailure(either)).toBe(true);
+		if (Result.isFailure(either)) {
+			expect(either.failure._tag).toBe("ActionInputError");
+			expect((either.failure as { inputName: string }).inputName).toBe("target-branch");
 		}
 	});
 });
@@ -414,7 +417,7 @@ describe("BranchManager.ensureBaseHistory", () => {
 			undefined,
 			responses,
 		);
-		expect(Either.isRight(await result)).toBe(true);
+		expect(Result.isSuccess(await result)).toBe(true);
 	});
 
 	it("fetches and deepens, then succeeds (warns) when the base is unavailable", async () => {
@@ -435,6 +438,6 @@ describe("BranchManager.ensureBaseHistory", () => {
 			undefined,
 			responses,
 		);
-		expect(Either.isRight(await result)).toBe(true);
+		expect(Result.isSuccess(await result)).toBe(true);
 	});
 });

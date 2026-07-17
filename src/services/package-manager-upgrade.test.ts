@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NpmRegistry, NpmRegistryError, NpmRegistryTest } from "@savvy-web/github-action-effects";
-import { Effect, Layer, LogLevel, Logger } from "effect";
+import { Effect, Layer, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PackageManagerUpgrade, PackageManagerUpgradeLive } from "./package-manager-upgrade.js";
 
@@ -35,7 +35,7 @@ const registry = NpmRegistryTest.layer({
 });
 
 const runWith = <A>(
-	fn: (service: Effect.Effect.Success<typeof PackageManagerUpgrade>) => Effect.Effect<A, unknown>,
+	fn: (service: Effect.Success<typeof PackageManagerUpgrade>) => Effect.Effect<A, unknown>,
 	registryLayer: Layer.Layer<NpmRegistry> = registry,
 ) =>
 	Effect.runPromise(
@@ -44,26 +44,26 @@ const runWith = <A>(
 			return yield* fn(service);
 		}).pipe(
 			Effect.provide(PackageManagerUpgradeLive.pipe(Layer.provide(registryLayer))),
-			Logger.withMinimumLogLevel(LogLevel.None),
+			Effect.provideService(References.MinimumLogLevel, "None"),
 		) as Effect.Effect<A, never, never>,
 	);
 
-const run = <A>(fn: (service: Effect.Effect.Success<typeof PackageManagerUpgrade>) => Effect.Effect<A, unknown>) =>
+const run = <A>(fn: (service: Effect.Success<typeof PackageManagerUpgrade>) => Effect.Effect<A, unknown>) =>
 	runWith(fn);
 
 const runEither = <A, E>(
-	fn: (service: Effect.Effect.Success<typeof PackageManagerUpgrade>) => Effect.Effect<A, E>,
+	fn: (service: Effect.Success<typeof PackageManagerUpgrade>) => Effect.Effect<A, E>,
 	registryLayer: Layer.Layer<NpmRegistry> = registry,
 ) =>
 	Effect.runPromise(
-		Effect.either(
+		Effect.result(
 			Effect.gen(function* () {
 				const service = yield* PackageManagerUpgrade;
 				return yield* fn(service);
 			}),
 		).pipe(
 			Effect.provide(PackageManagerUpgradeLive.pipe(Layer.provide(registryLayer))),
-			Logger.withMinimumLogLevel(LogLevel.None),
+			Effect.provideService(References.MinimumLogLevel, "None"),
 		),
 	);
 
@@ -455,9 +455,9 @@ describe("PackageManagerUpgrade", () => {
 	it("fails when package.json does not exist", async () => {
 		const result = await runEither((s) => s.upgrade("true", "pnpm", root));
 
-		expect(result._tag).toBe("Left");
-		if (result._tag === "Left") {
-			expect(result.left._tag).toBe("FileSystemError");
+		expect(result._tag).toBe("Failure");
+		if (result._tag === "Failure") {
+			expect(result.failure._tag).toBe("FileSystemError");
 		}
 	});
 
@@ -466,9 +466,9 @@ describe("PackageManagerUpgrade", () => {
 
 		const result = await runEither((s) => s.upgrade("true", "pnpm", root));
 
-		expect(result._tag).toBe("Left");
-		if (result._tag === "Left") {
-			expect(result.left._tag).toBe("FileSystemError");
+		expect(result._tag).toBe("Failure");
+		if (result._tag === "Failure") {
+			expect(result.failure._tag).toBe("FileSystemError");
 		}
 	});
 
@@ -477,9 +477,9 @@ describe("PackageManagerUpgrade", () => {
 
 		const result = await runEither((s) => s.upgrade("true", "pnpm", root), NpmRegistryTest.empty());
 
-		expect(result._tag).toBe("Left");
-		if (result._tag === "Left") {
-			expect(result.left._tag).toBe("FileSystemError");
+		expect(result._tag).toBe("Failure");
+		if (result._tag === "Failure") {
+			expect(result.failure._tag).toBe("FileSystemError");
 		}
 	});
 });

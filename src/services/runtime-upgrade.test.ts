@@ -1,8 +1,8 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Logger } from "effect";
-import { BunResolver, DenoResolver, NodeResolver, VersionNotFoundError } from "runtime-resolver";
+import { BunResolver, DenoResolver, NoMatchingVersionError, NodeResolver } from "@effected/runtimes";
+import { Effect, Layer, Logger, References } from "effect";
 import { describe, expect, it } from "vitest";
 import type { RuntimeUpgradeConfig } from "./runtime-upgrade.js";
 import { RuntimeUpgrade, RuntimeUpgradeLive } from "./runtime-upgrade.js";
@@ -14,22 +14,21 @@ const readPackageJson = (dir: string) => JSON.parse(readFileSync(join(dir, "pack
 
 // Mock resolver whose .latest is fixed per runtime; fails when range matches nothing.
 const makeResolver = (latest: string | null) => ({
-	resolve: (_options?: { semverRange?: string }) =>
+	resolve: (_options?: { range?: string }) =>
 		latest === null
-			? Effect.fail(new VersionNotFoundError({} as never))
+			? Effect.fail(new NoMatchingVersionError({ runtime: "node", constraint: "mock" }))
 			: Effect.succeed({ source: "cache" as const, versions: [latest], latest }),
 });
 
 const FALSE_CFG: RuntimeUpgradeConfig = { node: "false", deno: "false", bun: "false" };
 
 /** Collect log lines so warnings are asserted, not assumed. */
-const capturingLogger = (sink: string[]) =>
-	Logger.replace(
-		Logger.defaultLogger,
-		Logger.make<unknown, void>(({ logLevel, message }) => {
-			sink.push(`${logLevel.label} ${String(message)}`);
-		}),
-	);
+const capturingLogger = (sink: string[]) => {
+	const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
+		sink.push(`${logLevel} ${String(message)}`);
+	});
+	return Layer.succeed(References.CurrentLoggers, new Set([logger]));
+};
 
 const runWithLogs = (
 	dir: string,
@@ -61,7 +60,7 @@ const run = async (
 const warnedAbout = (logs: ReadonlyArray<string>, runtime: string) =>
 	logs.some(
 		(l) =>
-			l.startsWith("WARN") && l.includes(`upgrade-runtime-${runtime}`) && l.includes("no devEngines.runtime entry"),
+			l.startsWith("Warn") && l.includes(`upgrade-runtime-${runtime}`) && l.includes("no devEngines.runtime entry"),
 	);
 
 describe("RuntimeUpgrade service", () => {

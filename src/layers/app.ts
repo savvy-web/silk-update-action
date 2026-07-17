@@ -6,8 +6,9 @@
  * @module layers/app
  */
 
-import { FetchHttpClient } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
+import { BunResolver, DenoResolver, NodeResolver, GitHubClient as RuntimesGitHubClient } from "@effected/runtimes";
+import { LockfileReader, PackageManagerDetector, WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import {
 	ActionStateLive,
 	CheckRunLive,
@@ -22,29 +23,7 @@ import {
 } from "@savvy-web/github-action-effects";
 import { Changesets as SilkChangesets } from "@savvy-web/silk-effects";
 import { Layer } from "effect";
-import {
-	AutoBunCacheLive,
-	AutoDenoCacheLive,
-	AutoNodeCacheLive,
-	BunResolverLive,
-	BunVersionFetcherLive,
-	DenoResolverLive,
-	DenoVersionFetcherLive,
-	GitHubAutoAuth,
-	GitHubClientLive,
-	NodeResolverLive,
-	NodeScheduleFetcherLive,
-	NodeVersionFetcherLive,
-	OfflineBunCacheLive,
-	OfflineDenoCacheLive,
-	OfflineNodeCacheLive,
-} from "runtime-resolver";
-import {
-	LockfileReaderLive,
-	PackageManagerDetectorLive,
-	WorkspaceDiscoveryLive,
-	WorkspaceRootLive,
-} from "workspaces-effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
 import { BranchManagerLive } from "../services/branch.js";
 import { CatalogConfigDepsLive } from "../services/catalog-config-deps.js";
@@ -57,38 +36,22 @@ import { RuntimeUpgradeLive } from "../services/runtime-upgrade.js";
 
 /* v8 ignore start - pure Layer wiring, tested indirectly via service integration tests */
 
-/** Build the three runtime-resolver services, offline (bundled) or live (Auto, falls back to bundled). */
+/** Build the three @effected/runtimes resolver services, offline (bundled snapshot) or live (feed, falls back to snapshot). */
 const makeRuntimeResolvers = (live: boolean) => {
 	if (!live) {
-		return Layer.mergeAll(
-			NodeResolverLive.pipe(Layer.provide(OfflineNodeCacheLive)),
-			DenoResolverLive.pipe(Layer.provide(OfflineDenoCacheLive)),
-			BunResolverLive.pipe(Layer.provide(OfflineBunCacheLive)),
-		);
+		// The bundled offline snapshot: no IO, no requirements.
+		return Layer.mergeAll(NodeResolver.layerOffline, DenoResolver.layerOffline, BunResolver.layerOffline);
 	}
-	// Live path: runtime-resolver fetches GitHub/nodejs.org data. Auth comes from
-	// GitHubAutoAuth (reads GITHUB_TOKEN / PAT from env); Layer.orDie keeps the E
-	// channel `never` (GitHubAutoAuth only fails when GITHUB_APP_* env is set,
-	// which this action does not use — it consumes app credentials as inputs).
-	// Auto*CacheLive falls back to bundled data on any fetch failure, so an
-	// unauthenticated live path still works. Caveat: if a workflow sets GITHUB_APP_*
-	// env vars for some other purpose, the orDie defect fires at layer-construction
-	// time and would escape program.ts's Effect.catchAll (before any fallback can
-	// engage). Acceptable because runtime-data: live is opt-in; revisit orDie if
-	// that constraint changes.
-	const githubLayer = GitHubClientLive.pipe(Layer.provide(GitHubAutoAuth), Layer.orDie);
-	const nodeFetchers = Layer.merge(
-		NodeVersionFetcherLive.pipe(Layer.provide(githubLayer)),
-		NodeScheduleFetcherLive.pipe(Layer.provide(githubLayer)),
-	);
+	// Live path: NodeResolver reads nodejs.org (unauthenticated, needs only an
+	// HttpClient); Bun/Deno read GitHub releases through the authenticated seam.
+	// GitHubClient.layerDefault pre-wires GitHubAuth.layerConfig + FetchHttpClient,
+	// so the live graph is self-contained (E = never). Each resolver's `.layer`
+	// falls back to the bundled snapshot on any fetch failure (logging a warning).
+	const github = RuntimesGitHubClient.layerDefault;
 	return Layer.mergeAll(
-		NodeResolverLive.pipe(Layer.provide(AutoNodeCacheLive.pipe(Layer.provide(nodeFetchers)))),
-		DenoResolverLive.pipe(
-			Layer.provide(AutoDenoCacheLive.pipe(Layer.provide(DenoVersionFetcherLive.pipe(Layer.provide(githubLayer))))),
-		),
-		BunResolverLive.pipe(
-			Layer.provide(AutoBunCacheLive.pipe(Layer.provide(BunVersionFetcherLive.pipe(Layer.provide(githubLayer))))),
-		),
+		NodeResolver.layer.pipe(Layer.provide(FetchHttpClient.layer)),
+		DenoResolver.layer.pipe(Layer.provide(github)),
+		BunResolver.layer.pipe(Layer.provide(github)),
 	);
 };
 
@@ -99,7 +62,7 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 	// here (backed by NodeContext's FileSystem) so the layer is self-contained
 	// and the withCheckRun callback's R = never requirement holds; Layer.orDie
 	// turns a missing/unreadable token into a fatal defect.
-	const actionState = ActionStateLive.pipe(Layer.provide(NodeContext.layer));
+	const actionState = ActionStateLive.pipe(Layer.provide(NodeServices.layer));
 	const githubClient = GitHubToken.client().pipe(Layer.provide(actionState), Layer.orDie);
 
 	const ghGraphql = GitHubGraphQLLive.pipe(Layer.provide(githubClient));
@@ -108,15 +71,16 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 	const gitCommit = GitCommitLive.pipe(Layer.provide(githubClient));
 	const prLayer = PullRequestLive.pipe(Layer.provide(Layer.merge(githubClient, ghGraphql)));
 
-	// Platform layer (FileSystem, Path) for workspaces-effect's WorkspaceDiscovery.
-	const platform = NodeContext.layer;
-	const workspaceRoot = WorkspaceRootLive.pipe(Layer.provide(platform));
-	const workspaceDiscovery = WorkspaceDiscoveryLive.pipe(Layer.provide(Layer.merge(workspaceRoot, platform)));
-	const packageManagerDetector = PackageManagerDetectorLive.pipe(Layer.provide(platform));
+	// Platform layer (FileSystem, Path, ChildProcessSpawner, …) for @effected/workspaces.
+	const platform = NodeServices.layer;
+	const workspaceRoot = WorkspaceRoot.layer.pipe(Layer.provide(platform));
+	const workspaceDiscovery = WorkspaceDiscovery.layer().pipe(Layer.provide(Layer.merge(workspaceRoot, platform)));
+	const packageManagerDetector = PackageManagerDetector.layer.pipe(Layer.provide(platform));
 	// The lockfile is the record of which config-dependency version is actually
 	// installed — the merge base for CatalogConfigDeps' three-way catalog merge.
-	const lockfileReader = LockfileReaderLive.pipe(
-		Layer.provide(Layer.mergeAll(workspaceRoot, packageManagerDetector, platform)),
+	// @effected/workspaces' LockfileReader also depends on WorkspaceDiscovery.
+	const lockfileReader = LockfileReader.layer().pipe(
+		Layer.provide(Layer.mergeAll(workspaceRoot, packageManagerDetector, workspaceDiscovery, platform)),
 	);
 
 	// DepsRegen (from @savvy-web/silk-effects) is the source of truth for

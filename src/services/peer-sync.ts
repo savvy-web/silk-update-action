@@ -8,9 +8,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { SemVer } from "@effected/semver";
+import { WorkspaceDiscovery } from "@effected/workspaces";
 import { Effect } from "effect";
-import { parseValidSemVer } from "semver-effect";
-import { WorkspaceDiscovery } from "workspaces-effect";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
@@ -42,11 +42,8 @@ export const computePeerRange = (params: {
 		const parsed = parseSpecifier(currentPeerSpecifier);
 		if (!parsed) return null;
 
-		// Standalone `parseValidSemVer` instead of the `SemVer.parse` static alias:
-		// that alias is attached by post-class assignment in semver-effect and gets
-		// tree-shaken out of the bundled dist (see the parseRange note in program.ts).
-		const oldSemver = yield* parseValidSemVer(oldVersion).pipe(Effect.catchAll(() => Effect.succeed(null)));
-		const newSemver = yield* parseValidSemVer(newVersion).pipe(Effect.catchAll(() => Effect.succeed(null)));
+		const oldSemver = yield* SemVer.parse(oldVersion).pipe(Effect.catch(() => Effect.succeed(null)));
+		const newSemver = yield* SemVer.parse(newVersion).pipe(Effect.catch(() => Effect.succeed(null)));
 
 		if (!oldSemver || !newSemver) return null;
 
@@ -70,7 +67,7 @@ export const computePeerRange = (params: {
 export const syncPeers = (
 	config: PeerSyncConfig,
 	devUpdates: ReadonlyArray<DependencyUpdateResult>,
-	workspaceRoot: string = process.cwd(),
+	_workspaceRoot: string = process.cwd(),
 ): Effect.Effect<ReadonlyArray<DependencyUpdateResult>, FileSystemError, WorkspaceDiscovery> =>
 	Effect.gen(function* () {
 		if (config.lock.length === 0 && config.minor.length === 0) return [];
@@ -83,10 +80,10 @@ export const syncPeers = (
 		for (const pkg of config.minor) strategyMap.set(pkg, "minor");
 
 		const discovery = yield* WorkspaceDiscovery;
-		const packages = yield* discovery.listPackages(workspaceRoot).pipe(
-			Effect.catchAll((error) =>
+		const packages = yield* discovery.listPackages().pipe(
+			Effect.catch((error) =>
 				Effect.gen(function* () {
-					yield* Effect.logWarning(`Failed to get workspace info: ${error.reason}`);
+					yield* Effect.logWarning(`Failed to get workspace info: ${error}`);
 					return [] as ReadonlyArray<{ readonly name: string; readonly path: string }>;
 				}),
 			),
@@ -113,7 +110,7 @@ export const syncPeers = (
 				try: () => readFileSync(pkgPath, "utf-8"),
 				catch: (e) => new FileSystemError({ operation: "read", path: pkgPath, reason: String(e) }),
 			}).pipe(
-				Effect.catchAll((e) =>
+				Effect.catch((e) =>
 					Effect.gen(function* () {
 						yield* Effect.logWarning(`Failed to read ${pkgPath}: ${e.reason}`);
 						return null;
@@ -154,7 +151,7 @@ export const syncPeers = (
 			yield* Effect.try({
 				try: () => writeFileSync(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf-8"),
 				catch: (e) => new FileSystemError({ operation: "write", path: pkgPath, reason: String(e) }),
-			}).pipe(Effect.catchAll((e) => Effect.logWarning(`Failed to write ${pkgPath}: ${e.reason}`)));
+			}).pipe(Effect.catch((e) => Effect.logWarning(`Failed to write ${pkgPath}: ${e.reason}`)));
 
 			yield* Effect.logInfo(
 				`Synced peer ${update.dependency} in ${update.package}: ${currentPeerSpecifier} -> ${newPeerSpecifier}`,

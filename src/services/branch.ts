@@ -9,7 +9,15 @@
  */
 
 import { readFileSync } from "node:fs";
-import type { CommandRunnerError, FileChange, GitBranchError, GitCommitError } from "@savvy-web/github-action-effects";
+import type {
+	CommandRunnerError,
+	CommandRunnerShape,
+	FileChange,
+	GitBranchError,
+	GitBranchShape,
+	GitCommitError,
+	GitCommitShape,
+} from "@savvy-web/github-action-effects";
 import { ActionInputError, CommandRunner, GitBranch, GitCommit } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
 
@@ -19,7 +27,7 @@ import type { BranchResult } from "../schemas/domain.js";
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class BranchManager extends Context.Tag("BranchManager")<
+export class BranchManager extends Context.Service<
 	BranchManager,
 	{
 		readonly manage: (
@@ -45,7 +53,7 @@ export class BranchManager extends Context.Tag("BranchManager")<
 		 */
 		readonly ensureBaseHistory: (base: string) => Effect.Effect<void, CommandRunnerError>;
 	}
->() {}
+>()("BranchManager") {}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Live Layer
@@ -77,8 +85,8 @@ export const BranchManagerLive = Layer.effect(
  * - If branch exists: delete and recreate from default branch (fresh start)
  */
 const manageBranchImpl = (
-	branch: Context.Tag.Service<typeof GitBranch>,
-	cmd: Context.Tag.Service<typeof CommandRunner>,
+	branch: GitBranchShape,
+	cmd: CommandRunnerShape,
 	branchName: string,
 	defaultBranch: string,
 ): Effect.Effect<BranchResult, GitBranchError | CommandRunnerError> =>
@@ -119,7 +127,7 @@ const manageBranchImpl = (
 
 		// Delete the remote branch and recreate it from the source branch
 		yield* branch.delete(branchName).pipe(
-			Effect.catchAll((error) =>
+			Effect.catch((error) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(`Failed to delete branch: ${error.reason}`);
 				}),
@@ -148,7 +156,7 @@ const manageBranchImpl = (
  * already covers it, so the second existence check is skipped.
  */
 const validateBranchesImpl = (
-	branch: Context.Tag.Service<typeof GitBranch>,
+	branch: GitBranchShape,
 	source: string,
 	target: string,
 ): Effect.Effect<void, GitBranchError | ActionInputError> =>
@@ -188,8 +196,8 @@ const validateBranchesImpl = (
  * Commits are automatically verified/signed by GitHub when using a GitHub App token.
  */
 const commitChangesImpl = (
-	commit: Context.Tag.Service<typeof GitCommit>,
-	cmd: Context.Tag.Service<typeof CommandRunner>,
+	commit: GitCommitShape,
+	cmd: CommandRunnerShape,
 	message: string,
 	branchName: string,
 ): Effect.Effect<void, GitCommitError | CommandRunnerError> =>
@@ -254,17 +262,17 @@ const commitChangesImpl = (
 	});
 
 /** True when `git merge-base <base> HEAD` resolves (ref exists AND a common ancestor is present). */
-const hasMergeBase = (cmd: Context.Tag.Service<typeof CommandRunner>, base: string): Effect.Effect<boolean, never> =>
+const hasMergeBase = (cmd: CommandRunnerShape, base: string): Effect.Effect<boolean, never> =>
 	cmd.execCapture("git", ["merge-base", base, "HEAD"]).pipe(
 		Effect.as(true),
-		Effect.catchAll(() => Effect.succeed(false)),
+		Effect.catch(() => Effect.succeed(false)),
 	);
 
 /** True when the repository is a shallow clone (history truncated). */
-const isShallowRepo = (cmd: Context.Tag.Service<typeof CommandRunner>): Effect.Effect<boolean, never> =>
+const isShallowRepo = (cmd: CommandRunnerShape): Effect.Effect<boolean, never> =>
 	cmd.execCapture("git", ["rev-parse", "--is-shallow-repository"]).pipe(
 		Effect.map((r) => r.stdout.trim() === "true"),
-		Effect.catchAll(() => Effect.succeed(false)),
+		Effect.catch(() => Effect.succeed(false)),
 	);
 
 /**
@@ -278,10 +286,7 @@ const isShallowRepo = (cmd: Context.Tag.Service<typeof CommandRunner>): Effect.E
  * (DepsRegen will still surface a precise error if the diff genuinely can't be
  * computed).
  */
-const ensureBaseHistoryImpl = (
-	cmd: Context.Tag.Service<typeof CommandRunner>,
-	base: string,
-): Effect.Effect<void, CommandRunnerError> =>
+const ensureBaseHistoryImpl = (cmd: CommandRunnerShape, base: string): Effect.Effect<void, CommandRunnerError> =>
 	Effect.gen(function* () {
 		if (yield* hasMergeBase(cmd, base)) {
 			yield* Effect.logDebug(`Base history for "${base}" already present; no fetch needed`);

@@ -10,6 +10,8 @@
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { Range } from "@effected/semver";
+import { WorkspaceDiscovery } from "@effected/workspaces";
 import type { CommandRunnerError } from "@savvy-web/github-action-effects";
 import {
 	Action,
@@ -19,9 +21,7 @@ import {
 	CheckRun,
 	CommandRunner,
 } from "@savvy-web/github-action-effects";
-import { Config, Duration, Effect, LogLevel, Logger } from "effect";
-import { parseRange } from "semver-effect";
-import { WorkspaceDiscovery } from "workspaces-effect";
+import { Config, Duration, Effect, References } from "effect";
 import { makeAppLayer } from "./layers/app.js";
 import type { CatalogDelta, ChangesetFile, DependencyUpdateResult, PullRequestResult } from "./schemas/domain.js";
 import { BranchManager } from "./services/branch.js";
@@ -69,7 +69,7 @@ export const runCommands = (commands: ReadonlyArray<string>): Effect.Effect<RunC
 			// Split command into executable and args for CommandRunner
 			const result = yield* runner.execCapture("sh", ["-c", command]).pipe(
 				Effect.map(() => ({ success: true as const })),
-				Effect.catchAll((error: CommandRunnerError) =>
+				Effect.catch((error: CommandRunnerError) =>
 					Effect.succeed({
 						success: false as const,
 						error: error.reason ?? "Unknown error",
@@ -260,7 +260,7 @@ export const program = Effect.gen(function* () {
 	const changesets = yield* Config.boolean("changesets").pipe(Config.withDefault(true));
 	const autoMerge = yield* Config.string("auto-merge").pipe(Config.withDefault(""));
 	const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
-	const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
+	const timeout = yield* Config.int("timeout").pipe(Config.withDefault(180));
 	const rawRuntimeNode = yield* Config.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
 	const rawRuntimeDeno = yield* Config.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
 	const rawRuntimeBun = yield* Config.string("upgrade-runtime-bun").pipe(Config.withDefault("false"));
@@ -283,7 +283,7 @@ export const program = Effect.gen(function* () {
 			// `Range.parse = parseRange` static alias is attached by post-class
 			// assignment in semver-effect and gets tree-shaken out of the bundled
 			// dist, so calling it fails at runtime with "Range.parse is not a function".
-			yield* parseRange(value).pipe(
+			yield* Range.parse(value).pipe(
 				Effect.mapError(
 					(e) =>
 						new ActionInputError({
@@ -339,7 +339,7 @@ export const program = Effect.gen(function* () {
 
 	// Resolve log level: normal (info) or debug when step debug logging is
 	// enabled on the runner (RUNNER_DEBUG=1 via ACTIONS_STEP_DEBUG).
-	const effectLogLevel = Action.resolveLogLevel("auto") === "debug" ? LogLevel.Debug : LogLevel.Info;
+	const effectLogLevel = Action.resolveLogLevel("auto") === "debug" ? "Debug" : "Info";
 
 	yield* Effect.logDebug("Debug mode enabled - verbose logging active");
 	yield* Effect.logDebug(
@@ -386,11 +386,11 @@ export const program = Effect.gen(function* () {
 		headSha,
 		appLayer,
 	)
-		.pipe(Logger.withMinimumLogLevel(effectLogLevel))
+		.pipe(Effect.provideService(References.MinimumLogLevel, effectLogLevel))
 		.pipe(
-			Effect.timeoutFail({
+			Effect.timeoutOrElse({
 				duration: Duration.seconds(timeout),
-				onTimeout: () => new Error(`Action timed out after ${timeout} seconds`),
+				orElse: () => Effect.fail(new Error(`Action timed out after ${timeout} seconds`)),
 			}),
 		);
 });
@@ -473,9 +473,9 @@ export const innerProgram = (
 						// Cheap, already-provided lookup used only to enrich the Run
 						// context line with a package count — never fails the run.
 						const discovery = yield* WorkspaceDiscovery;
-						const packageCount = yield* discovery.listPackages(detected.root).pipe(
+						const packageCount = yield* discovery.listPackages().pipe(
 							Effect.map((pkgs) => pkgs.length),
-							Effect.catchAll(() => Effect.succeed(null)),
+							Effect.catch(() => Effect.succeed(null)),
 						);
 
 						yield* Effect.logInfo("Run context");
@@ -548,7 +548,7 @@ export const innerProgram = (
 							const outcome: PackageManagerUpgradeOutcome = yield* packageManagerUpgradeService
 								.upgrade(pmMode, detected.pm, detected.root)
 								.pipe(
-									Effect.catchAll((error) =>
+									Effect.catch((error) =>
 										Effect.gen(function* () {
 											yield* Effect.logWarning(`Failed to upgrade ${detected.pm}: ${error.reason}`);
 											const fallback: PackageManagerUpgradeOutcome = {
@@ -615,7 +615,7 @@ export const innerProgram = (
 						yield* Effect.logInfo(`Step: runtimes — ${runtimeModeParts.join(" · ")}`);
 						const runtimeUpgradeService = yield* RuntimeUpgrade;
 						const runtimeResults = yield* runtimeUpgradeService.upgrade(inputs.runtime, detected.root).pipe(
-							Effect.catchAll((error) =>
+							Effect.catch((error) =>
 								Effect.gen(function* () {
 									yield* Effect.logWarning(`Failed to upgrade runtimes: ${error.reason}`);
 									return [] as const;
@@ -635,7 +635,7 @@ export const innerProgram = (
 
 						// ── config dependencies ─────────────────────────────────────────
 						const workspaceBefore = yield* readWorkspaceYaml(detected.root).pipe(
-							Effect.catchAll(() => Effect.succeed(null)),
+							Effect.catch(() => Effect.succeed(null)),
 						);
 						yield* Effect.logDebug(`pnpm-workspace.yaml (before): ${JSON.stringify(workspaceBefore)}`);
 
@@ -773,7 +773,7 @@ export const innerProgram = (
 							yield* formatWorkspaceYaml(detected.root);
 
 							const workspaceAfter = yield* readWorkspaceYaml(detected.root).pipe(
-								Effect.catchAll(() => Effect.succeed(null)),
+								Effect.catch(() => Effect.succeed(null)),
 							);
 							yield* Effect.logDebug(`pnpm-workspace.yaml (after): ${JSON.stringify(workspaceAfter)}`);
 						} else {
@@ -928,7 +928,7 @@ export const innerProgram = (
 									configDeltas,
 								)
 								.pipe(
-									Effect.catchAll((error) =>
+									Effect.catch((error) =>
 										Effect.gen(function* () {
 											yield* Effect.logWarning(`PR creation failed: ${error.reason}`);
 											return null;

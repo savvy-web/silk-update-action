@@ -1,18 +1,18 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Either, Layer, LogLevel, Logger } from "effect";
-import { describe, expect, it } from "vitest";
-import type { WorkspacePackage } from "workspaces-effect";
-import {
+import type {
 	BunExtension,
 	ImporterDependency,
-	LockfileData,
 	LockfileImporter,
+	Lockfile as LockfileModel,
 	PnpmExtension,
 	ResolvedPackage,
-	WorkspaceDiscovery,
-} from "workspaces-effect";
+} from "@effected/lockfiles";
+import type { WorkspacePackage } from "@effected/workspaces";
+import { WorkspaceDiscovery } from "@effected/workspaces";
+import { Effect, Layer, Logger, References, Result } from "effect";
+import { describe, expect, it } from "vitest";
 import type { LockfileChange } from "../schemas/domain.js";
 import { LOCKFILE_NAMES, Lockfile, LockfileLive, groupChangesByPackage } from "./lockfile.js";
 
@@ -22,14 +22,17 @@ import { LOCKFILE_NAMES, Lockfile, LockfileLive, groupChangesByPackage } from ".
  * Cast to WorkspacePackage since tests only need name/path on mock objects.
  */
 const MockWorkspacesLive = Layer.succeed(WorkspaceDiscovery, {
-	listPackages: (_cwd) =>
+	listPackages: () =>
 		Effect.succeed([
 			{ name: "@savvy-web/core", path: "/workspace/pkgs/core" },
 			{ name: "@savvy-web/utils", path: "/workspace/pkgs/utils" },
 		] as unknown as ReadonlyArray<WorkspacePackage>),
 	getPackage: () => Effect.die("getPackage not used in lockfile tests"),
 	refresh: () => Effect.void,
-	importerMap: (_cwd) =>
+	info: () => Effect.die("info not used in lockfile tests"),
+	resolveFile: () => Effect.die("resolveFile not used in lockfile tests"),
+	resolveFiles: () => Effect.die("resolveFiles not used in lockfile tests"),
+	importerMap: () =>
 		Effect.succeed(
 			new Map<string, WorkspacePackage>([
 				[".", { name: "test-root", path: "/workspace" } as unknown as WorkspacePackage],
@@ -44,57 +47,71 @@ const FailingWorkspacesLive = Layer.succeed(WorkspaceDiscovery, {
 	listPackages: () => Effect.die("listPackages not used"),
 	getPackage: () => Effect.die("getPackage not used"),
 	refresh: () => Effect.void,
+	info: () => Effect.die("info not used"),
+	resolveFile: () => Effect.die("resolveFile not used"),
+	resolveFiles: () => Effect.die("resolveFiles not used"),
 	importerMap: () => Effect.fail(new Error("boom") as never),
 });
 
 type DepType = ImporterDependency["depType"];
 
+// The compare code only reads `.specifier.raw` (an `@effected/npm`
+// ClassifiedSpecifier), `.path`, `.name`, `.depType`, `.format`, `.packages`,
+// `.importers`, `.extension`. These helpers build plain objects cast to the
+// model types rather than validating `Lockfile.parse` instances — construction
+// is not under test here, the comparison is.
+
 /** Build a LockfileImporter from a compact `[name, specifier, depType]` list. */
 const importer = (path: string, deps: ReadonlyArray<[string, string, DepType?]>): LockfileImporter =>
-	new LockfileImporter({
+	({
 		path,
-		dependencies: deps.map(
-			([name, specifier, depType]) => new ImporterDependency({ name, specifier, depType: depType ?? "dependencies" }),
-		),
-	});
+		dependencies: deps.map(([name, specifier, depType]) => ({
+			name,
+			specifier: { raw: specifier },
+			depType: depType ?? "dependencies",
+		})),
+	}) as unknown as LockfileImporter;
 
 interface LockfileOverrides {
-	readonly packageManager?: LockfileData["packageManager"];
+	readonly format?: LockfileModel["format"];
 	readonly packages?: ReadonlyArray<ResolvedPackage>;
 	readonly importers?: ReadonlyArray<LockfileImporter>;
-	readonly pmSpecific?: LockfileData["pmSpecific"];
+	readonly extension?: LockfileModel["extension"];
 }
 
-/** Construct a minimal LockfileData for testing. */
-const makeLockfile = (overrides: LockfileOverrides = {}): LockfileData =>
-	new LockfileData({
-		packageManager: overrides.packageManager ?? "pnpm",
-		lockfileVersion: "9.0",
+/** Construct a minimal Lockfile for testing. */
+const makeLockfile = (overrides: LockfileOverrides = {}): LockfileModel =>
+	({
+		format: overrides.format ?? "pnpm",
 		packages: overrides.packages ?? [],
-		workspaceDependencies: [],
 		importers: overrides.importers ?? [],
-		pmSpecific: overrides.pmSpecific,
-	});
+		...(overrides.extension !== undefined ? { extension: overrides.extension } : {}),
+	}) as unknown as LockfileModel;
 
 /** A pnpm lockfile with `catalogs` recorded as `{ specifier, version }` pairs. */
-const pnpmCatalogs = (catalogs: Record<string, Record<string, { specifier: string; version: string }>>) =>
-	new PnpmExtension({ _tag: "pnpm", catalogs });
+const pnpmCatalogs = (
+	catalogs: Record<string, Record<string, { specifier: string; version: string }>>,
+): PnpmExtension => ({ _tag: "pnpm", catalogs }) as unknown as PnpmExtension;
 
 /** Run Lockfile.compare via the Live layer with logging suppressed. */
 const runCompare = (
-	before: LockfileData | null,
-	after: LockfileData | null,
+	before: LockfileModel | null,
+	after: LockfileModel | null,
 	discovery: Layer.Layer<WorkspaceDiscovery> = MockWorkspacesLive,
 ) =>
 	Effect.runPromise(
 		Effect.gen(function* () {
 			const lockfile = yield* Lockfile;
 			return yield* lockfile.compare(before, after, "/workspace");
-		}).pipe(Effect.provide(LockfileLive), Effect.provide(discovery), Logger.withMinimumLogLevel(LogLevel.None)),
+		}).pipe(
+			Effect.provide(LockfileLive),
+			Effect.provide(discovery),
+			Effect.provideService(References.MinimumLogLevel, "None"),
+		),
 	);
 
 const runEffect = <A, E>(effect: Effect.Effect<A, E>) =>
-	Effect.runPromise(Effect.either(effect).pipe(Logger.withMinimumLogLevel(LogLevel.None)));
+	Effect.runPromise(Effect.result(effect).pipe(Effect.provideService(References.MinimumLogLevel, "None")));
 
 const runCapture = (pm: "pnpm" | "bun" | "npm", root: string) =>
 	runEffect(
@@ -162,10 +179,10 @@ describe("Lockfile.capture", () => {
 
 		const result = await runCapture("pnpm", root);
 
-		expect(Either.isRight(result)).toBe(true);
-		if (Either.isRight(result) && result.right) {
-			expect(result.right.packageManager).toBe("pnpm");
-			expect(result.right.importers.map((i) => i.path)).toContain(".");
+		expect(Result.isSuccess(result)).toBe(true);
+		if (Result.isSuccess(result) && result.success) {
+			expect(result.success.format).toBe("pnpm");
+			expect(result.success.importers.map((i) => i.path)).toContain(".");
 		}
 	});
 
@@ -175,10 +192,10 @@ describe("Lockfile.capture", () => {
 
 		const result = await runCapture("bun", root);
 
-		expect(Either.isRight(result)).toBe(true);
-		if (Either.isRight(result) && result.right) {
-			expect(result.right.packageManager).toBe("bun");
-			expect(result.right.pmSpecific?._tag).toBe("bun");
+		expect(Result.isSuccess(result)).toBe(true);
+		if (Result.isSuccess(result) && result.success) {
+			expect(result.success.format).toBe("bun");
+			expect(result.success.extension?._tag).toBe("bun");
 		}
 	});
 
@@ -188,20 +205,20 @@ describe("Lockfile.capture", () => {
 
 		const result = await runCapture("npm", root);
 
-		expect(Either.isRight(result)).toBe(true);
-		if (Either.isRight(result) && result.right) {
-			expect(result.right.packageManager).toBe("npm");
+		expect(Result.isSuccess(result)).toBe(true);
+		if (Result.isSuccess(result) && result.success) {
+			expect(result.success.format).toBe("npm");
 			// npm has no catalog protocol, so no PM-specific extension.
-			expect(result.right.pmSpecific).toBeUndefined();
+			expect(result.success.extension).toBeUndefined();
 		}
 	});
 
 	it("returns null when the lockfile does not exist", async () => {
 		const result = await runCapture("pnpm", tempRoot());
 
-		expect(Either.isRight(result)).toBe(true);
-		if (Either.isRight(result)) {
-			expect(result.right).toBeNull();
+		expect(Result.isSuccess(result)).toBe(true);
+		if (Result.isSuccess(result)) {
+			expect(result.success).toBeNull();
 		}
 	});
 
@@ -212,10 +229,10 @@ describe("Lockfile.capture", () => {
 
 		const result = await runCapture("pnpm", root);
 
-		expect(Either.isLeft(result)).toBe(true);
-		if (Either.isLeft(result)) {
-			expect(result.left._tag).toBe("LockfileError");
-			expect(result.left.operation).toBe("read");
+		expect(Result.isFailure(result)).toBe(true);
+		if (Result.isFailure(result)) {
+			expect(result.failure._tag).toBe("LockfileError");
+			expect(result.failure.operation).toBe("read");
 		}
 	});
 
@@ -229,9 +246,9 @@ describe("Lockfile.capture", () => {
 		// destructive branch delete-and-recreate, and git status --porcelain
 		// still drives change detection, so the old ignoreIncompatible-style
 		// resilience is the baseline to preserve.
-		expect(Either.isRight(result)).toBe(true);
-		if (Either.isRight(result)) {
-			expect(result.right).toBeNull();
+		expect(Result.isSuccess(result)).toBe(true);
+		if (Result.isSuccess(result)) {
+			expect(result.success).toBeNull();
 		}
 	});
 
@@ -242,7 +259,7 @@ describe("Lockfile.capture", () => {
 
 		const messages: string[] = [];
 		const captureLogger = Logger.make(({ logLevel, message }) => {
-			if (logLevel === LogLevel.Warning) {
+			if (logLevel === "Warn") {
 				messages.push(String(message));
 			}
 		});
@@ -251,7 +268,10 @@ describe("Lockfile.capture", () => {
 			Effect.gen(function* () {
 				const lockfile = yield* Lockfile;
 				return yield* lockfile.capture("bun", root);
-			}).pipe(Effect.provide(LockfileLive), Effect.provide(Logger.replace(Logger.defaultLogger, captureLogger))),
+			}).pipe(
+				Effect.provide(LockfileLive),
+				Effect.provide(Layer.succeed(References.CurrentLoggers, new Set([captureLogger]))),
+			),
 		);
 
 		expect(result).toBeNull();
@@ -290,11 +310,11 @@ describe("Lockfile.compare - workspace discovery failure", () => {
 describe("Lockfile.compare - pnpm catalogs", () => {
 	it("reports the specifier move and the consuming importer", async () => {
 		const before = makeLockfile({
-			pmSpecific: pnpmCatalogs({ silk: { effect: { specifier: "^3.0.0", version: "3.0.5" } } }),
+			extension: pnpmCatalogs({ silk: { effect: { specifier: "^3.0.0", version: "3.0.5" } } }),
 			importers: [importer("pkgs/core", [["effect", "catalog:silk"]])],
 		});
 		const after = makeLockfile({
-			pmSpecific: pnpmCatalogs({ silk: { effect: { specifier: "^3.1.0", version: "3.1.2" } } }),
+			extension: pnpmCatalogs({ silk: { effect: { specifier: "^3.1.0", version: "3.1.2" } } }),
 			importers: [importer("pkgs/core", [["effect", "catalog:silk"]])],
 		});
 
@@ -312,11 +332,11 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 
 	it("reports resolved-version movement under an unchanged specifier", async () => {
 		const before = makeLockfile({
-			pmSpecific: pnpmCatalogs({ default: { turbo: { specifier: "^2.8.4", version: "2.8.6" } } }),
+			extension: pnpmCatalogs({ default: { turbo: { specifier: "^2.8.4", version: "2.8.6" } } }),
 			importers: [importer(".", [["turbo", "catalog:", "devDependencies"]])],
 		});
 		const after = makeLockfile({
-			pmSpecific: pnpmCatalogs({ default: { turbo: { specifier: "^2.8.4", version: "2.8.7" } } }),
+			extension: pnpmCatalogs({ default: { turbo: { specifier: "^2.8.4", version: "2.8.7" } } }),
 			importers: [importer(".", [["turbo", "catalog:", "devDependencies"]])],
 		});
 
@@ -340,11 +360,11 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 			]),
 		];
 		const before = makeLockfile({
-			pmSpecific: pnpmCatalogs({ silk: { effect: { specifier: "^3.0.0", version: "3.0.5" } } }),
+			extension: pnpmCatalogs({ silk: { effect: { specifier: "^3.0.0", version: "3.0.5" } } }),
 			importers,
 		});
 		const after = makeLockfile({
-			pmSpecific: pnpmCatalogs({ silk: { effect: { specifier: "^3.1.0", version: "3.1.2" } } }),
+			extension: pnpmCatalogs({ silk: { effect: { specifier: "^3.1.0", version: "3.1.2" } } }),
 			importers,
 		});
 
@@ -356,14 +376,14 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 
 	it("reports no change when specifier and version are both unchanged", async () => {
 		const catalogs = pnpmCatalogs({ default: { turbo: { specifier: "^2.8.4", version: "2.8.6" } } });
-		const changes = await runCompare(makeLockfile({ pmSpecific: catalogs }), makeLockfile({ pmSpecific: catalogs }));
+		const changes = await runCompare(makeLockfile({ extension: catalogs }), makeLockfile({ extension: catalogs }));
 
 		expect(changes).toHaveLength(0);
 	});
 
 	it("reports a removed catalog entry", async () => {
 		const before = makeLockfile({
-			pmSpecific: pnpmCatalogs({
+			extension: pnpmCatalogs({
 				default: {
 					turbo: { specifier: "^2.8.4", version: "2.8.6" },
 					vitest: { specifier: "^1.0.0", version: "1.0.4" },
@@ -371,7 +391,7 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 			}),
 		});
 		const after = makeLockfile({
-			pmSpecific: pnpmCatalogs({ default: { turbo: { specifier: "^2.8.4", version: "2.8.6" } } }),
+			extension: pnpmCatalogs({ default: { turbo: { specifier: "^2.8.4", version: "2.8.6" } } }),
 		});
 
 		const changes = await runCompare(before, after);
@@ -390,10 +410,10 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 			importer("pkgs/utils", [["vitest", "catalog:silk"]]),
 		];
 		const before = makeLockfile({
-			pmSpecific: pnpmCatalogs({ silk: { vitest: { specifier: "^1.0.0", version: "1.0.4" } } }),
+			extension: pnpmCatalogs({ silk: { vitest: { specifier: "^1.0.0", version: "1.0.4" } } }),
 			importers,
 		});
-		const after = makeLockfile({ pmSpecific: pnpmCatalogs({ silk: {} }), importers });
+		const after = makeLockfile({ extension: pnpmCatalogs({ silk: {} }), importers });
 
 		const changes = await runCompare(before, after);
 
@@ -416,9 +436,9 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 
 	it("reports a removed catalog entry with no consumers as a single unassigned change", async () => {
 		const before = makeLockfile({
-			pmSpecific: pnpmCatalogs({ silk: { vitest: { specifier: "^1.0.0", version: "1.0.4" } } }),
+			extension: pnpmCatalogs({ silk: { vitest: { specifier: "^1.0.0", version: "1.0.4" } } }),
 		});
-		const after = makeLockfile({ pmSpecific: pnpmCatalogs({ silk: {} }) });
+		const after = makeLockfile({ extension: pnpmCatalogs({ silk: {} }) });
 
 		const changes = await runCompare(before, after);
 
@@ -429,9 +449,9 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 
 	it("reports an entire removed catalog group", async () => {
 		const before = makeLockfile({
-			pmSpecific: pnpmCatalogs({ silk: { effect: { specifier: "^3.0.0", version: "3.0.5" } } }),
+			extension: pnpmCatalogs({ silk: { effect: { specifier: "^3.0.0", version: "3.0.5" } } }),
 		});
-		const after = makeLockfile({ pmSpecific: pnpmCatalogs({}) });
+		const after = makeLockfile({ extension: pnpmCatalogs({}) });
 
 		const changes = await runCompare(before, after);
 
@@ -440,8 +460,8 @@ describe("Lockfile.compare - pnpm catalogs", () => {
 	});
 
 	it("treats a pnpm lockfile with no catalogs as having none", async () => {
-		const ext = new PnpmExtension({ _tag: "pnpm" });
-		const changes = await runCompare(makeLockfile({ pmSpecific: ext }), makeLockfile({ pmSpecific: ext }));
+		const ext = { _tag: "pnpm" } as unknown as PnpmExtension;
+		const changes = await runCompare(makeLockfile({ extension: ext }), makeLockfile({ extension: ext }));
 		expect(changes).toHaveLength(0);
 	});
 });
@@ -453,20 +473,20 @@ describe("Lockfile.compare - bun catalogs", () => {
 	 */
 	const bunLockfile = (specifier: string, resolved: ReadonlyArray<ResolvedPackage>, named = false) =>
 		makeLockfile({
-			packageManager: "bun",
+			format: "bun",
 			packages: resolved,
 			importers: [
 				importer("pkgs/core", [["react", named ? "catalog:ui" : "catalog:", "dependencies"]]),
 				importer(".", [["react", named ? "catalog:ui" : "catalog:default", "devDependencies"]]),
 			],
-			pmSpecific: new BunExtension({
+			extension: {
 				_tag: "bun",
 				...(named ? { catalogs: { ui: { react: specifier } } } : { catalog: { react: specifier } }),
-			}),
+			} as unknown as BunExtension,
 		});
 
 	const pkg = (name: string, version: string, isWorkspace = false) =>
-		new ResolvedPackage({ name, version, isWorkspace });
+		({ name, version, isWorkspace }) as unknown as ResolvedPackage;
 
 	it("reports a default-catalog specifier bump for every consuming importer and section", async () => {
 		const before = bunLockfile("^19.0.0", [pkg("react", "19.0.1")]);
@@ -536,10 +556,10 @@ describe("Lockfile.compare - bun catalogs", () => {
 	});
 
 	it("reports nothing for a bun lockfile with no catalogs at all", async () => {
-		const ext = new BunExtension({ _tag: "bun" });
+		const ext = { _tag: "bun" } as unknown as BunExtension;
 		const changes = await runCompare(
-			makeLockfile({ packageManager: "bun", pmSpecific: ext }),
-			makeLockfile({ packageManager: "bun", pmSpecific: ext }),
+			makeLockfile({ format: "bun", extension: ext }),
+			makeLockfile({ format: "bun", extension: ext }),
 		);
 		expect(changes).toHaveLength(0);
 	});
@@ -558,12 +578,12 @@ describe("Lockfile.compare - bun catalogs", () => {
 		};
 
 		const before = makeLockfile({
-			packageManager: "bun",
-			pmSpecific: new BunExtension({ _tag: "bun", catalog: malformed }),
+			format: "bun",
+			extension: { _tag: "bun", catalog: malformed } as unknown as BunExtension,
 		});
 		const after = makeLockfile({
-			packageManager: "bun",
-			pmSpecific: new BunExtension({ _tag: "bun", catalog: malformed }),
+			format: "bun",
+			extension: { _tag: "bun", catalog: malformed } as unknown as BunExtension,
 		});
 
 		const changes = await runCompare(before, after);

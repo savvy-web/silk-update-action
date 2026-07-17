@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommandRunner } from "@savvy-web/github-action-effects";
-import { Effect, Layer, LogLevel, Logger } from "effect";
+import { Effect, Layer, References } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 import { runInstall } from "./program.js";
 
@@ -31,7 +31,10 @@ const recordingRunner = (calls: Calls) =>
 const run = (pm: "pnpm" | "bun" | "npm") => {
 	const calls: Calls = { exec: [], capture: [] };
 	return Effect.runPromise(
-		runInstall(pm).pipe(Effect.provide(recordingRunner(calls)), Logger.withMinimumLogLevel(LogLevel.None)),
+		runInstall(pm).pipe(
+			Effect.provide(recordingRunner(calls)),
+			Effect.provideService(References.MinimumLogLevel, "None"),
+		),
 	).then(() => calls);
 };
 
