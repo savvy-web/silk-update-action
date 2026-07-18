@@ -16,7 +16,7 @@ import { Schema } from "effect";
 /**
  * Non-empty string with validation.
  */
-export const NonEmptyString = Schema.String.pipe(Schema.minLength(1, { message: () => "Value must not be empty" }));
+export const NonEmptyString = Schema.String.check(Schema.isMinLength(1, { message: "Value must not be empty" }));
 
 /**
  * Dependency type discriminator.
@@ -28,29 +28,38 @@ export const NonEmptyString = Schema.String.pipe(Schema.minLength(1, { message: 
  * - "optionalDependency" for optional dependencies
  * - "runtime" for devEngines.runtime engine bumps (node/deno/bun)
  */
-export const DependencyType = Schema.Literal(
+export const DependencyType = Schema.Literals([
 	"config",
 	"dependency",
 	"devDependency",
 	"peerDependency",
 	"optionalDependency",
 	"runtime",
-);
+]);
 
 /**
  * Git operation type.
  */
-export const GitOperation = Schema.Literal("status", "diff", "commit", "push", "rebase", "checkout", "fetch", "branch");
+export const GitOperation = Schema.Literals([
+	"status",
+	"diff",
+	"commit",
+	"push",
+	"rebase",
+	"checkout",
+	"fetch",
+	"branch",
+]);
 
 /**
  * File system operation type.
  */
-export const FileSystemOperation = Schema.Literal("read", "write", "delete", "exists");
+export const FileSystemOperation = Schema.Literals(["read", "write", "delete", "exists"]);
 
 /**
  * Lockfile operation type.
  */
-export const LockfileOperation = Schema.Literal("read", "parse", "compare");
+export const LockfileOperation = Schema.Literals(["read", "parse", "compare"]);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Domain Schemas
@@ -64,7 +73,7 @@ export const BranchResult = Schema.Struct({
 	created: Schema.Boolean,
 	upToDate: Schema.Boolean,
 	baseRef: Schema.String,
-}).annotations({
+}).annotate({
 	identifier: "BranchResult",
 	title: "Branch Result",
 });
@@ -91,7 +100,7 @@ export const DependencyUpdateResult = Schema.Struct({
 	to: NonEmptyString,
 	type: DependencyType,
 	package: Schema.NullOr(Schema.String),
-}).annotations({
+}).annotate({
 	identifier: "DependencyUpdateResult",
 	title: "Dependency Update Result",
 });
@@ -106,7 +115,7 @@ export const ChangedPackage = Schema.Struct({
 	path: Schema.String,
 	version: Schema.String,
 	changes: Schema.Array(DependencyChange),
-}).annotations({
+}).annotate({
 	identifier: "ChangedPackage",
 	title: "Changed Package",
 });
@@ -116,23 +125,23 @@ export type ChangedPackage = typeof ChangedPackage.Type;
 /**
  * Changeset bump type.
  */
-export const ChangesetBumpType = Schema.Literal("patch", "minor", "major");
+export const ChangesetBumpType = Schema.Literals(["patch", "minor", "major"]);
 
 /**
  * Changeset file to create.
  */
 export const ChangesetFile = Schema.Struct({
-	id: NonEmptyString.annotations({
+	id: NonEmptyString.annotate({
 		description: "Unique changeset identifier",
 	}),
-	packages: Schema.Array(Schema.String).annotations({
+	packages: Schema.Array(Schema.String).annotate({
 		description: "Packages affected by this changeset",
 	}),
 	type: ChangesetBumpType,
-	summary: NonEmptyString.annotations({
+	summary: NonEmptyString.annotate({
 		description: "Human-readable summary of changes",
 	}),
-}).annotations({
+}).annotate({
 	identifier: "ChangesetFile",
 	title: "Changeset File",
 });
@@ -143,11 +152,11 @@ export type ChangesetFile = typeof ChangesetFile.Type;
  * Pull request information.
  */
 export const PullRequestResult = Schema.Struct({
-	number: Schema.Number.pipe(Schema.positive()),
-	url: Schema.String.pipe(Schema.startsWith("https://")),
+	number: Schema.Number.check(Schema.isGreaterThan(0)),
+	url: Schema.String.check(Schema.isStartsWith("https://")),
 	created: Schema.Boolean,
 	nodeId: Schema.String,
-}).annotations({
+}).annotate({
 	identifier: "PullRequestResult",
 	title: "Pull Request Result",
 });
@@ -163,8 +172,8 @@ export const CatalogDelta = Schema.Struct({
 	dependency: NonEmptyString,
 	from: Schema.NullOr(Schema.String),
 	to: Schema.NullOr(Schema.String),
-	action: Schema.Literal("added", "updated", "removed", "kept"),
-}).annotations({
+	action: Schema.Literals(["added", "updated", "removed", "kept"]),
+}).annotate({
 	identifier: "CatalogDelta",
 	title: "Catalog Delta",
 });
@@ -180,7 +189,7 @@ export const LockfileChange = Schema.Struct({
 	from: Schema.NullOr(Schema.String),
 	to: NonEmptyString,
 	affectedPackages: Schema.Array(Schema.String),
-}).annotations({
+}).annotate({
 	identifier: "LockfileChange",
 	title: "Lockfile Change",
 });

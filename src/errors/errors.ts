@@ -23,14 +23,14 @@ import {
 /**
  * Input validation error.
  */
-export class InvalidInputError extends Schema.TaggedError<InvalidInputError>()("InvalidInputError", {
-	field: NonEmptyString.annotations({
+export class InvalidInputError extends Schema.TaggedErrorClass<InvalidInputError>()("InvalidInputError", {
+	field: NonEmptyString.annotate({
 		description: "The input field that failed validation",
 	}),
-	value: Schema.Unknown.annotations({
+	value: Schema.Unknown.annotate({
 		description: "The invalid value that was provided",
 	}),
-	reason: NonEmptyString.annotations({
+	reason: NonEmptyString.annotate({
 		description: "Human-readable explanation of why validation failed",
 	}),
 }) {
@@ -42,14 +42,14 @@ export class InvalidInputError extends Schema.TaggedError<InvalidInputError>()("
 /**
  * GitHub API error.
  */
-export class GitHubApiError extends Schema.TaggedError<GitHubApiError>()("GitHubApiError", {
-	operation: NonEmptyString.annotations({
+export class GitHubApiError extends Schema.TaggedErrorClass<GitHubApiError>()("GitHubApiError", {
+	operation: NonEmptyString.annotate({
 		description: "The GitHub API operation that failed",
 	}),
-	statusCode: Schema.optional(Schema.Number.pipe(Schema.between(100, 599))).annotations({
+	statusCode: Schema.optional(Schema.Number.check(Schema.isBetween({ minimum: 100, maximum: 599 }))).annotate({
 		description: "HTTP status code returned by the API",
 	}),
-	message: NonEmptyString.annotations({
+	message: NonEmptyString.annotate({
 		description: "Error message from GitHub API",
 	}),
 }) {
@@ -69,14 +69,14 @@ export class GitHubApiError extends Schema.TaggedError<GitHubApiError>()("GitHub
 /**
  * Git command execution error.
  */
-export class GitError extends Schema.TaggedError<GitError>()("GitError", {
-	operation: GitOperation.annotations({
+export class GitError extends Schema.TaggedErrorClass<GitError>()("GitError", {
+	operation: GitOperation.annotate({
 		description: "The git operation that failed",
 	}),
-	exitCode: Schema.Number.pipe(Schema.int()).annotations({
+	exitCode: Schema.Number.check(Schema.isInt()).annotate({
 		description: "Exit code from the git command",
 	}),
-	stderr: Schema.String.annotations({
+	stderr: Schema.String.annotate({
 		description: "Standard error output from git",
 	}),
 }) {
@@ -92,17 +92,17 @@ export class GitError extends Schema.TaggedError<GitError>()("GitError", {
 /**
  * pnpm command execution error.
  */
-export class PnpmError extends Schema.TaggedError<PnpmError>()("PnpmError", {
-	command: NonEmptyString.annotations({
+export class PnpmError extends Schema.TaggedErrorClass<PnpmError>()("PnpmError", {
+	command: NonEmptyString.annotate({
 		description: "The pnpm command that failed",
 	}),
-	dependency: Schema.optional(Schema.String).annotations({
+	dependency: Schema.optional(Schema.String).annotate({
 		description: "The dependency being operated on",
 	}),
-	exitCode: Schema.Number.pipe(Schema.int()).annotations({
+	exitCode: Schema.Number.check(Schema.isInt()).annotate({
 		description: "Exit code from the pnpm command",
 	}),
-	stderr: Schema.String.annotations({
+	stderr: Schema.String.annotate({
 		description: "Standard error output from pnpm",
 	}),
 }) {
@@ -119,11 +119,11 @@ export class PnpmError extends Schema.TaggedError<PnpmError>()("PnpmError", {
 /**
  * Changeset creation error.
  */
-export class ChangesetError extends Schema.TaggedError<ChangesetError>()("ChangesetError", {
-	reason: NonEmptyString.annotations({
+export class ChangesetError extends Schema.TaggedErrorClass<ChangesetError>()("ChangesetError", {
+	reason: NonEmptyString.annotate({
 		description: "Why changeset creation failed",
 	}),
-	packages: Schema.optional(Schema.Array(Schema.String)).annotations({
+	packages: Schema.optional(Schema.Array(Schema.String)).annotate({
 		description: "Packages that were affected",
 	}),
 }) {
@@ -136,14 +136,14 @@ export class ChangesetError extends Schema.TaggedError<ChangesetError>()("Change
 /**
  * File system operation error.
  */
-export class FileSystemError extends Schema.TaggedError<FileSystemError>()("FileSystemError", {
-	operation: FileSystemOperation.annotations({
+export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()("FileSystemError", {
+	operation: FileSystemOperation.annotate({
 		description: "The file operation that failed",
 	}),
-	path: NonEmptyString.annotations({
+	path: NonEmptyString.annotate({
 		description: "The file path that was being operated on",
 	}),
-	reason: NonEmptyString.annotations({
+	reason: NonEmptyString.annotate({
 		description: "Why the operation failed",
 	}),
 }) {
@@ -155,11 +155,11 @@ export class FileSystemError extends Schema.TaggedError<FileSystemError>()("File
 /**
  * Lockfile parsing/comparison error.
  */
-export class LockfileError extends Schema.TaggedError<LockfileError>()("LockfileError", {
-	operation: LockfileOperation.annotations({
+export class LockfileError extends Schema.TaggedErrorClass<LockfileError>()("LockfileError", {
+	operation: LockfileOperation.annotate({
 		description: "The lockfile operation that failed",
 	}),
-	reason: NonEmptyString.annotations({
+	reason: NonEmptyString.annotate({
 		description: "Why the operation failed",
 	}),
 }) {
@@ -182,7 +182,7 @@ export type DependencyFailure = typeof DependencyFailure.Type;
  * Aggregate error for collecting multiple dependency update failures.
  * Used when some updates succeed and others fail.
  */
-export class DependencyUpdateFailures extends Schema.TaggedError<DependencyUpdateFailures>()(
+export class DependencyUpdateFailures extends Schema.TaggedErrorClass<DependencyUpdateFailures>()(
 	"DependencyUpdateFailures",
 	{
 		failures: Schema.Array(
@@ -196,10 +196,10 @@ export class DependencyUpdateFailures extends Schema.TaggedError<DependencyUpdat
 					stderr: Schema.String,
 				}),
 			}),
-		).annotations({
+		).annotate({
 			description: "List of dependencies that failed to update",
 		}),
-		successful: Schema.Array(DependencyUpdateResult).annotations({
+		successful: Schema.Array(DependencyUpdateResult).annotate({
 			description: "Dependencies that were successfully updated",
 		}),
 	},

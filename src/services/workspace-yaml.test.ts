@@ -1,7 +1,7 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, LogLevel, Logger } from "effect";
+import { Effect, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { PnpmWorkspaceContent } from "./workspace-yaml.js";
@@ -122,7 +122,7 @@ describe("WorkspaceYaml.format", () => {
 				expect(keys[0]).toBe("packages");
 				expect(result?.packages).toEqual(["apps/*", "pkgs/*"]);
 				expect(result?.onlyBuiltDependencies).toEqual(["argon2", "sharp"]);
-			}).pipe(Effect.provide(WorkspaceYamlLive), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 	});
 
@@ -131,7 +131,7 @@ describe("WorkspaceYaml.format", () => {
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceYaml;
 				yield* ws.format(tempDir);
-			}).pipe(Effect.provide(WorkspaceYamlLive), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 	});
 
@@ -141,11 +141,11 @@ describe("WorkspaceYaml.format", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceYaml;
-				return yield* ws.format(tempDir).pipe(Effect.either);
-			}).pipe(Effect.provide(WorkspaceYamlLive), Logger.withMinimumLogLevel(LogLevel.None)),
+				return yield* ws.format(tempDir).pipe(Effect.result);
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
-		expect(result._tag).toBe("Left");
+		expect(result._tag).toBe("Failure");
 	});
 
 	it("handles unreadable file", async () => {
@@ -156,11 +156,11 @@ describe("WorkspaceYaml.format", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceYaml;
-				return yield* ws.format(tempDir).pipe(Effect.either);
-			}).pipe(Effect.provide(WorkspaceYamlLive), Logger.withMinimumLogLevel(LogLevel.None)),
+				return yield* ws.format(tempDir).pipe(Effect.result);
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
-		expect(result._tag).toBe("Left");
+		expect(result._tag).toBe("Failure");
 		// Restore perms for cleanup
 		chmodSync(filepath, 0o644);
 	});
@@ -174,11 +174,11 @@ describe("WorkspaceYaml.format", () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceYaml;
-				return yield* ws.format(tempDir).pipe(Effect.either);
-			}).pipe(Effect.provide(WorkspaceYamlLive), Logger.withMinimumLogLevel(LogLevel.None)),
+				return yield* ws.format(tempDir).pipe(Effect.result);
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
-		expect(result._tag).toBe("Left");
+		expect(result._tag).toBe("Failure");
 		// Restore perms for cleanup
 		chmodSync(filepath, 0o644);
 	});
@@ -205,7 +205,7 @@ describe("WorkspaceYaml.read", () => {
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceYaml;
 				return yield* ws.read(tempDir);
-			}).pipe(Effect.provide(WorkspaceYamlLive), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(result).not.toBeNull();
@@ -218,7 +218,7 @@ describe("WorkspaceYaml.read", () => {
 			Effect.gen(function* () {
 				const ws = yield* WorkspaceYaml;
 				return yield* ws.read(tempDir);
-			}).pipe(Effect.provide(WorkspaceYamlLive), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 		expect(result).toBeNull();
 	});

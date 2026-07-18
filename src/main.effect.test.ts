@@ -1,18 +1,12 @@
-import type { CommandRunnerError } from "@savvy-web/github-action-effects";
+import type { CommandRunnerError, CommandRunnerShape } from "@savvy-web/github-action-effects";
 import { CommandRunner, CommandRunnerTest } from "@savvy-web/github-action-effects";
-import type { Context } from "effect";
-import { Effect, Layer, LogLevel, Logger } from "effect";
+import { Effect, Layer, References } from "effect";
 import { describe, expect, it } from "vitest";
 import { runCommands } from "./program.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Test Helpers
 // ══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Create a mock CommandRunner service.
- */
-type CommandRunnerShape = Context.Tag.Service<typeof CommandRunner>;
 
 const makeTestRunner = (
 	overrides: Partial<{
@@ -40,7 +34,7 @@ describe("runCommands", () => {
 	it("returns empty result for empty commands", async () => {
 		const layer = CommandRunnerTest.empty();
 		const result = await Effect.runPromise(
-			runCommands([]).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			runCommands([]).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 		expect(result.successful).toEqual([]);
 		expect(result.failed).toEqual([]);
@@ -61,7 +55,7 @@ describe("runCommands", () => {
 		const result = await Effect.runPromise(
 			runCommands(["pnpm lint:fix", "pnpm test"]).pipe(
 				Effect.provide(layer),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 
@@ -82,7 +76,10 @@ describe("runCommands", () => {
 		});
 
 		const result = await Effect.runPromise(
-			runCommands(["pnpm lint:fix"]).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			runCommands(["pnpm lint:fix"]).pipe(
+				Effect.provide(layer),
+				Effect.provideService(References.MinimumLogLevel, "None"),
+			),
 		);
 
 		expect(result.successful).toEqual([]);
@@ -110,7 +107,7 @@ describe("runCommands", () => {
 		const result = await Effect.runPromise(
 			runCommands(["pnpm lint", "pnpm test", "pnpm build"]).pipe(
 				Effect.provide(layer),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 

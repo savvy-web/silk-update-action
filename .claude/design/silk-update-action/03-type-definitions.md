@@ -4,18 +4,24 @@
 
 ## Overview
 
-Types are defined using Effect Schema in `src/schemas/domain.ts`. Error types use
-`Schema.TaggedError` in `src/errors/errors.ts`. Module-level types (e.g.,
-`PnpmUpgradeResult`) are defined in their respective service files.
+Types are defined using Effect Schema (v4) in `src/schemas/domain.ts`. Error
+types use `Schema.TaggedErrorClass` (v4; was `Schema.TaggedError`) in
+`src/errors/errors.ts`. Module-level types (e.g., `PnpmUpgradeResult`) are
+defined in their respective service files.
 
 No barrel re-exports exist. Import directly from the defining module.
+
+Effect v4 Schema shifts the constructor spelling the snippets below use: literal
+unions are `Schema.Literals([...])` (was `Schema.Literal(...)`) and refinements
+attach via `.check(...)` (e.g. `Schema.String.check(Schema.isMinLength(1))`,
+`Schema.Number.check(Schema.isGreaterThan(0))`) rather than `.pipe(Schema.…)`.
 
 ## Domain Schemas (src/schemas/domain.ts)
 
 See `src/schemas/domain.ts` for the full set of `Schema.Struct` definitions
 (`BranchResult`, `DependencyChange`, `ChangedPackage`, `ChangesetFile`,
-`PullRequestResult`). Each schema derives its TypeScript type via `typeof
-Schema.Type`.
+`PullRequestResult`, `CatalogDelta`). Each schema derives its TypeScript type via
+`typeof Schema.Type`.
 
 The load-bearing type is the `DependencyType` discriminator, shared by
 `DependencyUpdateResult` and `LockfileChange` and used across the pipeline as
@@ -26,14 +32,14 @@ the changeset-trigger signal:
  * Dependency type discriminator. The `runtime` member tags
  * devEngines.runtime engine bumps (node/deno/bun) emitted by RuntimeUpgrade.
  */
-export const DependencyType = Schema.Literal(
+export const DependencyType = Schema.Literals([
  "config",
  "dependency",
  "devDependency",
  "peerDependency",
  "optionalDependency",
  "runtime",
-);
+]);
 
 /** One per (path, dep, section) update; carries the precise `type`. */
 export const DependencyUpdateResult = Schema.Struct({
@@ -117,8 +123,8 @@ export interface RuntimeEntry {
 
 ## Effect Error Types (src/errors/errors.ts)
 
-Errors use Effect's `Schema.TaggedError` for typed error handling with rich
-metadata. See `src/errors/errors.ts` for the full definitions. The local
+Errors use Effect v4's `Schema.TaggedErrorClass` for typed error handling with
+rich metadata. See `src/errors/errors.ts` for the full definitions. The local
 `ActionError` union covers:
 
 - `InvalidInputError` — `{ field, value, reason }`.

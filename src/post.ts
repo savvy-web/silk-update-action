@@ -8,10 +8,10 @@
  * @module post
  */
 
-import { FetchHttpClient } from "@effect/platform";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Action, ActionState, GitHubAppLive, GitHubToken, OctokitAuthAppLive } from "@savvy-web/github-action-effects";
 import { Effect, Layer, Option } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { STATE_KEYS, StartTimeState } from "./state.js";
 
 export const post = Effect.gen(function* () {
@@ -28,11 +28,11 @@ export const post = Effect.gen(function* () {
 	// Token revocation. dispose is a no-op if pre never provisioned a token.
 	yield* Effect.logInfo("Revoking GitHub App installation token...");
 	yield* GitHubToken.dispose().pipe(
-		Effect.catchAll((e) => Effect.logWarning(`Token revocation failed: ${e instanceof Error ? e.message : String(e)}`)),
+		Effect.catch((e) => Effect.logWarning(`Token revocation failed: ${e instanceof Error ? e.message : String(e)}`)),
 	);
 }).pipe(
 	// Defense-in-depth: post-action failures should never fail the workflow.
-	Effect.catchAllDefect((defect) =>
+	Effect.catchDefect((defect) =>
 		Effect.logWarning(`Post-action warning: ${defect instanceof Error ? defect.message : String(defect)}`),
 	),
 );

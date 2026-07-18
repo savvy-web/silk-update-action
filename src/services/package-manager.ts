@@ -4,9 +4,9 @@
  * @module services/package-manager
  */
 
+import { PackageManagerDetector, WorkspaceRoot } from "@effected/workspaces";
 import { ActionInputError } from "@savvy-web/github-action-effects";
-import { Effect } from "effect";
-import { PackageManagerDetector, WorkspaceRoot } from "workspaces-effect";
+import { Effect, Option } from "effect";
 
 /**
  * The package managers this action supports.
@@ -49,7 +49,7 @@ export const detectPackageManager = (
 		const root = yield* workspaceRoot.find(startDir);
 		const detected = yield* detector.detect(root);
 
-		if (detected.type === "yarn") {
+		if (detected.name === "yarn") {
 			return yield* Effect.fail(
 				new ActionInputError({
 					inputName: "workspace",
@@ -59,15 +59,15 @@ export const detectPackageManager = (
 			);
 		}
 
-		return { pm: detected.type, version: detected.version, root };
+		return { pm: detected.name, version: Option.getOrUndefined(detected.version), root };
 	}).pipe(
 		Effect.mapError((error) =>
 			error instanceof ActionInputError
 				? error
 				: new ActionInputError({
 						inputName: "workspace",
-						reason: `Could not detect a package manager at "${error.searchPath}": ${error.reason}`,
-						rawValue: error.searchPath,
+						reason: `Could not detect a package manager: ${error.message}`,
+						rawValue: "searchPath" in error ? error.searchPath : "root" in error ? error.root : "",
 					}),
 		),
 	);

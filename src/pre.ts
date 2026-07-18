@@ -10,10 +10,10 @@
  * @module pre
  */
 
-import { FetchHttpClient } from "@effect/platform";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Action, ActionState, GitHubAppLive, GitHubToken, OctokitAuthAppLive } from "@savvy-web/github-action-effects";
 import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { STATE_KEYS, StartTimeState } from "./state.js";
 
 export const pre = Effect.gen(function* () {

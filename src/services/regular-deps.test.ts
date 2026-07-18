@@ -1,12 +1,11 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { WorkspacePackage } from "@effected/workspaces";
+import { WorkspaceDiscovery, WorkspaceDiscoveryError } from "@effected/workspaces";
 import { NpmRegistryTest } from "@savvy-web/github-action-effects";
-import type { Context } from "effect";
-import { Effect, Layer, LogLevel, Logger } from "effect";
+import { Effect, Layer, References } from "effect";
 import { describe, expect, it } from "vitest";
-import type { WorkspacePackage } from "workspaces-effect";
-import { WorkspaceDiscovery, WorkspaceDiscoveryError } from "workspaces-effect";
 import { matchesPattern, parseSpecifier } from "../utils/deps.js";
 import { RegularDeps, RegularDepsLive } from "./regular-deps.js";
 
@@ -65,6 +64,9 @@ const mockWorkspaces = (packages: ReadonlyArray<{ name: string; path: string }>)
 		listPackages: () => Effect.succeed(packages as unknown as ReadonlyArray<WorkspacePackage>),
 		getPackage: () => Effect.die("getPackage not used in regular-deps tests"),
 		importerMap: () => Effect.die("importerMap not used in regular-deps tests"),
+		info: () => Effect.die("info not used in regular-deps tests"),
+		resolveFile: () => Effect.die("resolveFile not used in regular-deps tests"),
+		resolveFiles: () => Effect.die("resolveFiles not used in regular-deps tests"),
 		refresh: () => Effect.void,
 	});
 
@@ -74,20 +76,25 @@ const mockWorkspaces = (packages: ReadonlyArray<{ name: string; path: string }>)
  */
 const failingWorkspaces = (): Layer.Layer<WorkspaceDiscovery> =>
 	Layer.succeed(WorkspaceDiscovery, {
-		listPackages: (root) =>
+		listPackages: () =>
 			Effect.fail(
 				new WorkspaceDiscoveryError({
-					root: root ?? "",
-					reason: "workspace detection failed",
+					root: "",
+					path: "",
+					kind: "read",
+					cause: "workspace detection failed",
 				}),
 			),
 		getPackage: () => Effect.die("getPackage not used in regular-deps tests"),
 		importerMap: () => Effect.die("importerMap not used in regular-deps tests"),
+		info: () => Effect.die("info not used in regular-deps tests"),
+		resolveFile: () => Effect.die("resolveFile not used in regular-deps tests"),
+		resolveFiles: () => Effect.die("resolveFiles not used in regular-deps tests"),
 		refresh: () => Effect.void,
 	});
 
 const runWithService = <A, E>(
-	fn: (service: Context.Tag.Service<typeof RegularDeps>) => Effect.Effect<A, E>,
+	fn: (service: Effect.Success<typeof RegularDeps>) => Effect.Effect<A, E>,
 	packages?: Record<string, string | string[]>,
 	workspacesLayer?: Layer.Layer<WorkspaceDiscovery>,
 ) => {
@@ -100,7 +107,7 @@ const runWithService = <A, E>(
 		Effect.gen(function* () {
 			const service = yield* RegularDeps;
 			return yield* fn(service);
-		}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 	);
 };
 

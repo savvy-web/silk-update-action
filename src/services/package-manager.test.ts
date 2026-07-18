@@ -1,23 +1,24 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
+import { PackageManagerDetector, WorkspaceRoot } from "@effected/workspaces";
 import { ActionInputError } from "@savvy-web/github-action-effects";
-import { Effect, Exit, Layer, LogLevel, Logger } from "effect";
+import { Cause, Effect, Exit, Layer, Option, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PackageManagerDetectorLive, WorkspaceRootLive } from "workspaces-effect";
 import { detectPackageManager } from "./package-manager.js";
 
 let root: string;
 
-const layer = Layer.mergeAll(PackageManagerDetectorLive, WorkspaceRootLive.pipe(Layer.provide(NodeContext.layer))).pipe(
-	Layer.provide(NodeContext.layer),
-);
+const layer = Layer.mergeAll(
+	PackageManagerDetector.layer,
+	WorkspaceRoot.layer.pipe(Layer.provide(NodeServices.layer)),
+).pipe(Layer.provide(NodeServices.layer));
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(effect);
 
 const detect = (cwd: string) =>
-	detectPackageManager(cwd).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None));
+	detectPackageManager(cwd).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None"));
 
 beforeEach(() => {
 	root = mkdtempSync(join(tmpdir(), "pm-detect-"));
@@ -37,6 +38,10 @@ describe("detectPackageManager", () => {
 				devEngines: { packageManager: { name: "bun", version: "1.3.14" } },
 			}),
 		);
+		// @effected/workspaces' detector requires a bun lockfile conjoined with the
+		// manifest naming bun (the same lockfile+manifest conjunction it has always
+		// required for yarn) — devEngines.packageManager alone is no longer sufficient.
+		writeFileSync(join(root, "bun.lock"), "");
 
 		const result = await run(detect(root));
 
@@ -75,12 +80,13 @@ describe("detectPackageManager", () => {
 			throw new Error("Expected Failure exit");
 		}
 
-		expect(exit.cause._tag).toBe("Fail");
-		if (exit.cause._tag !== "Fail") {
+		expect(Cause.hasFails(exit.cause)).toBe(true);
+		const errorOption = Cause.findErrorOption(exit.cause);
+		if (Option.isNone(errorOption)) {
 			throw new Error("Expected Fail cause");
 		}
 
-		const error = exit.cause.error;
+		const error = errorOption.value;
 		expect(error).toBeInstanceOf(ActionInputError);
 		if (error instanceof ActionInputError) {
 			expect(error.reason).toContain("Detected yarn");
@@ -94,12 +100,13 @@ describe("detectPackageManager", () => {
 			throw new Error("Expected Failure exit");
 		}
 
-		expect(exit.cause._tag).toBe("Fail");
-		if (exit.cause._tag !== "Fail") {
+		expect(Cause.hasFails(exit.cause)).toBe(true);
+		const errorOption = Cause.findErrorOption(exit.cause);
+		if (Option.isNone(errorOption)) {
 			throw new Error("Expected Fail cause");
 		}
 
-		const error = exit.cause.error;
+		const error = errorOption.value;
 		expect(error).toBeInstanceOf(ActionInputError);
 	});
 });

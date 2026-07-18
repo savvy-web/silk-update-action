@@ -4,36 +4,50 @@
 
 ## Domain Services (src/services/)
 
-All domain logic is wrapped as Effect services with `Context.Tag` + `Layer`,
-or (for stateless concerns) exported as standalone helper functions. Each
-service depends on library services from `@savvy-web/github-action-effects`
-and/or `workspaces-effect`.
+All domain logic is wrapped as Effect services with `Context.Service` (v4; was
+`Context.Tag`) + `Layer`, or (for stateless concerns) exported as standalone
+helper functions. Each service depends on library services from
+`@savvy-web/github-action-effects` and/or `@effected/workspaces`. The v4
+`Context.Service` form is `class Foo extends Context.Service<Foo, Shape>()("Foo") {}`;
+where a service value needs typing without being yielded, the library exposes a
+companion `*Shape` interface (e.g. `NpmRegistryShape`).
 
-### Workspace discovery (via workspaces-effect)
+### Workspace discovery (via @effected/workspaces)
 
-Domain services consume the upstream `WorkspaceDiscovery` Tag from
-`workspaces-effect` directly, via its `listPackages(cwd?)` and
-`importerMap(cwd?)` methods (both accept an optional cwd).
+Domain services consume the `WorkspaceDiscovery` service from
+`@effected/workspaces` directly, via its **arg-less** `listPackages()` and
+`importerMap()` methods. In Effect v4 the workspace root is bound when the layer
+is built (`WorkspaceDiscovery.layer(opts?)`), so these methods no longer take a
+`cwd` parameter.
 
 The upstream service interface (relevant slice):
 
 ```typescript
-import { WorkspaceDiscovery } from "workspaces-effect";
+import { WorkspaceDiscovery } from "@effected/workspaces";
 
 // WorkspaceDiscovery exposes (among others):
-//   listPackages: (cwd?: string) =>
+//   listPackages: () =>
 //     Effect.Effect<ReadonlyArray<WorkspacePackage>, ...>
-//   importerMap: (cwd?: string) =>
+//   importerMap: () =>
 //     Effect.Effect<ReadonlyMap<string, WorkspacePackage>, ...>
+// (companion WorkspaceDiscoveryShape types a resolved instance)
 ```
 
 `importerMap` returns a map keyed by importer path relative to the workspace
 root (`.` for the root workspace), used by `Lockfile.compare` to translate
 importer ids into package names.
 
-`WorkspaceDiscoveryLive` requires `WorkspaceRootLive` and `NodeContext.layer` (FileSystem/Path). Both are wired in `makeAppLayer`; integration tests build their own `discoveryLayer` from `NodeContext.layer` directly.
+`WorkspaceDiscovery.layer()` requires `WorkspaceRoot.layer` and
+`NodeServices.layer` (FileSystem/Path). Both are wired in `makeAppLayer`;
+integration tests build their own `discoveryLayer` from `NodeServices.layer`
+directly.
 
-**Caching:** `WorkspaceDiscoveryLive` caches `listPackages` per root for the layer lifetime, and Effect memoizes layers by object reference, so every consumer wired from the same layer shares one instance — an enumeration cached before `ConfigDeps`/`RegularDeps` edit manifests stays stale for later readers unless refreshed (`refresh()`, added in workspaces-effect 2.0.3). DepsRegen refreshes at plan time (see the `Changesets` service below), so the changeset step is not bitten by this.
+**Caching:** `WorkspaceDiscovery` caches `listPackages` per root for the layer
+lifetime, and Effect memoizes layers by object reference, so every consumer
+wired from the same layer shares one instance — an enumeration cached before
+`ConfigDeps`/`RegularDeps` edit manifests stays stale for later readers unless
+refreshed. DepsRegen refreshes at plan time (see the `Changesets` service
+below), so the changeset step is not bitten by this.
 
 ### Changeset gating (via @savvy-web/silk-effects DepsRegen)
 
@@ -47,7 +61,7 @@ Branch management and commit operations using `GitBranch`, `GitCommit`, and
 **Service interface:**
 
 ```typescript
-export class BranchManager extends Context.Tag("BranchManager")<BranchManager, {
+export class BranchManager extends Context.Service<BranchManager, {
  readonly manage: (branchName: string, defaultBranch?: string) =>
   Effect.Effect<BranchResult, GitBranchError | CommandRunnerError>;
  readonly commitChanges: (message: string, branchName: string) =>
@@ -56,7 +70,7 @@ export class BranchManager extends Context.Tag("BranchManager")<BranchManager, {
   Effect.Effect<void, GitBranchError | ActionInputError>;
  readonly ensureBaseHistory: (base: string) =>
   Effect.Effect<void, CommandRunnerError>;
-}>() {}
+}>()("BranchManager") {}
 ```
 
 **Branch Strategy:** Delete-and-recreate instead of rebase. The update branch is
@@ -114,10 +128,10 @@ Upgrade pnpm by editing the `packageManager` and `devEngines.packageManager` fie
 **Service interface:**
 
 ```typescript
-export class PnpmUpgrade extends Context.Tag("PnpmUpgrade")<PnpmUpgrade, {
+export class PnpmUpgrade extends Context.Service<PnpmUpgrade, {
  readonly upgrade: (mode: string, workspaceRoot?: string) =>
   Effect.Effect<PnpmUpgradeResult | null, FileSystemError>;
-}>() {}
+}>()("PnpmUpgrade") {}
 ```
 
 `mode` is the parsed `upgrade-package-manager` value (`false` | `true` | `auto` | a semver
@@ -134,7 +148,7 @@ range). `false` returns `null` (skip).
    current major; skip with a warning if no reference exists); an explicit
    semver range is used verbatim (may cross majors).
 4. Query available versions via `NpmRegistry.getVersions("pnpm")` and resolve via `resolveLatestSatisfying`. Skip if none satisfies or the resolved version equals the reference.
-5. Derive the corepack-canonical `+sha512.<hex>` hash from the resolved version's npm registry integrity (`NpmRegistry.getPackageInfo("pnpm", resolved)` → `.integrity` → `corepackHashFromIntegrity`, best-effort with a `catchAll`); fall back to a bare version when integrity is unavailable.
+5. Derive the corepack-canonical `+sha512.<hex>` hash from the resolved version's npm registry integrity (`NpmRegistry.getPackageInfo("pnpm", resolved)` → `.integrity` → `corepackHashFromIntegrity`, best-effort with an `Effect.catch`); fall back to a bare version when integrity is unavailable.
 6. Write `packageManager` = `pnpm@<v>+sha512.<hex>` (creating it in range mode
    when no pnpm field exists at all) and, when present,
    `devEngines.packageManager.version` = `<v>+sha512.<hex>`. The pinned hash is
@@ -149,10 +163,10 @@ Update config dependencies by querying npm via `NpmRegistry` and editing
 **Service interface:**
 
 ```typescript
-export class ConfigDeps extends Context.Tag("ConfigDeps")<ConfigDeps, {
+export class ConfigDeps extends Context.Service<ConfigDeps, {
  readonly updateConfigDeps: (deps: ReadonlyArray<string>, workspaceRoot?: string) =>
   Effect.Effect<ReadonlyArray<DependencyUpdateResult>>;
-}>() {}
+}>()("ConfigDeps") {}
 ```
 
 **Algorithm:**
@@ -179,10 +193,10 @@ Update regular dependencies by querying npm via `NpmRegistry`. Avoids
 **Service interface:**
 
 ```typescript
-export class RegularDeps extends Context.Tag("RegularDeps")<RegularDeps, {
+export class RegularDeps extends Context.Service<RegularDeps, {
  readonly updateRegularDeps: (patterns: ReadonlyArray<string>, workspaceRoot?: string) =>
   Effect.Effect<ReadonlyArray<DependencyUpdateResult>>;
-}>() {}
+}>()("RegularDeps") {}
 ```
 
 **Key Design Decisions:**
@@ -197,7 +211,7 @@ export class RegularDeps extends Context.Tag("RegularDeps")<RegularDeps, {
   `^0.5.0` dep rolls forward across `0.x` and adopts the first stable `1.x`, with
   the caret still re-applied verbatim on write-back.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
-  `workspaces-effect`.
+  `@effected/workspaces`.
 - Uses `matchesPattern` from `src/utils/deps.ts` for glob matching.
 - Preserves specifier prefix (`^`, `~`, or exact) from `package.json`, re-applied
   verbatim to the resolved version.
@@ -220,10 +234,10 @@ export class RegularDeps extends Context.Tag("RegularDeps")<RegularDeps, {
 ### src/services/peer-sync.ts - PeerSync
 
 Sync peerDependency ranges after devDependency updates based on `peer-lock`
-and `peer-minor` input configuration. Uses `semver-effect` for version
-parsing. **Has no `Context.Tag` of its own** — exported as standalone
+and `peer-minor` input configuration. Uses `@effected/semver` for version
+parsing. **Has no service tag of its own** — exported as standalone
 functions and consumed directly from `program.ts`. Yields `WorkspaceDiscovery`
-from `workspaces-effect` to resolve package paths.
+from `@effected/workspaces` to resolve package paths.
 
 **Exported functions:**
 
@@ -246,7 +260,7 @@ from `workspaces-effect` to resolve package paths.
 **Algorithm:**
 
 1. Build strategy lookup map from config.
-2. Yield `WorkspaceDiscovery` and call `listPackages(workspaceRoot)` to
+2. Yield `WorkspaceDiscovery` and call `listPackages()` to
    resolve package paths.
 3. For each devDep update matching a strategy:
    - Read the package.json.
@@ -257,18 +271,21 @@ from `workspaces-effect` to resolve package paths.
 ### src/services/lockfile.ts - Lockfile
 
 Compare lockfile snapshots before and after updates to detect changes.
-Uses `@pnpm/lockfile.fs` and yields `WorkspaceDiscovery` from
-`workspaces-effect`.
+Parses lockfiles with `@effected/lockfiles`' pure `Lockfile.parse(content, { format })`
+and yields `WorkspaceDiscovery` from `@effected/workspaces`. Package-manager
+agnostic: normalizes `pnpm-lock.yaml`, `bun.lock` and `package-lock.json` into
+one `Lockfile` model (the `@effected/lockfiles` `Lockfile` type; a decoded
+`ImporterDependency.specifier` is read via `.specifier.raw`).
 
 **Service interface:**
 
 ```typescript
-export class Lockfile extends Context.Tag("Lockfile")<Lockfile, {
- readonly capture: (workspaceRoot?: string) =>
-  Effect.Effect<LockfileObject | null, LockfileError>;
+export class Lockfile extends Context.Service<Lockfile, {
+ readonly capture: (pm: SupportedPm, workspaceRoot?: string) =>
+  Effect.Effect<Lockfile | null, LockfileError>;
  readonly compare: (before, after, workspaceRoot?) =>
   Effect.Effect<ReadonlyArray<LockfileChange>, LockfileError, WorkspaceDiscovery>;
-}>() {}
+}>()("Lockfile") {}
 ```
 
 **Key behavior — `compareCatalogs`:** for each catalog change, the comparator
@@ -285,7 +302,7 @@ removals), reading dep section from the `after` snapshot to type each entry.
 
 **Exported helpers** (used by `program.ts` and `Changesets`):
 
-- `captureLockfileState(workspaceRoot?)` - Standalone capture function
+- `captureLockfileState(pm, workspaceRoot?)` - Standalone capture function
 - `compareLockfiles(before, after, workspaceRoot?)` - Standalone compare
   function (signature requires `WorkspaceDiscovery` in its environment)
 - `groupChangesByPackage(changes)` - Group lockfile changes by affected package
@@ -301,12 +318,12 @@ writer and the local gating cascade this file used to carry are gone — see
 **Service interface:**
 
 ```typescript
-export class Changesets extends Context.Tag("Changesets")<Changesets, {
+export class Changesets extends Context.Service<Changesets, {
  readonly create: (
   workspaceRoot: string,
   base: string,
  ) => Effect.Effect<ReadonlyArray<ChangesetFile>, ChangesetError>;
-}>() {}
+}>()("Changesets") {}
 ```
 
 `create(workspaceRoot, base)` calls `depsRegen.plan({ cwd: workspaceRoot, base })`
@@ -332,7 +349,7 @@ baseline) — the anchor for DepsRegen's `merge-base(base) → worktree` diff.
   `privatePackages.version`, minus the changeset `ignore` list), applied
   inside DepsRegen. The action no longer re-implements the ignore gate,
   versionable cascade or trigger/informational classification.
-- `plan` refreshes workspace discovery before its snapshots and gating reads (silk-effects 3.2.1; workspaces-effect 2.0.3's `worktree()` also refreshes), so the diff sees manifests edited earlier in the same run. Without this the memoized discovery cache served pre-update manifests, the worktree snapshot equaled the merge-base snapshot and the step silently wrote 0 changesets.
+- `plan` refreshes workspace discovery before its snapshots and gating reads (silk-effects; `@effected/workspaces`' `worktree()` also refreshes), so the diff sees manifests edited earlier in the same run. Without this the memoized discovery cache served pre-update manifests, the worktree snapshot equaled the merge-base snapshot and the step silently wrote 0 changesets.
 
 **Exported helper:**
 
@@ -342,14 +359,14 @@ baseline) — the anchor for DepsRegen's `merge-base(base) → worktree` diff.
 ### src/services/runtime-upgrade.ts - RuntimeUpgrade
 
 Upgrade `devEngines.runtime` entries (node/deno/bun) in the root `package.json`
-via `runtime-resolver`. Depends on `NodeResolver`, `DenoResolver`, and
-`BunResolver` Tags from `runtime-resolver`. Mirrors `PnpmUpgrade`; resolver
+via `@effected/runtimes`. Depends on the `NodeResolver`, `DenoResolver`, and
+`BunResolver` services from `@effected/runtimes`. Mirrors `PnpmUpgrade`; resolver
 failures are caught and skipped per-runtime, never fatal.
 
 **Service interface:**
 
 ```typescript
-export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
+export class RuntimeUpgrade extends Context.Service<
  RuntimeUpgrade,
  {
   readonly upgrade: (
@@ -357,7 +374,7 @@ export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
    workspaceRoot?: string,
   ) => Effect.Effect<readonly RuntimeUpgradeResult[], FileSystemError>;
  }
->() {}
+>()("RuntimeUpgrade") {}
 ```
 
 **Types:**
@@ -378,7 +395,7 @@ export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
    version string is the target range.
 4. **Explicit range mode:** the user-typed value is the target range. It only selects *which line
    to resolve* — it never changes what shape is written.
-5. Call `resolver.resolve({ semverRange: targetRange })` and get `latest`. On any error
+5. Call `resolver.resolve({ range: targetRange })` and get `.latest`. On any error
    (`VersionNotFoundError` or network failure), log a warning and skip.
 6. If `latest` equals the current version, skip (already current).
 7. Assign `entry.version = latest` — the **bare, exact** resolved version, no operator re-attached.
@@ -399,7 +416,7 @@ export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
 step, does not support range operators, so any operator written here is a latent downstream
 failure. The range is a *resolution* input only.
 
-**EOL note:** `runtime-resolver`'s bundled cache and live API both exclude end-of-life major lines.
+**EOL note:** `@effected/runtimes`' bundled snapshot and live API both exclude end-of-life major lines.
 A resolution targeting an EOL line returns `VersionNotFoundError` and is skipped with a warning.
 This means `auto` on a `^20`-ranged entry (once Node 20 is EOL) will no-op.
 
@@ -412,13 +429,13 @@ summaries.
 **Service interface:**
 
 ```typescript
-export class Report extends Context.Tag("Report")<Report, {
+export class Report extends Context.Service<Report, {
  readonly createOrUpdatePR: (branch, base, updates, changesets, autoMerge?) =>
   Effect.Effect<PullRequestResult, PullRequestError>;
  readonly generatePRBody: (updates, changesets) => string;
  readonly generateSummary: (updates, changesets, pr, dryRun) => string;
  readonly generateCommitMessage: (updates, appSlug?) => string;
-}>() {}
+}>()("Report") {}
 ```
 
 `base` is the resolved `target-branch` (the PR merge target), threaded in from
@@ -431,26 +448,34 @@ Both the PR title (`createOrUpdatePR`) and the commit subject (the first line of
 
 `makeAppLayer(dryRun, { runtimeLive })` wires all library and domain layers.
 `dryRun` controls the `DryRun` service; `runtimeLive` (default: `false`) selects
-how the `NodeResolver`, `DenoResolver` and `BunResolver` Tags consumed by
+how the `NodeResolver`, `DenoResolver` and `BunResolver` services consumed by
 `RuntimeUpgradeLive` are built (see `makeRuntimeResolvers` in `src/layers/app.ts`):
-the offline path provides resolvers over the bundled `Offline*CacheLive` (no
-network or auth), the live path provides them over `Auto*CacheLive` backed by
-version fetchers and a `GitHubClientLive` (auth from `GitHubAutoAuth`) that fall
-back to the bundled cache on any fetch failure. The `GitHubClient` layer used by
-the rest of the action is built from `GitHubToken.client()`, which reads the
-installation-token envelope the pre phase persisted to `ActionState` — there is
-no bare `GitHubClientLive` and no `process.env.GITHUB_TOKEN` bridge. `ActionState`
-is provided locally (backed by `NodeContext.layer`'s FileSystem) so the layer is
-self-contained, and `Layer.orDie` turns a missing/unreadable token into a fatal
-defect, keeping the resulting `githubClient` at `R = never` for the `withCheckRun`
-callback.
+the offline path uses each resolver's `*.layerOffline` (bundled snapshot, no
+network or auth), the live path uses `*.layer` over an HTTP client /
+`@effected/runtimes`' `GitHubClient.layerDefault` (which pre-wires auth +
+`FetchHttpClient`) and falls back to the bundled snapshot on any fetch failure.
+The `GitHubClient` layer used by the rest of the action is built from
+`GitHubToken.client()`, which reads the installation-token envelope the pre phase
+persisted to `ActionState` — there is no bare `GitHubClientLive` and no
+`process.env.GITHUB_TOKEN` bridge. `ActionState` is provided locally (backed by
+`NodeServices.layer`'s FileSystem) so the layer is self-contained, and
+`Layer.orDie` turns a missing/unreadable token into a fatal defect, keeping the
+resulting `githubClient` at `R = never` for the `withCheckRun` callback. In
+Effect v4 the workspace layers are **root-bound at build** (static `.layer` /
+`.layer()` factories on the classes) and `NodeServices.layer` (from
+`@effect/platform-node`) is the platform bundle (replacing `NodeContext.layer`).
 
 ```typescript
+import { NodeServices } from "@effect/platform-node";
+import { BunResolver, DenoResolver, NodeResolver } from "@effected/runtimes";
+import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
+import { FetchHttpClient } from "effect/unstable/http";
+
 export const makeAppLayer = (
  dryRun: boolean,
  options: { runtimeLive: boolean } = { runtimeLive: false },
 ) => {
- const actionState = ActionStateLive.pipe(Layer.provide(NodeContext.layer));
+ const actionState = ActionStateLive.pipe(Layer.provide(NodeServices.layer));
  const githubClient = GitHubToken.client().pipe(Layer.provide(actionState), Layer.orDie);
 
  const ghGraphql = GitHubGraphQLLive.pipe(Layer.provide(githubClient));
@@ -459,10 +484,11 @@ export const makeAppLayer = (
  const gitCommit = GitCommitLive.pipe(Layer.provide(githubClient));
  const prLayer = PullRequestLive.pipe(Layer.provide(Layer.merge(githubClient, ghGraphql)));
 
- // Platform layer (FileSystem, Path) for workspaces-effect's WorkspaceDiscovery.
- const platform = NodeContext.layer;
- const workspaceRoot = WorkspaceRootLive.pipe(Layer.provide(platform));
- const workspaceDiscovery = WorkspaceDiscoveryLive.pipe(
+ // Platform bundle (FileSystem, Path, …) for @effected/workspaces. The
+ // workspace root is bound when the layer is built.
+ const platform = NodeServices.layer;
+ const workspaceRoot = WorkspaceRoot.layer.pipe(Layer.provide(platform));
+ const workspaceDiscovery = WorkspaceDiscovery.layer().pipe(
   Layer.provide(Layer.merge(workspaceRoot, platform)),
  );
 
@@ -470,21 +496,23 @@ export const makeAppLayer = (
  // DepsRegenDefault is batteries-included — it bundles the point-in-time
  // workspace reader, ConfigInspector, WorkspaceDiscovery, the adaptive
  // PublishabilityDetector and ChangesetConfig internally, so it needs only
- // platform services (FileSystem/Path/CommandExecutor from NodeContext.layer).
+ // platform services (FileSystem/Path/CommandExecutor from NodeServices.layer).
  const depsRegen = SilkChangesets.DepsRegenDefault.pipe(Layer.provide(platform));
 
  const libraryLayers = Layer.mergeAll(
   githubClient, gitBranch, gitCommit,
   CheckRunLive.pipe(Layer.provide(githubClient)),
   prLayer, npmRegistry, CommandRunnerLive, DryRunLive(dryRun),
+  FetchHttpClient.layer,
  );
 
- // NodeResolver/DenoResolver/BunResolver, built offline (bundled cache) or
- // live (Auto*CacheLive over fetchers + GitHubClientLive). See
+ // NodeResolver/DenoResolver/BunResolver, built offline (*.layerOffline) or
+ // live (*.layer over fetchers + GitHubClient.layerDefault). See
  // makeRuntimeResolvers for the live wiring.
  const runtimeResolvers = makeRuntimeResolvers(options.runtimeLive);
 
  const domainLayers = Layer.mergeAll(
+  workspaceRoot,
   workspaceDiscovery,
   ChangesetsLive.pipe(Layer.provide(depsRegen)),
   BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
@@ -499,16 +527,23 @@ export const makeAppLayer = (
 };
 ```
 
-`WorkspaceDiscoveryLive` and `WorkspaceRootLive` come from
-`workspaces-effect`; `NodeContext.layer` (from `@effect/platform-node`)
+> Note: the actual `src/layers/app.ts` also wires `PackageManagerDetector.layer`
+> and `LockfileReader.layer()` from `@effected/workspaces` plus the
+> `CatalogConfigDeps` / `PackageManagerUpgrade` domain layers for multi-package-manager
+> (pnpm/bun/npm) support. Those predate the Effect-v4 migration and are elided
+> here to keep this composition example at the same abstraction as the rest of
+> this section.
+
+`WorkspaceDiscovery.layer()` and `WorkspaceRoot.layer` come from
+`@effected/workspaces`; `NodeServices.layer` (from `@effect/platform-node`)
 satisfies their FileSystem/Path requirements. The action still wires
 `workspaceDiscovery` directly for `RegularDeps` — the changeset step no longer
 consumes it, since `DepsRegenDefault` bundles its own discovery internally.
 
 `Changesets.DepsRegenDefault` (from `@savvy-web/silk-effects`) is
 FileSystem-based — it reads `.changeset/config.json`, package manifests and the
-git worktree via `@effect/platform` FileSystem/CommandExecutor rather than
-`node:fs`, so `makeAppLayer` provides the same `platform` (`NodeContext.layer`)
+git worktree via core `effect`'s FileSystem/CommandExecutor rather than
+`node:fs`, so `makeAppLayer` provides the same `platform` (`NodeServices.layer`)
 and nothing else. The former hand-wired `changesetConfig` / `publishabilityDetector`
 locals are gone.
 

@@ -47,8 +47,8 @@ const provisionToken = (fixtures: Fixtures): Promise<void> =>
 	);
 
 const runPost = (fixtures: Fixtures): Promise<void> => {
-	const config = ConfigProvider.fromMap(new Map());
-	return post.pipe(Effect.provide(fixtures.layer), Effect.withConfigProvider(config), Effect.runPromise);
+	const config = ConfigProvider.fromUnknown({});
+	return post.pipe(Effect.provide(fixtures.layer), Effect.provide(ConfigProvider.layer(config)), Effect.runPromise);
 };
 
 describe("post", () => {

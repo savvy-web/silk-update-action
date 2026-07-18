@@ -46,13 +46,11 @@ const makeFixtures = (): Fixtures => {
 };
 
 const runPre = (fixtures: Fixtures): Promise<void> => {
-	const config = ConfigProvider.fromMap(
-		new Map([
-			["app-client-id", "test-client-id"],
-			["app-private-key", "test-private-key"],
-		]),
-	);
-	return pre.pipe(Effect.provide(fixtures.layer), Effect.withConfigProvider(config), Effect.runPromise);
+	const config = ConfigProvider.fromUnknown({
+		"app-client-id": "test-client-id",
+		"app-private-key": "test-private-key",
+	});
+	return pre.pipe(Effect.provide(fixtures.layer), Effect.provide(ConfigProvider.layer(config)), Effect.runPromise);
 };
 
 describe("pre", () => {

@@ -36,10 +36,10 @@ silk-update-action/
 │   ├── post.ts                 # Post phase — report duration, revoke token
 │   ├── program.ts              # Effect program + runCommands/runInstall helpers
 │   ├── state.ts                # Cross-phase state (StartTimeState, STATE_KEYS)
-│   ├── errors/                 # Schema.TaggedError definitions
+│   ├── errors/                 # Schema.TaggedErrorClass definitions
 │   ├── schemas/                # Effect Schema domain definitions
 │   ├── layers/                 # Layer composition (makeAppLayer)
-│   ├── services/               # Domain services (Context.Tag + Layer)
+│   ├── services/               # Domain services (Context.Service + Layer)
 │   └── utils/                  # Pure helpers (deps, input, markdown, pnpm, runtime, semver)
 ├── dist/                       # Built action output (bundled)
 ├── action.yml                  # GitHub Action metadata

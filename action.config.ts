@@ -23,9 +23,18 @@ export default defineConfig({
 		// production even though the file exists.
 		// `@changesets/apply-release-plan` loads the configured changelog
 		// module this way (via silk-effects 3's changesets v3 engine).
-		// `workspaces-effect`'s config-dependency-hooks loader is currently
-		// tree-shaken out of this bundle, but is listed so a future import
-		// graph change can't silently break it.
+		// `@effected/workspaces`'s ConfigDependencyHooks loader has the same
+		// computed `import(candidateUrl)` pattern and IS reachable in this bundle
+		// (via WorkspaceCatalogs), so rspack emits a "Critical dependency" warning
+		// and compiles it into a context module. It is deliberately NOT listed
+		// here: registering it makes the builder's webpack-ignore loader throw on
+		// that file (`hasTraversalSegment`) and fails the whole build. The warning
+		// is inert unless the config-dependency-hooks path is actually invoked at
+		// runtime — this action reads workspace/lockfile structure
+		// (WorkspaceDiscovery / LockfileReader / PackageManagerDetector), it does
+		// not load pnpmfile config-dependency hooks. TODO: confirm at runtime, or
+		// fix upstream (@effected/workspaces webpackIgnore its own loader, or the
+		// builder's ignore loader tolerate it).
 		//
 		// A third, different case: `src/services/module-catalogs.ts` (Task 5)
 		// dynamically imports a config dependency's extracted tarball entry —
@@ -44,7 +53,7 @@ export default defineConfig({
 		// after every build, asserting the built `dist/main.js` still holds a
 		// genuine `await import(<ident>)` at that call site and not a numbered
 		// context module. Deleting the magic comment fails the build.
-		nativeDynamicImports: ["@changesets/apply-release-plan", "workspaces-effect"],
+		nativeDynamicImports: ["@changesets/apply-release-plan"],
 	},
 	persistLocal: {
 		enabled: false,

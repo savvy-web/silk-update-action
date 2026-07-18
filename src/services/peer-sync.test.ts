@@ -1,10 +1,10 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, LogLevel, Logger } from "effect";
+import type { WorkspacePackage } from "@effected/workspaces";
+import { WorkspaceDiscovery, WorkspaceDiscoveryError } from "@effected/workspaces";
+import { Effect, Layer, References } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import type { WorkspacePackage } from "workspaces-effect";
-import { WorkspaceDiscovery, WorkspaceDiscoveryError } from "workspaces-effect";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
 import { computePeerRange, syncPeers } from "./peer-sync.js";
 
@@ -30,6 +30,9 @@ const makeWorkspacesLayer = (packages: ReadonlyArray<{ name: string; path: strin
 		listPackages: vi.fn(() => Effect.succeed(packages as unknown as ReadonlyArray<WorkspacePackage>)),
 		getPackage: vi.fn(() => Effect.die("getPackage not used in peer-sync tests")),
 		importerMap: vi.fn(() => Effect.succeed(new Map())),
+		info: vi.fn(() => Effect.die("info not used in peer-sync tests")),
+		resolveFile: vi.fn(() => Effect.die("resolveFile not used in peer-sync tests")),
+		resolveFiles: vi.fn(() => Effect.die("resolveFiles not used in peer-sync tests")),
 		refresh: vi.fn(() => Effect.void),
 	});
 
@@ -38,16 +41,21 @@ const makeWorkspacesLayer = (packages: ReadonlyArray<{ name: string; path: strin
  */
 const makeFailingWorkspacesLayer = () =>
 	Layer.succeed(WorkspaceDiscovery, {
-		listPackages: vi.fn((root?: string) =>
+		listPackages: vi.fn(() =>
 			Effect.fail(
 				new WorkspaceDiscoveryError({
-					root: root ?? "",
-					reason: "workspace detection failed",
+					root: "",
+					path: "",
+					kind: "read",
+					cause: "workspace detection failed",
 				}),
 			),
 		),
 		getPackage: vi.fn(() => Effect.die("getPackage not used in peer-sync tests")),
 		importerMap: vi.fn(() => Effect.succeed(new Map())),
+		info: vi.fn(() => Effect.die("info not used in peer-sync tests")),
+		resolveFile: vi.fn(() => Effect.die("resolveFile not used in peer-sync tests")),
+		resolveFiles: vi.fn(() => Effect.die("resolveFiles not used in peer-sync tests")),
 		refresh: vi.fn(() => Effect.void),
 	});
 
@@ -62,7 +70,7 @@ const runSyncPeers = (
 ) =>
 	Effect.runPromise(
 		syncPeers(config, devUpdates, workspaceRoot).pipe(
-			Logger.withMinimumLogLevel(LogLevel.None),
+			Effect.provideService(References.MinimumLogLevel, "None"),
 			Effect.provide(workspacesLayer),
 		),
 	);

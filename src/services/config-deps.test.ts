@@ -1,11 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Yaml } from "@effected/yaml";
 import { NpmRegistryTest } from "@savvy-web/github-action-effects";
-import type { Context } from "effect";
-import { Effect, Layer, LogLevel, Logger } from "effect";
+import { Effect, Layer, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parse } from "yaml";
 import { parseConfigEntry } from "../utils/deps.js";
 import { ConfigDeps, ConfigDepsLive } from "./config-deps.js";
 
@@ -50,7 +49,7 @@ const makeRegistryState = (
 };
 
 const runWithService = <A, E>(
-	fn: (service: Context.Tag.Service<typeof ConfigDeps>) => Effect.Effect<A, E>,
+	fn: (service: Effect.Success<typeof ConfigDeps>) => Effect.Effect<A, E>,
 	packages?: Record<string, { version: string; integrity?: string; versions?: string[] }>,
 ) => {
 	const registryLayer = packages
@@ -61,7 +60,7 @@ const runWithService = <A, E>(
 		Effect.gen(function* () {
 			const service = yield* ConfigDeps;
 			return yield* fn(service);
-		}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+		}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 	);
 };
 
@@ -114,7 +113,10 @@ describe("ConfigDeps.updateConfigDeps", () => {
 	};
 
 	const readWorkspaceYaml = () => {
-		return parse(readFileSync(join(tempDir, "pnpm-workspace.yaml"), "utf-8"));
+		return Effect.runSync(Yaml.parse(readFileSync(join(tempDir, "pnpm-workspace.yaml"), "utf-8"))) as {
+			configDependencies: Record<string, string>;
+			[key: string]: unknown;
+		};
 	};
 
 	it("returns empty array when no deps provided", async () => {

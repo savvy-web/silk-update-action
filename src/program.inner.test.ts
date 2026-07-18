@@ -30,15 +30,14 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
+import type { WorkspacePackage } from "@effected/workspaces";
+import { PackageManagerDetector, WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { ActionInputError, CommandRunner } from "@savvy-web/github-action-effects";
 import type { ActionOutputsTestState, CheckRunTestState } from "@savvy-web/github-action-effects/testing";
 import { ActionOutputsTest, CheckRunTest, NpmRegistryTest } from "@savvy-web/github-action-effects/testing";
-import type { Context } from "effect";
-import { Cause, Effect, Exit, Layer, LogLevel, Logger, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Logger, Option, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspacePackage } from "workspaces-effect";
-import { PackageManagerDetectorLive, WorkspaceDiscovery, WorkspaceRootLive } from "workspaces-effect";
 import type { makeAppLayer } from "./layers/app.js";
 import type { InnerProgramInputs } from "./program.js";
 import { innerProgram } from "./program.js";
@@ -77,11 +76,15 @@ const writeFixture = (pm: FixturePm): void => {
 			writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - .\n");
 			break;
 		case "bun":
-			// devEngines.packageManager is the detector's first signal, so no
-			// bun.lock is needed — and omitting it keeps the fixture a "never
-			// installed" repo, whose lockfile snapshot is simply absent.
+			// @effected/workspaces' detector requires a bun lockfile conjoined with
+			// the manifest naming bun (the same conjunction it applies to yarn),
+			// so a valid bun.lock is written alongside devEngines.packageManager.
 			pkg.workspaces = ["."];
 			pkg.devEngines = { packageManager: { name: "bun", version: "1.3.14" } };
+			writeFileSync(
+				join(root, "bun.lock"),
+				`${JSON.stringify({ lockfileVersion: 1, workspaces: { "": { name: "root" } }, packages: {} }, null, "\t")}\n`,
+			);
 			break;
 		case "npm":
 			pkg.workspaces = ["packages/*"];
@@ -110,19 +113,21 @@ interface LogLine {
 
 let logs: LogLine[];
 
-const captureLogger = Logger.replace(
-	Logger.defaultLogger,
-	Logger.make(({ logLevel, message }) => {
-		const text = Array.isArray(message) ? message.map(String).join(" ") : String(message);
-		logs.push({ level: logLevel.label, message: text });
-	}),
+const captureLogger = Layer.succeed(
+	References.CurrentLoggers,
+	new Set([
+		Logger.make(({ logLevel, message }) => {
+			const text = Array.isArray(message) ? message.map(String).join(" ") : String(message);
+			logs.push({ level: logLevel, message: text });
+		}),
+	]),
 );
 
 /** Every captured message, regardless of level. */
 const messages = (): string[] => logs.map((l) => l.message);
 
 /** Only the WARN-level messages — the acceptance signals. */
-const warnings = (): string[] => logs.filter((l) => l.level === "WARN").map((l) => l.message);
+const warnings = (): string[] => logs.filter((l) => l.level === "Warn").map((l) => l.message);
 
 /**
  * WARN-level messages about the package-manager upgrade specifically.
@@ -142,7 +147,7 @@ const findLine = (level: string | null, ...fragments: string[]): LogLine | undef
 // Service fakes
 // ══════════════════════════════════════════════════════════════════════════════
 
-type CommandRunnerShape = Context.Tag.Service<typeof CommandRunner>;
+type CommandRunnerShape = Effect.Success<typeof CommandRunner>;
 
 /** Records the calls each faked service received, so a dispatch can be proven. */
 interface Spies {
@@ -168,7 +173,7 @@ interface HarnessOptions {
 	/** Registry contents for the real `PackageManagerUpgradeLive`. */
 	readonly registry?: Map<string, { versions: string[]; latest: string; distTags: Record<string, string> }>;
 	/** Replace the real package-manager upgrade with a fake returning this outcome. */
-	readonly packageManagerUpgrade?: Context.Tag.Service<typeof PackageManagerUpgrade>["upgrade"];
+	readonly packageManagerUpgrade?: Effect.Success<typeof PackageManagerUpgrade>["upgrade"];
 }
 
 const update = (dependency: string, from: string, to: string): DependencyUpdateResult => ({
@@ -220,14 +225,17 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		listPackages: vi.fn(() => Effect.succeed([] as ReadonlyArray<WorkspacePackage>)),
 		getPackage: vi.fn(() => Effect.die("getPackage not used in innerProgram tests")),
 		importerMap: vi.fn(() => Effect.succeed(new Map())),
+		info: vi.fn(() => Effect.die("info not used in innerProgram tests")),
+		resolveFile: vi.fn(() => Effect.die("resolveFile not used in innerProgram tests")),
+		resolveFiles: vi.fn(() => Effect.die("resolveFiles not used in innerProgram tests")),
 		refresh: vi.fn(() => Effect.void),
 	});
 
 	// The real detector, over the temp-dir fixture.
 	const detection = Layer.mergeAll(
-		PackageManagerDetectorLive,
-		WorkspaceRootLive.pipe(Layer.provide(NodeContext.layer)),
-	).pipe(Layer.provide(NodeContext.layer));
+		PackageManagerDetector.layer,
+		WorkspaceRoot.layer.pipe(Layer.provide(NodeServices.layer)),
+	).pipe(Layer.provide(NodeServices.layer));
 
 	const npmRegistry = NpmRegistryTest.layer({ packages: options.registry ?? new Map() });
 
@@ -246,28 +254,28 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		detection,
 		packageManagerUpgrade,
 		Layer.succeed(ConfigDeps, {
-			updateConfigDeps: spies.configDeps as unknown as Context.Tag.Service<typeof ConfigDeps>["updateConfigDeps"],
+			updateConfigDeps: spies.configDeps as unknown as Effect.Success<typeof ConfigDeps>["updateConfigDeps"],
 		}),
 		Layer.succeed(CatalogConfigDeps, {
-			update: spies.catalogConfigDeps as unknown as Context.Tag.Service<typeof CatalogConfigDeps>["update"],
+			update: spies.catalogConfigDeps as unknown as Effect.Success<typeof CatalogConfigDeps>["update"],
 		}),
 		Layer.succeed(RegularDeps, {
-			updateRegularDeps: spies.regularDeps as unknown as Context.Tag.Service<typeof RegularDeps>["updateRegularDeps"],
+			updateRegularDeps: spies.regularDeps as unknown as Effect.Success<typeof RegularDeps>["updateRegularDeps"],
 		}),
 		Layer.succeed(RuntimeUpgrade, {
-			upgrade: spies.runtimeUpgrade as unknown as Context.Tag.Service<typeof RuntimeUpgrade>["upgrade"],
+			upgrade: spies.runtimeUpgrade as unknown as Effect.Success<typeof RuntimeUpgrade>["upgrade"],
 		}),
 		Layer.succeed(Changesets, {
-			create: spies.changesetsCreate as unknown as Context.Tag.Service<typeof Changesets>["create"],
+			create: spies.changesetsCreate as unknown as Effect.Success<typeof Changesets>["create"],
 		}),
 		Layer.succeed(BranchManager, {
 			manage: () => Effect.succeed({ branch: "pnpm/config-deps", created: true, upToDate: false, baseRef: "main" }),
 			validateBranches: () => Effect.void,
-			commitChanges: spies.commitChanges as unknown as Context.Tag.Service<typeof BranchManager>["commitChanges"],
+			commitChanges: spies.commitChanges as unknown as Effect.Success<typeof BranchManager>["commitChanges"],
 			ensureBaseHistory: () => Effect.void,
 		}),
 		Layer.succeed(Report, {
-			createOrUpdatePR: spies.createOrUpdatePR as unknown as Context.Tag.Service<typeof Report>["createOrUpdatePR"],
+			createOrUpdatePR: spies.createOrUpdatePR as unknown as Effect.Success<typeof Report>["createOrUpdatePR"],
 			generatePRBody: () => "body",
 			generateSummary: () => "summary",
 			generateCommitMessage: () => "chore(deps): update dependencies",
@@ -308,7 +316,7 @@ const runInner = (
 	Effect.runPromiseExit(
 		innerProgram(inputs, dryRun, "deadbeef", harness.layer).pipe(
 			Effect.provide(captureLogger),
-			Logger.withMinimumLogLevel(LogLevel.Info),
+			Effect.provideService(References.MinimumLogLevel, "Info"),
 		) as Effect.Effect<void, unknown, never>,
 	);
 
@@ -344,7 +352,7 @@ describe("innerProgram — config-dependency dispatch", () => {
 		expect(Exit.isSuccess(exit)).toBe(true);
 		expect(harness.spies.configDeps).toHaveBeenCalledWith(["pnpm-plugin-silk"], realRoot);
 		expect(harness.spies.catalogConfigDeps).not.toHaveBeenCalled();
-		expect(findLine("INFO", "Step: config dependencies", "pnpm mode")).toBeDefined();
+		expect(findLine("Info", "Step: config dependencies", "pnpm mode")).toBeDefined();
 	});
 
 	it("routes a bun repo to CatalogConfigDeps and never to ConfigDeps", async () => {
@@ -356,7 +364,7 @@ describe("innerProgram — config-dependency dispatch", () => {
 		expect(Exit.isSuccess(exit)).toBe(true);
 		expect(harness.spies.catalogConfigDeps).toHaveBeenCalledWith(["pnpm-plugin-silk"], realRoot);
 		expect(harness.spies.configDeps).not.toHaveBeenCalled();
-		expect(findLine("INFO", "Step: config dependencies", "compat catalog mode")).toBeDefined();
+		expect(findLine("Info", "Step: config dependencies", "compat catalog mode")).toBeDefined();
 	});
 
 	it("routes an npm repo to neither service and warns that npm has no catalog: protocol", async () => {
@@ -368,8 +376,8 @@ describe("innerProgram — config-dependency dispatch", () => {
 		expect(Exit.isSuccess(exit)).toBe(true);
 		expect(harness.spies.configDeps).not.toHaveBeenCalled();
 		expect(harness.spies.catalogConfigDeps).not.toHaveBeenCalled();
-		expect(findLine("WARN", "npm does not implement the catalog: protocol")).toBeDefined();
-		expect(findLine("INFO", "Step: config dependencies — SKIPPED", "npm has no catalog: protocol")).toBeDefined();
+		expect(findLine("Warn", "npm does not implement the catalog: protocol")).toBeDefined();
+		expect(findLine("Info", "Step: config dependencies — SKIPPED", "npm has no catalog: protocol")).toBeDefined();
 	});
 });
 
@@ -391,7 +399,7 @@ describe("innerProgram — package-manager upgrade acceptance signal", () => {
 		expect(Exit.isSuccess(exit)).toBe(true);
 
 		// The signal must be at WARN — not buried at info alongside routine skips.
-		const warning = findLine("WARN", "no bun release satisfies", '"^11.0.0"');
+		const warning = findLine("Warn", "no bun release satisfies", '"^11.0.0"');
 		expect(warning).toBeDefined();
 		expect(warning?.message).toContain("upgrade-package-manager range is a bun range");
 
@@ -406,7 +414,7 @@ describe("innerProgram — package-manager upgrade acceptance signal", () => {
 		const exit = await runInner(harness, baseInputs({ "upgrade-package-manager": "false", dependencies: ["effect"] }));
 
 		expect(Exit.isSuccess(exit)).toBe(true);
-		expect(findLine("INFO", "Step: package manager — SKIPPED", "disabled")).toBeDefined();
+		expect(findLine("Info", "Step: package manager — SKIPPED", "disabled")).toBeDefined();
 		expect(packageManagerWarnings()).toEqual([]);
 	});
 
@@ -420,7 +428,7 @@ describe("innerProgram — package-manager upgrade acceptance signal", () => {
 		expect(Exit.isSuccess(exit)).toBe(true);
 		// The benign twin of the case above: same step, same "no upgrade" outcome,
 		// reported at INFO because nothing is misconfigured.
-		expect(findLine("INFO", "SKIPPED:", "bun 1.3.14 already satisfies")).toBeDefined();
+		expect(findLine("Info", "SKIPPED:", "bun 1.3.14 already satisfies")).toBeDefined();
 		expect(packageManagerWarnings()).toEqual([]);
 	});
 });
@@ -438,7 +446,7 @@ describe("innerProgram — workspace-format gate", () => {
 		const exit = await runInner(harness, baseInputs({ dependencies: ["effect"] }));
 
 		expect(Exit.isSuccess(exit)).toBe(true);
-		expect(findLine("INFO", "Step: workspace formatting — formatting pnpm-workspace.yaml")).toBeDefined();
+		expect(findLine("Info", "Step: workspace formatting — formatting pnpm-workspace.yaml")).toBeDefined();
 
 		// Proof it actually ran, not just that it logged: the file is now sorted.
 		const formatted = readFileSync(join(root, "pnpm-workspace.yaml"), "utf-8");
@@ -454,7 +462,7 @@ describe("innerProgram — workspace-format gate", () => {
 
 		expect(Exit.isSuccess(exit)).toBe(true);
 		expect(
-			findLine("INFO", "Step: workspace formatting — SKIPPED", "not a pnpm workspace (detected bun)"),
+			findLine("Info", "Step: workspace formatting — SKIPPED", "not a pnpm workspace (detected bun)"),
 		).toBeDefined();
 	});
 
@@ -466,7 +474,7 @@ describe("innerProgram — workspace-format gate", () => {
 
 		expect(Exit.isSuccess(exit)).toBe(true);
 		expect(
-			findLine("INFO", "Step: workspace formatting — SKIPPED", "not a pnpm workspace (detected npm)"),
+			findLine("Info", "Step: workspace formatting — SKIPPED", "not a pnpm workspace (detected npm)"),
 		).toBeDefined();
 	});
 });
@@ -485,7 +493,7 @@ describe("innerProgram — install gate", () => {
 		expect(Exit.isSuccess(exit)).toBe(true);
 		expect(harness.spies.execLines).toContain("pnpm clean --lockfile");
 		expect(harness.spies.execLines).toContain("pnpm install --frozen-lockfile=false");
-		expect(findLine("INFO", "Step: install — pnpm clean --lockfile")).toBeDefined();
+		expect(findLine("Info", "Step: install — pnpm clean --lockfile")).toBeDefined();
 	});
 
 	it("installs with bun's command in a bun repo", async () => {
@@ -507,7 +515,7 @@ describe("innerProgram — install gate", () => {
 
 		expect(Exit.isSuccess(exit)).toBe(true);
 		expect(harness.spies.execLines.some((line) => line.startsWith("pnpm install"))).toBe(false);
-		expect(findLine("INFO", "Step: install — SKIPPED", "nothing to install")).toBeDefined();
+		expect(findLine("Info", "Step: install — SKIPPED", "nothing to install")).toBeDefined();
 	});
 });
 
@@ -612,7 +620,7 @@ describe("innerProgram — workspace root threading", () => {
 		const harness = makeHarness({
 			regularUpdates: [update("effect", "^3.0.0", "^3.1.0")],
 			gitStatus: " M package.json\n",
-			packageManagerUpgrade: packageManagerUpgrade as unknown as Context.Tag.Service<
+			packageManagerUpgrade: packageManagerUpgrade as unknown as Effect.Success<
 				typeof PackageManagerUpgrade
 			>["upgrade"],
 		});
@@ -680,7 +688,7 @@ describe("innerProgram — unsupported workspace", () => {
 		const exit = await runInner(harness, baseInputs({ dependencies: ["effect"] }));
 
 		expect(Exit.isFailure(exit)).toBe(true);
-		const failure = Exit.isFailure(exit) ? Option.getOrNull(Cause.failureOption(exit.cause)) : null;
+		const failure = Exit.isFailure(exit) ? Option.getOrNull(Cause.findErrorOption(exit.cause)) : null;
 		expect(failure).toBeInstanceOf(ActionInputError);
 		expect((failure as ActionInputError).reason).toContain("does not support");
 

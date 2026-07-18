@@ -1,6 +1,6 @@
 import type { PullRequestError } from "@savvy-web/github-action-effects";
 import { PullRequestTest } from "@savvy-web/github-action-effects";
-import { Cause, Effect, Layer, LogLevel, Logger } from "effect";
+import { Cause, Effect, Layer, References } from "effect";
 import { describe, expect, it } from "vitest";
 import type { CatalogDelta } from "../schemas/domain.js";
 import { pnpmUpgradeUpdate } from "../utils/fixtures.test.js";
@@ -29,7 +29,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(result.number).toBe(42);
@@ -50,7 +50,7 @@ describe("createOrUpdatePR", () => {
 					[{ dependency: "pnpm", from: "11.6.0", to: "11.7.0", type: "config", package: null }],
 					[],
 				);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		const created = state.prs.find((p) => p.number === 7);
@@ -86,7 +86,7 @@ describe("createOrUpdatePR", () => {
 					[{ dependency: "node", from: "^24.0.0", to: "^26.1.0", type: "runtime", package: null }],
 					[],
 				);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		const reused = state.prs.find((p) => p.number === 10);
@@ -117,7 +117,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(result.number).toBe(10);
@@ -133,7 +133,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(result.nodeId).toBeTruthy();
@@ -164,7 +164,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(result.nodeId).toBe("PR_kwDOExisting10");
@@ -179,7 +179,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], [], "squash");
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(result.number).toBe(50);
@@ -197,7 +197,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(result.number).toBe(99);
@@ -237,13 +237,13 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], []);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(exit._tag).toBe("Failure");
 		// The error should be a PullRequestError, not a sentinel value
 		if (exit._tag === "Failure") {
-			const failure = Cause.failureOption(exit.cause);
+			const failure = Cause.findErrorOption(exit.cause);
 			expect(failure._tag).toBe("Some");
 			if (failure._tag === "Some") {
 				expect(failure.value._tag).toBe("PullRequestError");
@@ -261,7 +261,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "dev", [], []);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(state.prs[0].base).toBe("dev");
@@ -280,7 +280,7 @@ describe("createOrUpdatePR", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return yield* report.createOrUpdatePR("pnpm/config", "main", [], [], undefined, deltas);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		const created = state.prs.find((p) => p.number === 11);
@@ -299,7 +299,7 @@ describe("generateCommitMessage", () => {
 				return report.generateCommitMessage([
 					{ dependency: "node", from: "^24.0.0", to: "^24.16.0", type: "runtime", package: null },
 				]);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		// Subject is the contents-aware headline (rule 2), not a count summary.
@@ -319,7 +319,7 @@ describe("generateCommitMessage", () => {
 			Effect.gen(function* () {
 				const report = yield* Report;
 				return report.generateCommitMessage([]);
-			}).pipe(Effect.provide(layer), Logger.withMinimumLogLevel(LogLevel.None)),
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
 
 		expect(msg.split("\n")[0]).toBe("chore(deps): update dependencies");

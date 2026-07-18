@@ -29,17 +29,24 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import type { ResolvedVersions } from "@effected/runtimes";
+import { BunResolver, DenoResolver, NodeResolver } from "@effected/runtimes";
 import { Context, Effect, Layer } from "effect";
-import { BunResolver, DenoResolver, NodeResolver } from "runtime-resolver";
 
 import { FileSystemError } from "../errors/errors.js";
 import { detectIndent } from "../utils/pnpm.js";
 import type { RuntimeName } from "../utils/runtime.js";
 import { findRuntimeEntry, isStaticVersion } from "../utils/runtime.js";
 
-type NodeResolverShape = Context.Tag.Service<typeof NodeResolver>;
-type DenoResolverShape = Context.Tag.Service<typeof DenoResolver>;
-type BunResolverShape = Context.Tag.Service<typeof BunResolver>;
+/**
+ * Structural view of a `@effected/runtimes` resolver. All three resolvers share
+ * this `resolve` signature (the option key is `range`, and the resolved result
+ * carries `latest`); the concrete error channel is narrower than `unknown` and
+ * so assignable to it.
+ */
+interface RuntimeResolver {
+	readonly resolve: (options?: { readonly range?: string }) => Effect.Effect<ResolvedVersions, unknown>;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,7 +70,7 @@ export interface RuntimeUpgradeConfig {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
-export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
+export class RuntimeUpgrade extends Context.Service<
 	RuntimeUpgrade,
 	{
 		readonly upgrade: (
@@ -71,7 +78,7 @@ export class RuntimeUpgrade extends Context.Tag("RuntimeUpgrade")<
 			workspaceRoot?: string,
 		) => Effect.Effect<readonly RuntimeUpgradeResult[], FileSystemError>;
 	}
->() {}
+>()("RuntimeUpgrade") {}
 
 export const RuntimeUpgradeLive = Layer.effect(
 	RuntimeUpgrade,
@@ -91,30 +98,30 @@ const fsReadError = (path: string, e: unknown) => new FileSystemError({ operatio
 const fsWriteError = (path: string, e: unknown) => new FileSystemError({ operation: "write", path, reason: String(e) });
 
 interface Resolvers {
-	readonly node: NodeResolverShape;
-	readonly deno: DenoResolverShape;
-	readonly bun: BunResolverShape;
+	readonly node: RuntimeResolver;
+	readonly deno: RuntimeResolver;
+	readonly bun: RuntimeResolver;
 }
 
 /** Resolve `.latest` for a target range; null on any resolver failure (logged). */
 const resolveLatest = (
-	resolver: { resolve: (o?: { semverRange?: string }) => Effect.Effect<{ latest: string; source: string }, unknown> },
+	resolver: RuntimeResolver,
 	runtime: RuntimeName,
 	semverRange: string,
 ): Effect.Effect<string | null, never> =>
-	resolver.resolve({ semverRange }).pipe(
+	resolver.resolve({ range: semverRange }).pipe(
 		// Note: r.source ("api"/"cache") is runtime-resolver's data-origin label on
 		// the snapshot, not a live-fetch indicator — the offline cache reports
 		// "api" without any network call — so it is deliberately not logged here.
 		Effect.tap((r) => Effect.logInfo(`Resolved ${runtime} ${semverRange} -> ${r.latest}`)),
 		Effect.map((r) => r.latest as string | null),
-		Effect.catchAll((e) =>
+		Effect.catch((e) =>
 			Effect.as(Effect.logWarning(`Could not resolve ${runtime} for range "${semverRange}": ${String(e)}`), null),
 		),
 	);
 
 const upgradeOne = (
-	resolver: { resolve: (o?: { semverRange?: string }) => Effect.Effect<{ latest: string; source: string }, unknown> },
+	resolver: RuntimeResolver,
 	runtime: RuntimeName,
 	mode: string,
 	pkgJson: Record<string, unknown>,

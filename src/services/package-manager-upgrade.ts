@@ -40,6 +40,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import type { NpmRegistryShape } from "@savvy-web/github-action-effects";
 import { NpmRegistry } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
 
@@ -47,8 +48,6 @@ import { FileSystemError } from "../errors/errors.js";
 import { corepackHashFromIntegrity, detectIndent } from "../utils/pnpm.js";
 import { resolveLatestSatisfying } from "../utils/semver.js";
 import type { SupportedPm } from "./package-manager.js";
-
-type NpmRegistryShape = Context.Tag.Service<typeof NpmRegistry>;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Constants
@@ -126,7 +125,7 @@ interface ParsedPmVersion {
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class PackageManagerUpgrade extends Context.Tag("PackageManagerUpgrade")<
+export class PackageManagerUpgrade extends Context.Service<
 	PackageManagerUpgrade,
 	{
 		readonly upgrade: (
@@ -135,7 +134,7 @@ export class PackageManagerUpgrade extends Context.Tag("PackageManagerUpgrade")<
 			workspaceRoot?: string,
 		) => Effect.Effect<PackageManagerUpgradeOutcome, FileSystemError>;
 	}
->() {}
+>()("PackageManagerUpgrade") {}
 
 export const PackageManagerUpgradeLive = Layer.effect(
 	PackageManagerUpgrade,
@@ -315,7 +314,7 @@ const upgradePackageManagerImpl = (
 		if (isCorepackManaged) {
 			const integrity = yield* registry.getPackageInfo(pm, resolved).pipe(
 				Effect.map((info) => info.integrity ?? ""),
-				Effect.catchAll(() => Effect.succeed("")),
+				Effect.catch(() => Effect.succeed("")),
 			);
 			hash = corepackHashFromIntegrity(integrity);
 			if (hash === null) {

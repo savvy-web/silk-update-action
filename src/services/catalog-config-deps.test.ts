@@ -13,11 +13,11 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HttpClient, HttpClientResponse } from "@effect/platform";
+import { LockfileReadError, LockfileReader } from "@effected/workspaces";
 import { CommandRunner, NpmRegistry, NpmRegistryError } from "@savvy-web/github-action-effects";
-import { Effect, Exit, Layer, LogLevel, Logger, Option } from "effect";
+import { Effect, Exit, Layer, Option, References } from "effect";
+import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LockfileReadError, LockfileReader } from "workspaces-effect";
 import { makeTarball } from "./__fixtures__/tarball.js";
 import { CatalogConfigDeps, CatalogConfigDepsLive } from "./catalog-config-deps.js";
 
@@ -144,7 +144,8 @@ const lockfileStub = (installed: string | null) => lockfileFor(installed === nul
 /** A lockfile that cannot be read at all (corrupt, or absent for the detected PM). */
 const failingLockfileStub = Layer.succeed(LockfileReader, {
 	readLockfile: () => Effect.die("not used"),
-	resolvedVersion: () => Effect.fail(new LockfileReadError({ lockfilePath: "/nope/bun.lock", reason: "unreadable" })),
+	resolvedVersion: () =>
+		Effect.fail(new LockfileReadError({ lockfilePath: "/nope/bun.lock", format: "bun", cause: "unreadable" })),
 	workspaceDependencies: () => Effect.succeed([]),
 	checkIntegrity: () => Effect.die("not used"),
 } as never);
@@ -161,7 +162,7 @@ const runWith = (
 	Effect.gen(function* () {
 		const service = yield* CatalogConfigDeps;
 		return yield* service.update(deps, workspaceRoot);
-	}).pipe(Effect.provide(layers(packages, lockfile)), Logger.withMinimumLogLevel(LogLevel.None));
+	}).pipe(Effect.provide(layers(packages, lockfile)), Effect.provideService(References.MinimumLogLevel, "None"));
 
 /** The common case: one package, a lockfile-installed base version. */
 const run = (deps: ReadonlyArray<string>, versions: ReadonlyArray<string>, installed: string | null) =>

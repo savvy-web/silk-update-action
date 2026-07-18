@@ -33,8 +33,12 @@ execute it.
 
 `post.ts` runs after `main`, even on failure. It reports total duration from the
 saved `StartTimeState`, then revokes the token via `GitHubToken.dispose()`. The
-whole effect is guarded with `Effect.catchAll` (around `dispose`) plus `Effect.catchAllDefect`
-so a post failure never fails the workflow. `PostLive` mirrors `PreLive`.
+whole effect is guarded with `Effect.catch` (around `dispose`) plus
+`Effect.catchDefect` (v4 spellings of the old `catchAll` / `catchAllDefect`) so a
+post failure never fails the workflow. `PostLive` provides `GitHubAppLive` over
+`OctokitAuthAppLive` and `FetchHttpClient.layer` (imported from
+`effect/unstable/http` in v4) merged with `NodeFileSystem.layer`, mirroring
+`PreLive`.
 
 ## src/main.ts - Main-Phase Entry
 
@@ -96,7 +100,7 @@ const upgradePackageManager = yield* Config.string("upgrade-package-manager").pi
 const changesets = yield* Config.boolean("changesets").pipe(Config.withDefault(true));
 const autoMerge = yield* Config.string("auto-merge").pipe(Config.withDefault(""));
 const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
-const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
+const timeout = yield* Config.int("timeout").pipe(Config.withDefault(180));
 // upgrade-runtime-{node,deno,bun} default "false"; runtime-data default "offline".
 const rawRuntimeNode = yield* Config.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
 const rawRuntimeDeno = yield* Config.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
@@ -106,7 +110,7 @@ const runtimeLive = runtimeData === "live";
 
 // upgrade-package-manager and each upgrade-runtime-* value must be one of the input's
 // allowed keywords or a parseable semver range — explicit ranges are validated
-// via the standalone parseRange from semver-effect.
+// via Range.parse from @effected/semver.
 const anyRuntime = rawRuntimeNode !== "false" || rawRuntimeDeno !== "false" || rawRuntimeBun !== "false";
 
 // Cross-validate: at least one update type must be active
@@ -124,7 +128,7 @@ if (peerOverlap.length > 0) {
 `parseMultiValueInput` (in `src/utils/input.ts`) accepts JSON arrays,
 newline-separated lists (with optional `*` bullets and `#` comments), or
 comma-separated strings. The `runtime-data` input (`offline` | `live`) selects
-which `runtime-resolver` cache layers `makeAppLayer` wires.
+which `@effected/runtimes` resolver layers `makeAppLayer` wires.
 
 ### Layer Composition
 
@@ -140,10 +144,13 @@ const headSha = (yield* env.github).sha;
 
 const appLayer = makeAppLayer(dryRun, { runtimeLive });
 yield* innerProgram(inputs, dryRun, headSha, appLayer)
- .pipe(Logger.withMinimumLogLevel(effectLogLevel))
- .pipe(Effect.timeoutFail({
+ // v4: minimum log level is set via References, not Logger.withMinimumLogLevel;
+ // effectLogLevel is a string literal ("Debug" | "Info").
+ .pipe(Effect.provideService(References.MinimumLogLevel, effectLogLevel))
+ // v4: Effect.timeoutOrElse replaces Effect.timeoutFail.
+ .pipe(Effect.timeoutOrElse({
   duration: Duration.seconds(timeout),
-  onTimeout: () => new Error(`Action timed out after ${timeout} seconds`),
+  orElse: () => Effect.fail(new Error(`Action timed out after ${timeout} seconds`)),
  }));
 ```
 
@@ -151,7 +158,7 @@ yield* innerProgram(inputs, dryRun, headSha, appLayer)
 `GitHubToken.client()` (see `src/layers/app.ts`), which reads the token envelope
 from `ActionState` — no `process.env.GITHUB_TOKEN` bridge. `program.ts` does no
 token plumbing of its own. `runtimeLive` (derived from `runtime-data === "live"`)
-selects the `runtime-resolver` cache layers.
+selects the `@effected/runtimes` resolver layers.
 
 ### Program Structure
 
@@ -182,13 +189,13 @@ The module exports:
 `RuntimeUpgrade`, `ConfigDeps`, `RegularDeps`, `Changesets`, `Report`) and
 helper functions (`captureLockfileState`, `compareLockfiles`, `syncPeers`,
 `formatWorkspaceYaml`) plus library services (`ActionOutputs`, `CheckRun`,
-`CommandRunner`) and `WorkspaceDiscovery` (from `workspaces-effect`) in its
+`CommandRunner`) and `WorkspaceDiscovery` (from `@effected/workspaces`) in its
 context.
 
 The module-level call in `main.ts` uses `Action.run(program)` which handles all
 error formatting via `formatCause` automatically.
 
-Timeout is applied inside `program` via `Effect.timeoutFail` using the
+Timeout is applied inside `program` via `Effect.timeoutOrElse` using the
 configurable `timeout` input (default: 180 seconds).
 
 ### Key Exported Functions

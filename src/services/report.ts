@@ -10,11 +10,9 @@
  * @module services/report
  */
 
-import type { PullRequestError } from "@savvy-web/github-action-effects";
+import type { PullRequestError, PullRequestShape } from "@savvy-web/github-action-effects";
 import { GithubMarkdown, PullRequest as PullRequestTag } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
-
-type PullRequestShape = Context.Tag.Service<typeof PullRequestTag>;
 
 import type { CatalogDelta, ChangesetFile, DependencyUpdateResult, PullRequestResult } from "../schemas/domain.js";
 import { buildUpdateSubject } from "../utils/commit-subject.js";
@@ -23,7 +21,7 @@ import { buildUpdateSubject } from "../utils/commit-subject.js";
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class Report extends Context.Tag("Report")<
+export class Report extends Context.Service<
 	Report,
 	{
 		readonly createOrUpdatePR: (
@@ -48,7 +46,7 @@ export class Report extends Context.Tag("Report")<
 		) => string;
 		readonly generateCommitMessage: (updates: ReadonlyArray<DependencyUpdateResult>, appSlug?: string) => string;
 	}
->() {}
+>()("Report") {}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Live Layer

@@ -9,9 +9,9 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HttpClient, HttpClientError, HttpClientResponse } from "@effect/platform";
 import { CommandRunner, CommandRunnerError, NpmRegistryTest } from "@savvy-web/github-action-effects";
-import { Effect, Layer, LogLevel, Logger } from "effect";
+import { Effect, Layer, References } from "effect";
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeTarball } from "./__fixtures__/tarball.js";
 import { fetchModuleCatalogs, resolveEntryPoint } from "./module-catalogs.js";
@@ -58,7 +58,11 @@ const httpStub = Layer.succeed(
 const httpFailStub = Layer.succeed(
 	HttpClient.HttpClient,
 	HttpClient.make((request) =>
-		Effect.fail(new HttpClientError.RequestError({ request, reason: "Transport", description: "network down" })),
+		Effect.fail(
+			new HttpClientError.HttpClientError({
+				reason: new HttpClientError.TransportError({ request, description: "network down" }),
+			}),
+		),
 	),
 );
 
@@ -123,7 +127,7 @@ const run = (tarball: string | undefined) =>
 	Effect.runPromise(
 		fetchModuleCatalogs("@fixture/plugin", "1.0.0").pipe(
 			Effect.provide(Layer.mergeAll(registry(tarball), httpStub, realRunner)),
-			Logger.withMinimumLogLevel(LogLevel.None),
+			Effect.provideService(References.MinimumLogLevel, "None"),
 		),
 	);
 
@@ -186,7 +190,7 @@ describe("fetchModuleCatalogs", () => {
 		const result = await Effect.runPromise(
 			fetchModuleCatalogs("@fixture/missing", "1.0.0").pipe(
 				Effect.provide(Layer.mergeAll(NpmRegistryTest.empty(), httpStub, realRunner)),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 
@@ -199,7 +203,7 @@ describe("fetchModuleCatalogs", () => {
 		const result = await Effect.runPromise(
 			fetchModuleCatalogs("@fixture/plugin", "1.0.0").pipe(
 				Effect.provide(Layer.mergeAll(registry(DEFAULT_TARBALL), httpFailStub, realRunner)),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 
@@ -212,7 +216,7 @@ describe("fetchModuleCatalogs", () => {
 		const result = await Effect.runPromise(
 			fetchModuleCatalogs("@fixture/plugin", "1.0.0").pipe(
 				Effect.provide(Layer.mergeAll(registry(DEFAULT_TARBALL), httpNotFoundStub, realRunner)),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 
@@ -234,7 +238,7 @@ describe("fetchModuleCatalogs", () => {
 		const result = await Effect.runPromise(
 			fetchModuleCatalogs("@fixture/plugin", "1.0.0").pipe(
 				Effect.provide(Layer.mergeAll(registry(DEFAULT_TARBALL, integrityOf(tarballPath)), httpStub, realRunner)),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 
@@ -252,7 +256,7 @@ describe("fetchModuleCatalogs", () => {
 		const result = await Effect.runPromise(
 			fetchModuleCatalogs("@fixture/plugin", "1.0.0").pipe(
 				Effect.provide(Layer.mergeAll(registry(DEFAULT_TARBALL, bogusIntegrity), httpStub, realRunner)),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 
@@ -279,7 +283,7 @@ describe("fetchModuleCatalogs", () => {
 		const result = await Effect.runPromise(
 			fetchModuleCatalogs("@fixture/plugin", "1.0.0").pipe(
 				Effect.provide(Layer.mergeAll(registry(DEFAULT_TARBALL), httpStub, failingRunner)),
-				Logger.withMinimumLogLevel(LogLevel.None),
+				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
 		);
 

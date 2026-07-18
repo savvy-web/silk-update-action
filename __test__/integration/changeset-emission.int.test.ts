@@ -28,17 +28,23 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { Changesets as SilkChangesets } from "@savvy-web/silk-effects";
 import { Effect, Layer } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { Changesets, ChangesetsLive } from "../../src/services/changesets.js";
 
-// The exact layer makeAppLayer uses for the changeset step.
-const changesetsLayer = ChangesetsLive.pipe(
-	Layer.provide(SilkChangesets.DepsRegenDefault.pipe(Layer.provide(NodeContext.layer))),
-);
+// makeAppLayer wires `SilkChangesets.DepsRegenDefault`, which is bound to
+// `process.cwd()` at layer-build time (correct in production, where the action
+// runs at the workspace root). These integration tests run against per-test
+// throwaway git repos, so the layer must be built bound to each temp repo via
+// `makeDepsRegenDefault({ cwd })` — the same root-binding discipline
+// @effected/workspaces requires (root is fixed at build, not passed per call).
+const changesetsLayerFor = (root: string) =>
+	ChangesetsLive.pipe(
+		Layer.provide(SilkChangesets.makeDepsRegenDefault({ cwd: root }).pipe(Layer.provide(NodeServices.layer))),
+	);
 
 const git = (cwd: string, ...args: string[]): void => {
 	execFileSync("git", args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
@@ -104,7 +110,7 @@ const setupRepo = (root: string, options: RepoOptions): void => {
 
 const run = (root: string): Promise<ReadonlyArray<{ id: string; packages: readonly string[] }>> =>
 	Effect.runPromise(
-		Effect.flatMap(Changesets, (c) => c.create(root, "main")).pipe(Effect.provide(changesetsLayer)),
+		Effect.flatMap(Changesets, (c) => c.create(root, "main")).pipe(Effect.provide(changesetsLayerFor(root))),
 	) as Promise<ReadonlyArray<{ id: string; packages: readonly string[] }>>;
 
 const WS_LEAF = "packages:\n  - packages/leaf\n";

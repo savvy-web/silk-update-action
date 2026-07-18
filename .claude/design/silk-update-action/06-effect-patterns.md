@@ -46,46 +46,53 @@ Services are organized in two tiers:
 - `CommandRunner` / `CommandRunnerLive` - Shell command execution: `exec`, `execCapture`
 - `DryRun` / `DryRunLive(flag)` - Dry-run mode flag
 
-### Workspace Services (from workspaces-effect)
+### Workspace Services (from @effected/workspaces)
 
-Workspace enumeration comes from `workspaces-effect` directly:
+Workspace enumeration comes from `@effected/workspaces` directly:
 
-- `WorkspaceDiscovery` / `WorkspaceDiscoveryLive` — Upstream Effect-native
-  workspace enumeration. Provides `listPackages(cwd?)` and
-  `importerMap(cwd?)`. Requires `WorkspaceRoot` and `NodeContext.layer`
-  (FileSystem/Path).
-- `WorkspaceRoot` / `WorkspaceRootLive` — Resolves workspace root from cwd.
+- `WorkspaceDiscovery` / `WorkspaceDiscovery.layer(opts?)` — Effect-native
+  workspace enumeration. Provides arg-less `listPackages()` and
+  `importerMap()` (the root is bound at layer build). Requires `WorkspaceRoot`
+  and `NodeServices.layer` (FileSystem/Path). Companion `WorkspaceDiscoveryShape`.
+- `WorkspaceRoot` / `WorkspaceRoot.layer` — Resolves workspace root from cwd.
+- `PackageManagerDetector` / `PackageManagerDetector.layer`,
+  `LockfileReader` / `LockfileReader.layer(opts?)` — package-manager detection
+  and lockfile reading (also root-bound at build).
 
-These Tags are consumed directly by `RegularDeps`, `PeerSync` and `Lockfile`.
-`workspaces-effect`'s `PublishabilityDetector` is no longer wired at this level
-— it is now an internal detail of silk's `DepsRegen` (see below).
+These services are consumed directly by `RegularDeps`, `PeerSync` and `Lockfile`.
+`@effected/workspaces`' `PublishabilityDetector` is no longer wired at this level
+— it is now an internal detail of silk's `DepsRegen` (see below). In Effect v4
+these are static `.layer` / `.layer()` factories on the service classes, not the
+old `*Live` layers.
 
-### Runtime resolver services (from runtime-resolver)
+### Runtime resolver services (from @effected/runtimes)
 
 `RuntimeUpgrade` resolves `devEngines.runtime` versions through three resolver
-Tags from `runtime-resolver`:
+services from `@effected/runtimes`:
 
 - `NodeResolver` / `DenoResolver` / `BunResolver` — per-runtime resolvers, each
-  backed by a cache layer. `makeAppLayer` provides either the bundled
-  `Offline*CacheLive` layers (default, no network/auth) or the live
-  `Auto*CacheLive` layers (which fall back to bundled data on fetch failure),
-  selected by `runtimeLive`. The live path also wires `GitHubClientLive` over
-  `GitHubAutoAuth` for the resolvers' GitHub/nodejs.org fetchers.
+  its own layer factory. `makeAppLayer` provides either the bundled
+  `*.layerOffline` layers (default, no network/auth) or the live `*.layer`
+  layers (which fall back to the bundled snapshot on fetch failure), selected by
+  `runtimeLive`. The live path wires `@effected/runtimes`' `GitHubClient.layerDefault`
+  (pre-wiring auth + `FetchHttpClient`) for the Bun/Deno GitHub-release fetchers
+  and `FetchHttpClient.layer` for the Node/nodejs.org fetcher. `resolve({ range })`
+  returns a `ResolvedVersions` whose `.latest` is the target.
 
 ### Silk Services (from @savvy-web/silk-effects)
 
-The dependency-changeset step delegates to silk's `Changesets.DepsRegen`, which is the source of truth. It is FileSystem-based (reads `.changeset/config.json`, package manifests and the git worktree via `@effect/platform` FileSystem/CommandExecutor, not `node:fs`).
+The dependency-changeset step delegates to silk's `Changesets.DepsRegen`, which is the source of truth. It is FileSystem-based (reads `.changeset/config.json`, package manifests and the git worktree via core `effect`'s FileSystem/CommandExecutor, not `node:fs`).
 
-- `Changesets.DepsRegen` Tag — `plan({ cwd, base })` + `execute(plan)` regenerate the cumulative `merge-base(base) → worktree` dependency diff into one consolidated changeset per in-scope package. Gating (versionable-minus-ignored) lives inside it. `plan` refreshes workspace discovery first (silk-effects 3.2.1), so its worktree snapshots read manifests edited earlier in the run rather than the layer-memoized discovery cache — the fix for the silent zero-changeset bug.
+- `Changesets.DepsRegen` service — `plan({ cwd, base })` + `execute(plan)` regenerate the cumulative `merge-base(base) → worktree` dependency diff into one consolidated changeset per in-scope package. Gating (versionable-minus-ignored) lives inside it. `plan` refreshes workspace discovery first, so its worktree snapshots read manifests edited earlier in the run rather than the layer-memoized discovery cache — the fix for the silent zero-changeset bug.
 - `Changesets.DepsRegenDefault` — the batteries-included Layer that bundles `PointInTimeWorkspace`, `ConfigInspector`, `WorkspaceDiscovery`, the adaptive `PublishabilityDetector` and `ChangesetConfig` internally, leaving only platform services to satisfy. The action's `changesets.ts` was previously two re-export shims plus a bespoke writer; those are deleted — `ChangesetConfig` and the publishability overrides are no longer imported directly.
 
 ### Domain Services (src/services/)
 
-Each domain service uses `Context.Tag` + `Layer`:
+Each domain service uses `Context.Service` (v4; was `Context.Tag`) + `Layer`:
 
 - `BranchManager` / `BranchManagerLive` - Depends on `GitBranch`, `GitCommit`, `CommandRunner`
 - `PnpmUpgrade` / `PnpmUpgradeLive` - Depends on `NpmRegistry`
-- `RuntimeUpgrade` / `RuntimeUpgradeLive` - Depends on `NodeResolver`, `DenoResolver`, `BunResolver` (from `runtime-resolver`)
+- `RuntimeUpgrade` / `RuntimeUpgradeLive` - Depends on `NodeResolver`, `DenoResolver`, `BunResolver` (from `@effected/runtimes`)
 - `ConfigDeps` / `ConfigDepsLive` - Depends on `NpmRegistry`
 - `RegularDeps` / `RegularDepsLive` - Depends on `NpmRegistry`,
   `WorkspaceDiscovery`
@@ -111,7 +118,7 @@ yield* innerProgram(inputs, dryRun, headSha, appLayer);
 ```
 
 `makeAppLayer(dryRun, { runtimeLive })` takes `dryRun` plus a `runtimeLive` flag
-that selects the `runtime-resolver` cache layers (bundled offline vs live). It
+that selects the `@effected/runtimes` resolver layers (bundled offline vs live). It
 builds the `GitHubClient` from `GitHubToken.client()` (over a self-contained
 `ActionStateLive`, `Layer.orDie`), which reads the token envelope `pre`
 persisted — there is no `process.env.GITHUB_TOKEN` bridge. The function
@@ -137,20 +144,27 @@ Effect distinguishes between **expected errors** (typed, recoverable) and **unex
 | Scenario | Strategy | Effect Pattern |
 | --- | --- | --- |
 | Critical errors | Fail fast | `Effect.fail()` |
-| Batch operations | Accumulate | Sequential loop with `Effect.catchAll()` |
+| Batch operations | Accumulate | Sequential loop with `Effect.catch()` |
 | Transient failures | Retry | `Effect.retry(Schedule)` |
-| Optional features | Graceful degradation | `Effect.catchAll()` |
+| Optional features | Graceful degradation | `Effect.catch()` |
 
-## Typed Errors with Schema.TaggedError
+(In Effect v4 the error-recovery combinator is `Effect.catch` — the old
+`Effect.catchAll` — and `Effect.result` returns a `Result` where `Effect.either`
+returned an `Either`.)
+
+## Typed Errors with Schema.TaggedErrorClass
+
+Effect v4 spells the tagged-error base `Schema.TaggedErrorClass` (was
+`Schema.TaggedError`), and refinements attach via `.check(...)`:
 
 ```typescript
 import { Schema } from "effect";
 
 /** pnpm command execution error */
-export class PnpmError extends Schema.TaggedError<PnpmError>()("PnpmError", {
+export class PnpmError extends Schema.TaggedErrorClass<PnpmError>()("PnpmError", {
  command: NonEmptyString,
  dependency: Schema.optional(Schema.String),
- exitCode: Schema.Number.pipe(Schema.int()),
+ exitCode: Schema.Number.check(Schema.isInt()),
  stderr: Schema.String,
 }) {
  get message() {
@@ -176,7 +190,7 @@ const token = yield* GitHubToken.provision({
 });
 
 // post.ts
-yield* GitHubToken.dispose().pipe(Effect.catchAll(/* never fail the workflow */));
+yield* GitHubToken.dispose().pipe(Effect.catch(/* never fail the workflow */));
 ```
 
 ### Check Run Lifecycle via CheckRun.withCheckRun
@@ -203,7 +217,7 @@ import { makeAppLayer } from "./layers/app.js";
 
 export const program = Effect.gen(function* () {
  const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false));
- const timeout = yield* Config.integer("timeout").pipe(Config.withDefault(180));
+ const timeout = yield* Config.int("timeout").pipe(Config.withDefault(180));
  // ... other Config.* calls (no app-client-id / app-private-key here)
 
  const env = yield* ActionEnvironment;
@@ -211,9 +225,9 @@ export const program = Effect.gen(function* () {
 
  const appLayer = makeAppLayer(dryRun, { runtimeLive });
  yield* innerProgram(inputs, dryRun, headSha, appLayer).pipe(
-  Effect.timeoutFail({
+  Effect.timeoutOrElse({
    duration: Duration.seconds(timeout),
-   onTimeout: () => new Error(`Action timed out after ${timeout} seconds`),
+   orElse: () => Effect.fail(new Error(`Action timed out after ${timeout} seconds`)),
   }),
  );
 });

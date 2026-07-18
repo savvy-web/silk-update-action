@@ -10,9 +10,11 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { WorkspaceDiscoveryShape } from "@effected/workspaces";
+import { WorkspaceDiscovery } from "@effected/workspaces";
+import type { NpmRegistryShape } from "@savvy-web/github-action-effects";
 import { NpmRegistry } from "@savvy-web/github-action-effects";
 import { Context, Effect, Layer } from "effect";
-import { WorkspaceDiscovery } from "workspaces-effect";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
@@ -20,14 +22,11 @@ import { matchesPattern, parseSpecifier } from "../utils/deps.js";
 import { detectIndent } from "../utils/pnpm.js";
 import { resolutionRangeForSpecifier, resolveLatestSatisfying } from "../utils/semver.js";
 
-type NpmRegistryShape = Context.Tag.Service<typeof NpmRegistry>;
-type WorkspaceDiscoveryShape = Context.Tag.Service<typeof WorkspaceDiscovery>;
-
 // ══════════════════════════════════════════════════════════════════════════════
 // Service Interface
 // ══════════════════════════════════════════════════════════════════════════════
 
-export class RegularDeps extends Context.Tag("RegularDeps")<
+export class RegularDeps extends Context.Service<
 	RegularDeps,
 	{
 		/**
@@ -42,7 +41,7 @@ export class RegularDeps extends Context.Tag("RegularDeps")<
 			exclude?: ReadonlySet<string>,
 		) => Effect.Effect<ReadonlyArray<DependencyUpdateResult>>;
 	}
->() {}
+>()("RegularDeps") {}
 
 export const RegularDepsLive = Layer.effect(
 	RegularDeps,
@@ -66,7 +65,7 @@ export const RegularDepsLive = Layer.effect(
  * package never aborts the whole batch.
  */
 const queryVersions = (packageName: string, registry: NpmRegistryShape): Effect.Effect<ReadonlyArray<string>> =>
-	registry.getVersions(packageName).pipe(Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)));
+	registry.getVersions(packageName).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)));
 
 /**
  * Writable dependency sections, in priority order. peerDependencies are
@@ -210,15 +209,15 @@ const updateRegularDepsImpl = (
 	patterns: ReadonlyArray<string>,
 	registry: NpmRegistryShape,
 	discovery: WorkspaceDiscoveryShape,
-	workspaceRoot: string,
+	_workspaceRoot: string,
 	exclude: ReadonlySet<string> | undefined,
 ): Effect.Effect<ReadonlyArray<DependencyUpdateResult>> =>
 	Effect.gen(function* () {
 		if (patterns.length === 0) return [];
 
 		// Step 1: Find all workspace package.json paths via WorkspaceDiscovery
-		const packages = yield* discovery.listPackages(workspaceRoot).pipe(
-			Effect.catchAll((error) =>
+		const packages = yield* discovery.listPackages().pipe(
+			Effect.catch((error) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(`Failed to list workspace packages: ${String(error)}`);
 					return [] as ReadonlyArray<{ readonly name: string; readonly path: string }>;
@@ -234,7 +233,7 @@ const updateRegularDepsImpl = (
 
 		// Step 2: Find all deps matching patterns across all package.json files
 		const depMap = yield* collectMatchingDeps(packageJsonPaths, patterns, exclude).pipe(
-			Effect.catchAll((error) =>
+			Effect.catch((error) =>
 				Effect.gen(function* () {
 					yield* Effect.logWarning(`Failed to collect matching deps: ${error.reason}`);
 					return new Map<string, MatchedDep[]>();
@@ -308,7 +307,7 @@ const updateRegularDepsImpl = (
 			const total = [...sections.values()].reduce((sum, m) => sum + m.size, 0);
 			yield* updatePackageJson(pkgPath, sections).pipe(
 				Effect.tap(() => Effect.logInfo(`Updated ${total} dependencies in ${pkgPath}`)),
-				Effect.catchAll((error) => Effect.logWarning(`Failed to update ${pkgPath}: ${error.reason}`)),
+				Effect.catch((error) => Effect.logWarning(`Failed to update ${pkgPath}: ${error.reason}`)),
 			);
 		}
 
