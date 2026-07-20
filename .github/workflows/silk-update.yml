@@ -48,13 +48,11 @@ jobs:
           source-branch: dev
           config-dependencies: |
             @savvy-web/pnpm-plugin-silk
+            @effected/pnpm-plugin-effect
           dependencies: |
+            @effected/*
             @savvy-web/*
             @vitest-agent/*
-            semver-effect
-            workspaces-effect
-            runtime-resolver
-            yaml
           run: |
             pnpm savvy init
             pnpm build
