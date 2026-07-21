@@ -1,5 +1,31 @@
 # silk-update-action
 
+## 4.1.1
+
+### Bug Fixes
+
+* Stopped the action from rewriting scoped `pnpm-workspace.yaml` keys (e.g. `"@parcel/watcher"`) from double to single quotes on every run. `pnpm-workspace.yaml` formatting now quotes with double quotes, matching the quoting style already used elsewhere in the file, so re-running the action against an already-formatted workspace file no longer produces a spurious quote-style diff. [#199][#199]
+
+### Dependencies
+
+* | Dependency                       | Type       | Action  | From          | To            |                                                                              |
+  | -------------------------------- | ---------- | ------- | ------------- | ------------- | ---------------------------------------------------------------------------- |
+  | @effect/platform-node            | dependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 |                                                                              |
+  | @effected/lockfiles              | dependency | updated | ^0.1.3        | ^0.1.6        |                                                                              |
+  | @effected/runtimes               | dependency | updated | ^0.1.0        | ^0.1.2        |                                                                              |
+  | @effected/semver                 | dependency | updated | ^0.1.0        | ^0.2.0        |                                                                              |
+  | @effected/workspaces             | dependency | updated | ^0.3.1        | ^0.5.0        |                                                                              |
+  | @effected/yaml                   | dependency | updated | ^0.3.0        | ^0.5.0        |                                                                              |
+  | @savvy-web/github-action-effects | dependency | updated | ^3.0.1        | ^3.0.2        |                                                                              |
+  | @savvy-web/silk-effects          | dependency | updated | ^4.0.1        | ^4.1.0        |                                                                              |
+  | effect                           | dependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#199][#199] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
+
+### Patch Changes
+
+Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their contributions!
+
+[#199]: https://github.com/savvy-web/silk-update-action/pull/199
+
 ## 4.1.0
 
 ### Maintenance
