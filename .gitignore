@@ -35,3 +35,6 @@ pnpm-release.json
 .claude/cache/
 .playwright-mcp
 docs/superpowers/
+
+# Dogfood mailbox (cross-repo loop state; machine-local)
+.claude/dogfood/
