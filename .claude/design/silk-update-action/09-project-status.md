@@ -1,15 +1,24 @@
+---
+status: current
+module: silk-update-action
+category: architecture
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # Project Status
 
 [Back to index](./_index.md)
 
 ## Current State
 
-The action is Effect-first and runs as three phases (`pre` / `main` / `post`)
-around the `GitHubToken` token lifecycle. It runs on **Effect v4**
-(`effect@4.0.0-beta.98`) and the `@effected/*` first-party kit
-(`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`,
-`@effected/lockfiles`, `@effected/yaml`) — a runtime/toolchain migration that
-left `action.yml` inputs/outputs unchanged. All domain logic is wrapped as Effect
+The action is Effect-first and runs as three phases (`pre` / `main` / `post`) around the `GitHubToken` token lifecycle. It runs on **Effect v4** (`effect` from `catalog:effect`, a `4.0.0-beta` pin) and the `@effected/*` first-party kit (`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`, `@effected/lockfiles`, `@effected/npm`, `@effected/yaml`) — a runtime/toolchain migration that left `action.yml` inputs/outputs unchanged. All domain logic is wrapped as Effect
 services with `Context.Service` (v4; was `Context.Tag`) + `Layer`, plus a few
 standalone helper modules (`PeerSync`, `WorkspaceYaml`). Layer composition is
 centralized in `src/layers/app.ts`. Workspace enumeration comes from
@@ -84,6 +93,7 @@ detection and changeset-config reading internally).
   locked to `0.y.x`. Iterates `dependencies`, `devDependencies`, and
   `optionalDependencies` independently and reports the real section type per
   update — `peerDependencies` are managed by `syncPeers`.
+- Release-age gating via the `ReleaseAge` service (`src/services/release-age.ts`, gate vocabulary from `@effected/npm`). Mirrors pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` settings at resolution time — discovered from inline `pnpm-workspace.yaml` keys plus a subprocess replay of config-dependency pnpmfile `updateConfig` hooks, combined strictest-wins — so `ConfigDeps` and `RegularDeps` filter candidate versions before `resolveLatestSatisfying` and the action never writes a version pnpm would reject at install time (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`). Fail-open by design: a missing gate, an excluded package or unavailable publish times degrade to the pre-gate behavior.
 - Peer dependency range syncing via `syncPeers` (`peer-lock` and
   `peer-minor` strategies, powered by `@effected/semver`).
 - pnpm self-upgrade via `PnpmUpgrade` service, driven by the `upgrade-package-manager`

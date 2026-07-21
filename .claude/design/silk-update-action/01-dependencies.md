@@ -1,3 +1,17 @@
+---
+status: current
+module: silk-update-action
+category: architecture
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # Dependencies
 
 [Back to index](./_index.md)
@@ -6,11 +20,11 @@
 
 The authoritative dependency list and ranges live in the `dependencies` block of `package.json` — this doc does not mirror them. Every runtime dependency is inlined into `dist/{pre,main,post}.js` at build time; the packages whose behavior is load-bearing for this action are described below.
 
-The action runs on **Effect v4** (`effect` / `@effect/platform-node` both pinned to `4.0.0-beta.98`, resolved from the `catalog:effect` catalog). The first-party libraries are the v4-line `@effected/*` kit (`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`, `@effected/lockfiles`, `@effected/yaml`) plus `@savvy-web/*` v4-line packages. Effect v4 renamed several APIs the code and the notes below use: services are class-based `Context.Service` (was `Context.Tag`); the Node platform bundle is `NodeServices.layer` (was `NodeContext.layer`); `FileSystem`/`Path` import from `effect` directly and `HttpClient`/`FetchHttpClient` from `effect/unstable/http` (the old `@effect/platform` package is dissolved into core `effect`); `Config.int` (was `Config.integer`); `Effect.catch` (was `Effect.catchAll`); `Effect.result` returning a `Result` (was `Effect.either`); `Effect.timeoutOrElse` (was `Effect.timeoutFail`); and log levels are string literals (`"Info"` / `"Debug"` / `"Warn"`), set via `References.MinimumLogLevel`.
+The action runs on **Effect v4** (`effect` / `@effect/platform-node` both resolved from the `catalog:effect` catalog — a `4.0.0-beta` pin; see the lockfile for the current beta). The first-party libraries are the v4-line `@effected/*` kit (`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`, `@effected/lockfiles`, `@effected/npm`, `@effected/yaml`) plus `@savvy-web/*` v4-line packages. Effect v4 renamed several APIs the code and the notes below use: services are class-based `Context.Service` (was `Context.Tag`); the Node platform bundle is `NodeServices.layer` (was `NodeContext.layer`); `FileSystem`/`Path` import from `effect` directly and `HttpClient`/`FetchHttpClient` from `effect/unstable/http` (the old `@effect/platform` package is dissolved into core `effect`); `Config.int` (was `Config.integer`); `Effect.catch` (was `Effect.catchAll`); `Effect.result` returning a `Result` (was `Effect.either`); `Effect.timeoutOrElse` (was `Effect.timeoutFail`); and log levels are string literals (`"Info"` / `"Debug"` / `"Warn"`), set via `References.MinimumLogLevel`.
 
 ## Key Packages
 
-- `@savvy-web/github-action-effects` (^3.0.0) - Effect-based services for GitHub Actions.
+- `@savvy-web/github-action-effects` - Effect-based services for GitHub Actions.
   Replaces `@actions/*` with a native ESM implementation. v3 is the Effect-v4
   line: its services are `Context.Service` classes that expose a companion
   `*Shape` interface (`NpmRegistryShape`, `WorkspaceDiscoveryShape`, …) for
@@ -48,9 +62,7 @@ The action runs on **Effect v4** (`effect` / `@effect/platform-node` both pinned
   which require FileSystem/Path to read workspace manifests. (The old
   `@effect/platform` package is gone — `FileSystem`/`Path` now live in core
   `effect`, and `HttpClient`/`FetchHttpClient` in `effect/unstable/http`.)
-- `effect` (4.0.0-beta.98) - Typed error handling, retry logic, resource
-  management, plus `FileSystem`/`Path` and (under `effect/unstable/http`)
-  `HttpClient`/`FetchHttpClient`.
+- `effect` (`catalog:effect`) - Typed error handling, retry logic, resource management, plus `FileSystem`/`Path` and (under `effect/unstable/http`) `HttpClient`/`FetchHttpClient`.
 - `@effected/runtimes` - Effect-native resolver for node/deno/bun runtime versions. Consumed by the `RuntimeUpgrade` service (`src/services/runtime-upgrade.ts`). Provides runtime-specific services (`NodeResolver`, `DenoResolver`, `BunResolver`), each of which is its own layer factory: `*.layerOffline` (bundled offline snapshot, no network or authentication — the default), `*.layer` (live: fetches current data and falls back to the bundled snapshot on any failure), and `*.layerFresh`. `resolve({ range })` returns a `ResolvedVersions` whose `.latest` is the target. The live path also exports a `GitHubClient` (`.layerDefault`, pre-wiring auth + `FetchHttpClient`) for the Bun/Deno GitHub-release fetchers. The bundled snapshot and live API both exclude end-of-life major lines — resolution for an EOL line returns a `VersionNotFoundError` and is skipped with a warning.
 - `@effected/semver` - Effect-native semver parsing/comparison; used via
   its standalone `parseValidSemVer` in `services/peer-sync.ts` for
@@ -65,7 +77,7 @@ The action runs on **Effect v4** (`effect` / `@effect/platform-node` both pinned
   including the in-range resolution for `ConfigDeps`/`RegularDeps` and
   `configDepUpgradeRange` — uses `SemverResolver` from
   `@savvy-web/github-action-effects`, not `@effected/semver`.)
-- `@effected/workspaces` (^0.3.0) - Effect-native workspace layer. Consumed directly by domain services (`RegularDeps`, `PeerSync`, `Lockfile`) via the `WorkspaceDiscovery` service. `Changesets` no longer consumes it directly — it delegates to silk's `DepsRegen`, which wires its own workspace discovery internally. **Root-bound at layer build:** the layers are static factories on the service classes (`WorkspaceRoot.layer`, `WorkspaceDiscovery.layer(opts?)`, `PackageManagerDetector.layer`, `LockfileReader.layer(opts?)`) that bind the workspace root when the layer is built, so the methods below are **arg-less**. Provides:
+- `@effected/workspaces` - Effect-native workspace layer. Consumed directly by domain services (`RegularDeps`, `PeerSync`, `Lockfile`) via the `WorkspaceDiscovery` service. `Changesets` no longer consumes it directly — it delegates to silk's `DepsRegen`, which wires its own workspace discovery internally. **Root-bound at layer build:** the layers are static factories on the service classes (`WorkspaceRoot.layer`, `WorkspaceDiscovery.layer(opts?)`, `PackageManagerDetector.layer`, `LockfileReader.layer(opts?)`) that bind the workspace root when the layer is built, so the methods below are **arg-less**. Provides:
   - `WorkspaceDiscovery` service + `WorkspaceDiscovery.layer(opts?)` with
     arg-less `listPackages()` and `importerMap()` methods (companion
     `WorkspaceDiscoveryShape` for typing a resolved instance). `importerMap`
@@ -81,7 +93,7 @@ The action runs on **Effect v4** (`effect` / `@effect/platform-node` both pinned
     in `devEngines` with no lockfile is detected as npm.
   - `LockfileReader` service + `LockfileReader.layer(opts?)` (depends on
     `WorkspaceRoot`, `PackageManagerDetector`, `WorkspaceDiscovery`).
-- `@savvy-web/silk-effects` (^4.0.0) - Shared silk changeset services, FileSystem-based (reads via core `effect`'s FileSystem rather than `node:fs`). It is the **source of truth** for the dependency-changeset step via its `Changesets.DepsRegen` service. The v4-line major tracks the Effect-v4 migration; the changesets engine remains the @changesets v3 `next` prereleases (`@changesets/apply-release-plan@8-next`, `get-release-plan@5-next`, `config@4-next` etc. — the engine that writes the `@changesets/config@4` `$schema` into `.changeset/config.json`); the consumed surface below is **unchanged**, so the adapter (`src/services/changesets.ts`) and layer wiring (`src/layers/app.ts`) needed no source changes beyond the v4 layer idioms. The publishability rules and `ChangesetConfig` still live here but are **internal** to `DepsRegen` — the action no longer imports them directly (the former `changeset-config.ts` and `publishability.ts` re-export shims are deleted). **Stale-discovery fix:** `DepsRegen.plan` refreshes workspace discovery at the top of plan — before the ConfigInspector base-branch fallback, the snapshots and the gating reads — so the changeset step sees manifests edited earlier in the same run (the merge-base and worktree snapshots differ instead of every run silently writing 0 changesets). Consumed surface:
+- `@savvy-web/silk-effects` - Shared silk changeset services, FileSystem-based (reads via core `effect`'s FileSystem rather than `node:fs`). It is the **source of truth** for the dependency-changeset step via its `Changesets.DepsRegen` service. The v4-line major tracks the Effect-v4 migration; the changesets engine remains the @changesets v3 `next` prereleases (`@changesets/apply-release-plan@8-next`, `get-release-plan@5-next`, `config@4-next` etc. — the engine that writes the `@changesets/config@4` `$schema` into `.changeset/config.json`); the consumed surface below is **unchanged**, so the adapter (`src/services/changesets.ts`) and layer wiring (`src/layers/app.ts`) needed no source changes beyond the v4 layer idioms. The publishability rules and `ChangesetConfig` still live here but are **internal** to `DepsRegen` — the action no longer imports them directly (the former `changeset-config.ts` and `publishability.ts` re-export shims are deleted). **Stale-discovery fix:** `DepsRegen.plan` refreshes workspace discovery at the top of plan — before the ConfigInspector base-branch fallback, the snapshots and the gating reads — so the changeset step sees manifests edited earlier in the same run (the merge-base and worktree snapshots differ instead of every run silently writing 0 changesets). Consumed surface:
   - `Changesets.DepsRegen` service — plans (`plan({ cwd, base })`) and executes
     (`execute(plan)`) the cumulative `merge-base(base) → worktree` dependency
     diff, consolidating stale pure-dependency changesets into one current table
@@ -99,7 +111,8 @@ The action runs on **Effect v4** (`effect` / `@effect/platform-node` both pinned
   formatting. `Yaml.parse` / `Yaml.stringify` return Effects (rather than
   throwing/returning synchronously like the old `yaml` npm package), so
   `workspace-yaml.ts` yields them and maps failures into `FileSystemError`.
-- `@effected/lockfiles` (^0.1.2) - Package-manager-agnostic lockfile parser and
+- `@effected/npm` - Pure-tier kit package providing the release-age vocabulary consumed by the `ReleaseAge` service (`src/services/release-age.ts`): `ReleaseAgeGate` (a Schema class — static `combine` is variadic/total and combines contributions strictest-wins; static `matchesExclude` implements pnpm's flat-string `*` exclude matching, **not** minimatch; instance `isExcluded` and the pure `filterVersions(versions, times, name, now)` where the caller supplies the clock and missing timestamps drop the version) and `PartialReleaseAgeGate` (the permissive per-source contribution type, re-exported by `release-age.ts`). This vocabulary was ported upstream into the kit from rolldown-pnpm-config's release-age logic via a dogfood loop. **Transitional note:** the registry `@effected/workspaces` / `@effected/lockfiles` releases currently in the lockfile still depend on the `@effected/npm@0.2.x` line internally, so the bundle temporarily carries two copies — behaviorally inert (no types cross the copies); the next kit alignment unifies them.
+- `@effected/lockfiles` - Package-manager-agnostic lockfile parser and
   model. The parser/model moved here out of `workspaces-effect`. `Lockfile.parse(content, { format })`
   is a **pure** parser (no memoized reader service), so a "before" and an
   "after" snapshot can be parsed in the same process; it normalizes
@@ -112,7 +125,5 @@ The action runs on **Effect v4** (`effect` / `@effect/platform-node` both pinned
 
 ## Build tooling
 
-- `@savvy-web/github-action-builder` (^2.0.0, dev) - rspack-based bundler that
-  derives the pre/main/post entries from `action.yml` and inlines every runtime
-  dependency into `dist/{pre,main,post}.js`. Configured via `action.config.ts`.
-- `@savvy-web/silk` (^3.0.0, dev) - silk tooling (commit/changeset conventions).
+- `@savvy-web/github-action-builder` (dev) - rspack-based bundler that derives the pre/main/post entries from `action.yml` and inlines every runtime dependency into `dist/{pre,main,post}.js`. Configured via `action.config.ts`.
+- `@savvy-web/silk` (dev) - silk tooling (commit/changeset conventions).

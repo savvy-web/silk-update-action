@@ -1,3 +1,17 @@
+---
+status: current
+module: silk-update-action
+category: architecture
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # Services and Utilities
 
 [Back to index](./_index.md)
@@ -155,10 +169,34 @@ range). `false` returns `null` (skip).
    inherently exact, so no range operator is written. Returns
    `PnpmUpgradeResult` with `from: string | null` and `added: boolean`.
 
+### src/services/release-age.ts - ReleaseAge
+
+Mirror pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` gate at resolution time so `ConfigDeps` and `RegularDeps` never propose a version pnpm would reject at install time (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`). The gate vocabulary (`ReleaseAgeGate`, `PartialReleaseAgeGate`) lives upstream in `@effected/npm`; this module owns discovery, publish-time fetching and the service wiring.
+
+**Service interface:**
+
+```typescript
+export class ReleaseAge extends Context.Service<ReleaseAge, {
+ readonly gate: () => Effect.Effect<ReleaseAgeGate>;
+ readonly filterVersions: (pkg: string, versions: ReadonlyArray<string>) =>
+  Effect.Effect<ReadonlyArray<string>>;
+}>()("ReleaseAge") {}
+```
+
+**Gate discovery (two sources, combined strictest-wins via `ReleaseAgeGate.combine`, assembled once and `Effect.cached` for the layer lifetime):**
+
+- `readInlineReleaseAge(workspaceRoot?)` — reads `minimumReleaseAge` / `minimumReleaseAgeExclude` declared inline in `pnpm-workspace.yaml`.
+- `replayHookReleaseAge(workspaceRoot?)` — replays the workspace's config-dependency pnpmfile `updateConfig` hooks in a **node subprocess** via `CommandRunner` (script passed via argv, `pnpmfile.mjs` first then `.cjs`, mirroring pnpm 11's loader order) and reads the release-age keys they inject. A subprocess because `pnpm config get` never sees hook-injected values, and the rspack bundle cannot host an in-process computed dynamic import (the `nativeDynamicImports` knot documented in `01-dependencies.md` and `action.config.ts`). Best-effort: any per-dependency or whole-replay failure degrades to no contribution with a warning.
+
+**Filtering:** `filterVersions(pkg, versions)` is the identity when the gate is inert (`ageMinutes <= 0`), the package is excluded (`gate.isExcluded` — pnpm's flat-string `*` matcher, not minimatch), or publish times are unavailable. Otherwise `getPublishTimes(pkg)` shells `npm view <pkg> time --json` through the same runner-writable cache `NpmRegistryLive` uses and the upstream pure `gate.filterVersions` drops versions younger than the cutoff. The whole path **fails open** — the worst case of missing data is exactly the pre-gate behavior, and pnpm still enforces the gate at install time.
+
+**Layers:** `ReleaseAgeLive(workspaceRoot?)` is a parameterized factory (root bound at build, mirroring the `@effected/workspaces` idiom; requires `CommandRunner`). `ReleaseAgeNoop` is the inert layer (zero gate, identity filtering) for unit tests and non-pnpm paths.
+
 ### src/services/config-deps.ts - ConfigDeps
 
 Update config dependencies by querying npm via `NpmRegistry` and editing
 `pnpm-workspace.yaml` in place. Avoids `pnpm add --config` catalog promotion.
+Depends on `NpmRegistry` and `ReleaseAge`.
 
 **Service interface:**
 
@@ -174,7 +212,8 @@ export class ConfigDeps extends Context.Service<ConfigDeps, {
 1. Read `pnpm-workspace.yaml` via `readWorkspaceYaml()`
 2. For each dep, parse its hash-pinned version, derive a conservative upgrade
    range from the major via `configDepUpgradeRange` (`src/utils/semver.ts`),
-   query `NpmRegistry.getVersions`, and resolve the highest in-range version via
+   query `NpmRegistry.getVersions`, filter the candidates through
+   `ReleaseAge.filterVersions`, and resolve the highest in-range version via
    `resolveLatestSatisfying` — config deps carry no declared range, so the range
    is synthesized rather than reading npm's absolute latest
 3. Compare current with the resolved version; skip if up-to-date, otherwise fetch
@@ -210,6 +249,7 @@ export class RegularDeps extends Context.Service<RegularDeps, {
   `resolutionRangeForSpecifier` to the config-dep range (`>=version <2.0.0`) so a
   `^0.5.0` dep rolls forward across `0.x` and adopts the first stable `1.x`, with
   the caret still re-applied verbatim on write-back.
+- Candidate versions are filtered through `ReleaseAge.filterVersions` between the registry query and `resolveLatestSatisfying`, so the written specifier floor always respects the workspace's pnpm `minimumReleaseAge` gate (see the `ReleaseAge` section above; fail-open).
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
   `@effected/workspaces`.
 - Uses `matchesPattern` from `src/utils/deps.ts` for glob matching.
@@ -480,6 +520,9 @@ export const makeAppLayer = (
 
  const ghGraphql = GitHubGraphQLLive.pipe(Layer.provide(githubClient));
  const npmRegistry = NpmRegistryLive.pipe(Layer.provide(CommandRunnerLive));
+ // Effective pnpm minimumReleaseAge gate, applied by ConfigDeps/RegularDeps
+ // before version resolution. Inert when the workspace declares no gate.
+ const releaseAge = ReleaseAgeLive().pipe(Layer.provide(CommandRunnerLive));
  const gitBranch = GitBranchLive.pipe(Layer.provide(githubClient));
  const gitCommit = GitCommitLive.pipe(Layer.provide(githubClient));
  const prLayer = PullRequestLive.pipe(Layer.provide(Layer.merge(githubClient, ghGraphql)));
@@ -517,8 +560,8 @@ export const makeAppLayer = (
   ChangesetsLive.pipe(Layer.provide(depsRegen)),
   BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
   PnpmUpgradeLive.pipe(Layer.provide(npmRegistry)),
-  ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
-  RegularDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, workspaceDiscovery))),
+  ConfigDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, releaseAge))),
+  RegularDepsLive.pipe(Layer.provide(Layer.mergeAll(npmRegistry, workspaceDiscovery, releaseAge))),
   ReportLive.pipe(Layer.provide(prLayer)),
   RuntimeUpgradeLive.pipe(Layer.provide(runtimeResolvers)),
  );

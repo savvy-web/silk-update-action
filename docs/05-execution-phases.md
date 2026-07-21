@@ -79,6 +79,7 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 - Iterates over each config dependency listed in the `config-dependencies` input
 - Resolves each config dependency within a conservative range derived from its current major (these entries are hash-pinned and carry no explicit range) and edits the `configDependencies` entry in `pnpm-workspace.yaml` in place
 - Editing in place avoids `pnpm add --config`, which would promote the dependency into a catalog
+- Honors the workspace's pnpm release-age gate (`minimumReleaseAge`): candidate versions published inside the age window are held back, logged and picked up on a later run once they mature (see [Release-age gating](./02-configuration.md#release-age-gating))
 - Uses error accumulation: if one dependency fails to update, the others still proceed, and failures are logged as warnings
 
 ### Update workspace dependencies
@@ -88,6 +89,7 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 - A dependency listed in multiple sections of one `package.json` is updated in each section independently and produces one update record per section
 - Resolves each dependency within the semver range already declared in `package.json` rather than jumping to npm's absolute latest — a `^4.0.0` specifier stays on `4.x`, a `~3.0.0` stays on `3.0.x`, a wider range like `>=4.0.0` may advance across a major, and an exact pin is left untouched; querying the npm registry directly this way also avoids `pnpm up --latest` promoting dependencies into catalogs when `catalogMode: strict` is enabled
 - Supports glob patterns such as `@savvy-web/*`
+- Honors the workspace's pnpm release-age gate the same way the config-dependency step does
 - Uses error accumulation: individual failures do not block other updates
 
 ### Sync peer dependencies

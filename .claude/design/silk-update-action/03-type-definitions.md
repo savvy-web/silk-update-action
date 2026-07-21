@@ -1,3 +1,17 @@
+---
+status: current
+module: silk-update-action
+category: architecture
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # Type Definitions
 
 [Back to index](./_index.md)
@@ -94,6 +108,10 @@ export interface RuntimeUpgradeConfig {
  readonly bun: string;
 }
 ```
+
+## Release-Age Types (src/services/release-age.ts)
+
+The release-age gate types live upstream in `@effected/npm`: `ReleaseAgeGate` (the combined, total gate) and `PartialReleaseAgeGate` (a per-source contribution), the latter re-exported by `src/services/release-age.ts`. See `@effected/npm` for the shapes — the action treats them as opaque beyond `combine`, `isExcluded` and `filterVersions`.
 
 ## Pure Helper Types (src/utils/pnpm.ts)
 

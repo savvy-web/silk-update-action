@@ -382,6 +382,19 @@ this way also avoids `pnpm up --latest`, which promotes deps to catalogs when
 | `@effect/*` | All packages in the `@effect` scope |
 | `@savvy-web/*` | All packages in the `@savvy-web` scope |
 
+### Release-age gating
+
+pnpm's [`minimumReleaseAge`](https://pnpm.io/settings#minimumreleaseage) setting refuses to install versions published less than a given number of minutes ago (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`). The action mirrors that gate at resolution time: when the workspace declares a release-age window, config-dependency and workspace-dependency updates hold back candidate versions published inside it rather than proposing an update the install step would then reject.
+
+The effective settings are read from two sources and combined, with the strictest value winning:
+
+- `minimumReleaseAge` / `minimumReleaseAgeExclude` keys declared inline in `pnpm-workspace.yaml`
+- The same keys injected by a config dependency's `pnpmfile` `updateConfig` hook
+
+Held-back versions are logged (`Release-age gate: holding back N version(s) of <pkg> younger than M minutes`) and picked up on a later run once they mature. Packages matching `minimumReleaseAgeExclude` bypass the gate. The gate fails open: when no gate is declared or publish-time data for a package is unavailable, resolution behaves as if there were no gate.
+
+There is no action input for this behavior — it follows the target repository's own pnpm settings.
+
 ### Peer dependency syncing
 
 Peer dependency ranges can be automatically synced when the corresponding

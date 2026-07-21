@@ -1,3 +1,17 @@
+---
+status: current
+module: silk-update-action
+category: architecture
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # Architecture
 
 [Back to index](./_index.md)
@@ -38,6 +52,8 @@ src/
 │   ├── pnpm-upgrade.test.ts
 │   ├── regular-deps.ts    # RegularDeps service
 │   ├── regular-deps.test.ts
+│   ├── release-age.ts     # ReleaseAge service + gate-discovery helpers
+│   ├── release-age.test.ts
 │   ├── report.ts          # Report service (PR, summary, commit msg)
 │   ├── report.test.ts
 │   ├── runtime-upgrade.ts # RuntimeUpgrade service (devEngines.runtime upgrades)
@@ -68,11 +84,7 @@ src/
   `program.ts` so tests can import it without triggering module-level
   execution. The build (`@savvy-web/github-action-builder`) derives the three
   entry points from the `runs` block in `action.yml`.
-- **Effect v4 / `@effected` kit:** the action runs on Effect v4
-  (`effect@4.0.0-beta.98`) and the `@effected/*` first-party libraries
-  (`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`,
-  `@effected/lockfiles`, `@effected/yaml`). This is a runtime/toolchain
-  migration — `action.yml` inputs and outputs are unchanged.
+- **Effect v4 / `@effected` kit:** the action runs on Effect v4 (`effect` from `catalog:effect`, a `4.0.0-beta` pin) and the `@effected/*` first-party libraries (`@effected/workspaces`, `@effected/runtimes`, `@effected/semver`, `@effected/lockfiles`, `@effected/npm`, `@effected/yaml`). This is a runtime/toolchain migration — `action.yml` inputs and outputs are unchanged.
 - **Effect-first services:** All domain logic is wrapped in Effect services with
   `Context.Service` (v4; was `Context.Tag`) + `Layer`. Services are defined in
   `src/services/`, pure helpers in `src/utils/`. Two services (`PeerSync`,
@@ -232,6 +244,7 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   (`NodeServices.layer`).
 - Domain layers: `BranchManagerLive`, `PnpmUpgradeLive`, `ConfigDepsLive`,
   `RegularDepsLive`, `ChangesetsLive`, `ReportLive`, `RuntimeUpgradeLive`.
+- The release-age gate: `ReleaseAgeLive()` (over `CommandRunnerLive`), provided to `ConfigDepsLive` and `RegularDepsLive` so both filter candidate versions through the workspace's effective pnpm `minimumReleaseAge` gate before resolution. Inert when the workspace declares no gate. See `src/services/release-age.ts`.
 - Runtime resolver layers from `@effected/runtimes`: `*Resolver.layerOffline`
   (default, bundled snapshot, no network/auth) or `*Resolver.layer` (live, falls
   back to the bundled snapshot), selected by the `runtimeLive` flag passed to
@@ -321,6 +334,7 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   stable major but never crosses two majors — then resolves the highest in-range
   version via `resolveLatestSatisfying` and fetches that resolved version's
   integrity. It does **not** jump to npm's absolute `latest`.
+- Candidate versions pass through `ReleaseAge.filterVersions` between the registry query and `resolveLatestSatisfying`, mirroring pnpm's `minimumReleaseAge` gate at resolution time so the action never writes a version pnpm would reject at install time (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`). See Step 8 and `src/services/release-age.ts`.
 - Edits `pnpm-workspace.yaml` in place (avoids `pnpm add --config` catalog promotion).
 - Tracks version changes (from/to).
 
@@ -336,6 +350,7 @@ const appLayer = makeAppLayer(dryRun, { runtimeLive });
   (`>=version <2.0.0`) via `resolutionRangeForSpecifier`, so a `^0.5.0` dep rolls
   forward across `0.x` and adopts the first stable `1.x` rather than being
   trapped in `0.5.x`.
+- Candidate versions pass through `ReleaseAge.filterVersions` between the registry query and `resolveLatestSatisfying` (same gate as Step 7), so a specifier floor is never advanced onto a version younger than the workspace's pnpm `minimumReleaseAge` cutoff. The gate fails open: when it is inert, the package matches `minimumReleaseAgeExclude`, or publish times are unavailable, filtering is the identity.
 - Enumerates workspace `package.json` files via `WorkspaceDiscovery` from
   `@effected/workspaces`.
 - Matches patterns and updates specifiers.

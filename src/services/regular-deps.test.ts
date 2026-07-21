@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ReleaseAgeGate } from "@effected/npm";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { WorkspaceDiscovery, WorkspaceDiscoveryError } from "@effected/workspaces";
 import { NpmRegistryTest } from "@savvy-web/github-action-effects";
@@ -8,6 +9,7 @@ import { Effect, Layer, References } from "effect";
 import { describe, expect, it } from "vitest";
 import { matchesPattern, parseSpecifier } from "../utils/deps.js";
 import { RegularDeps, RegularDepsLive } from "./regular-deps.js";
+import { ReleaseAge, ReleaseAgeNoop } from "./release-age.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Test Helpers
@@ -97,12 +99,13 @@ const runWithService = <A, E>(
 	fn: (service: Effect.Success<typeof RegularDeps>) => Effect.Effect<A, E>,
 	packages?: Record<string, string | string[]>,
 	workspacesLayer?: Layer.Layer<WorkspaceDiscovery>,
+	releaseAge: Layer.Layer<ReleaseAge> = ReleaseAgeNoop,
 ) => {
 	const registryLayer = packages
 		? NpmRegistryTest.layer({ packages: makeRegistryState(packages) })
 		: NpmRegistryTest.empty();
 	const wsLayer = workspacesLayer ?? mockWorkspaces([]);
-	const layer = RegularDepsLive.pipe(Layer.provide(Layer.merge(registryLayer, wsLayer)));
+	const layer = RegularDepsLive.pipe(Layer.provide(Layer.mergeAll(registryLayer, wsLayer, releaseAge)));
 	return Effect.runPromise(
 		Effect.gen(function* () {
 			const service = yield* RegularDeps;
@@ -235,6 +238,31 @@ describe("RegularDeps.updateRegularDeps", () => {
 		// Verify package.json was updated
 		const pkg = readPackageJson(dir);
 		expect(pkg.devDependencies.effect).toBe("^3.1.0");
+	});
+
+	it("holds back a resolution the release-age gate filters out", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			name: "root",
+			devDependencies: { effect: "^3.0.0" },
+		});
+
+		const holdBack = Layer.succeed(ReleaseAge, {
+			gate: () => Effect.succeed(ReleaseAgeGate.combine({ ageMinutes: 1440 })),
+			filterVersions: (_pkg: string, versions: ReadonlyArray<string>) =>
+				Effect.succeed(versions.filter((v) => v !== "3.1.0")),
+		});
+
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["effect"], dir),
+			{ effect: ["3.0.0", "3.1.0"] },
+			mockWorkspaces([{ name: "root", path: dir }]),
+			holdBack,
+		);
+
+		expect(result).toHaveLength(0);
+		const pkg = readPackageJson(dir);
+		expect(pkg.devDependencies.effect).toBe("^3.0.0");
 	});
 
 	it("skips dependency when already on latest", async () => {

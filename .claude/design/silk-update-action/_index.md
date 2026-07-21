@@ -3,8 +3,8 @@ status: current
 module: silk-update-action
 category: architecture
 created: 2026-02-06
-updated: 2026-06-13
-last-synced: 2026-07-05
+updated: 2026-07-21
+last-synced: 2026-07-21
 completeness: 95
 related: []
 dependencies: []
@@ -15,11 +15,7 @@ implementation-plans: []
 
 ## Overview
 
-The `silk-update-action` is a GitHub Action that automates updates to pnpm config dependencies,
-regular dependencies, and peer dependencies. Unlike Dependabot, this action supports
-[pnpm's config dependencies](https://pnpm.io/config-dependencies) feature, which allows dependencies to be
-declared in `pnpm-workspace.yaml` for centralized version management across a monorepo. It also syncs peer
-dependency ranges across workspace packages to keep them consistent.
+The `silk-update-action` is a GitHub Action that automates updates to pnpm config dependencies, regular dependencies, and peer dependencies. Unlike Dependabot, this action supports [pnpm's config dependencies](https://pnpm.io/config-dependencies) feature, which allows dependencies to be declared in `pnpm-workspace.yaml` for centralized version management across a monorepo. It also syncs peer dependency ranges across workspace packages to keep them consistent.
 
 **Key Features:**
 
@@ -27,6 +23,7 @@ dependency ranges across workspace packages to keep them consistent.
 - Upgrades `devEngines.runtime` engines (node/deno/bun) via `@effected/runtimes` (`RuntimeUpgrade` service), with `auto`/explicit-range modes and offline/live data sources. It only ever upgrades an entry the manifest already declares (never adds one), and always writes the bare resolved version — the range drives resolution only
 - Updates config dependencies via direct npm queries and YAML editing, resolving within a conservative range synthesized from the current major rather than jumping to npm's absolute latest
 - Updates regular dependencies via direct npm registry queries (avoids `catalogMode: strict` issues), resolving the highest version within each dependency's declared specifier range rather than the absolute latest
+- Honors pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` settings at resolution time (`ReleaseAge` service over `@effected/npm`'s `ReleaseAgeGate`), holding back too-young versions so it never proposes an update pnpm would reject at install time (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`)
 - Syncs peer dependency ranges across workspace packages (`syncPeers` helper) with configurable lock/minor strategies
 - Supports glob patterns for dependency matching
 - Runs custom commands after updates (linting, testing, building)

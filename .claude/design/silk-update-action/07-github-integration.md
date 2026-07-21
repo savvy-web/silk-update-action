@@ -1,3 +1,17 @@
+---
+status: current
+module: silk-update-action
+category: integration
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # GitHub Integration
 
 [Back to index](./_index.md)
