@@ -33,21 +33,15 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PartialReleaseAgeGate } from "@effected/npm";
+import { ReleaseAgeGate } from "@effected/npm";
 import { CommandRunner } from "@savvy-web/github-action-effects";
-import { Effect } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import type { FileSystemError } from "../errors/errors.js";
 import { readWorkspaceYaml } from "./workspace-yaml.js";
 
-/**
- * One source's contribution to the release-age gate; absent fields
- * contribute nothing. Matches the `PartialGate` shape requested from
- * `@effected/npm` so the kit's combine can consume these directly.
- */
-export interface PartialReleaseAgeGate {
-	readonly ageMinutes?: number;
-	readonly exclude?: readonly string[];
-}
+export type { PartialReleaseAgeGate } from "@effected/npm";
 
 /**
  * The same runner-writable npm cache the library's `NpmRegistryLive` uses,
@@ -222,3 +216,98 @@ export const getPublishTimes = (pkg: string): Effect.Effect<Record<string, strin
 		}
 		return times;
 	});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Service Interface
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The effective release-age gate for the workspace, applied to candidate
+ * version lists before resolution so the action never proposes a version
+ * pnpm's own `minimumReleaseAge` check would refuse at install time.
+ */
+export class ReleaseAge extends Context.Service<
+	ReleaseAge,
+	{
+		/** The effective gate (inline + hook sources, strictest wins). */
+		readonly gate: () => Effect.Effect<ReleaseAgeGate>;
+		/**
+		 * Drop candidate versions of `pkg` younger than the gate's cutoff.
+		 * Identity when the gate is inert, the package is excluded, or publish
+		 * times are unavailable (fail open — worst case is today's behavior).
+		 */
+		readonly filterVersions: (pkg: string, versions: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<string>>;
+	}
+>()("ReleaseAge") {}
+
+/**
+ * Live layer factory. The workspace root is bound when the layer is built
+ * (mirroring the `@effected/workspaces` root-bound layer idiom); the gate is
+ * assembled once on first use and cached for the layer's lifetime.
+ */
+export const ReleaseAgeLive = (workspaceRoot: string = process.cwd()): Layer.Layer<ReleaseAge, never, CommandRunner> =>
+	Layer.effect(
+		ReleaseAge,
+		Effect.gen(function* () {
+			const runner = yield* CommandRunner;
+
+			const assembleGate = Effect.gen(function* () {
+				const inline = yield* readInlineReleaseAge(workspaceRoot).pipe(Effect.catch(() => Effect.succeed(null)));
+				const hooks = yield* replayHookReleaseAge(workspaceRoot).pipe(Effect.provideService(CommandRunner, runner));
+				const contributions = [inline, hooks].filter(
+					(contribution): contribution is PartialReleaseAgeGate => contribution !== null,
+				);
+				const gate = ReleaseAgeGate.combine(...contributions);
+				if (gate.ageMinutes > 0) {
+					yield* Effect.logInfo(
+						`Release-age gate active: ${gate.ageMinutes} minute minimum, ${gate.exclude.length} exclude pattern(s)`,
+					);
+				}
+				return gate;
+			});
+			const cachedGate = yield* Effect.cached(assembleGate);
+
+			const filterVersions = (
+				pkg: string,
+				versions: ReadonlyArray<string>,
+			): Effect.Effect<ReadonlyArray<string>, never, never> =>
+				Effect.gen(function* () {
+					const gate = yield* cachedGate;
+					if (gate.ageMinutes <= 0 || gate.isExcluded(pkg)) {
+						return versions;
+					}
+
+					const times = yield* getPublishTimes(pkg).pipe(Effect.provideService(CommandRunner, runner));
+					// Fail open on missing publish-time data: pnpm would fail closed,
+					// but for resolution-time mirroring the worst case of proposing an
+					// unverifiable version is exactly today's behavior — and a warning
+					// was already logged by getPublishTimes.
+					if (Object.keys(times).length === 0) {
+						return versions;
+					}
+
+					const eligible = gate.filterVersions([...versions], times, pkg, Date.now());
+					const dropped = versions.length - eligible.length;
+					if (dropped > 0) {
+						yield* Effect.logInfo(
+							`Release-age gate: holding back ${dropped} version(s) of ${pkg} younger than ${gate.ageMinutes} minutes`,
+						);
+					}
+					return eligible;
+				});
+
+			return {
+				gate: () => cachedGate,
+				filterVersions,
+			};
+		}),
+	);
+
+/**
+ * Inert test layer: the zero gate, identity filtering. What non-pnpm and
+ * unit-test paths should wire.
+ */
+export const ReleaseAgeNoop: Layer.Layer<ReleaseAge> = Layer.succeed(ReleaseAge, {
+	gate: () => Effect.succeed(ReleaseAgeGate.combine()),
+	filterVersions: (_pkg, versions) => Effect.succeed(versions),
+});

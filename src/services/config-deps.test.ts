@@ -1,12 +1,14 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ReleaseAgeGate } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { NpmRegistryTest } from "@savvy-web/github-action-effects";
 import { Effect, Layer, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseConfigEntry } from "../utils/deps.js";
 import { ConfigDeps, ConfigDepsLive } from "./config-deps.js";
+import { ReleaseAge, ReleaseAgeNoop } from "./release-age.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Test Helpers
@@ -51,11 +53,12 @@ const makeRegistryState = (
 const runWithService = <A, E>(
 	fn: (service: Effect.Success<typeof ConfigDeps>) => Effect.Effect<A, E>,
 	packages?: Record<string, { version: string; integrity?: string; versions?: string[] }>,
+	releaseAge: Layer.Layer<ReleaseAge> = ReleaseAgeNoop,
 ) => {
 	const registryLayer = packages
 		? NpmRegistryTest.layer({ packages: makeRegistryState(packages) })
 		: NpmRegistryTest.empty();
-	const layer = ConfigDepsLive.pipe(Layer.provide(registryLayer));
+	const layer = ConfigDepsLive.pipe(Layer.provide(Layer.merge(registryLayer, releaseAge)));
 	return Effect.runPromise(
 		Effect.gen(function* () {
 			const service = yield* ConfigDeps;
@@ -162,6 +165,25 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		// Verify YAML was updated
 		const yaml = readWorkspaceYaml();
 		expect(yaml.configDependencies["@savvy-web/silk"]).toBe("0.7.0+sha512-newHash==");
+	});
+
+	it("holds back a resolution the release-age gate filters out", async () => {
+		writeWorkspaceYaml(`configDependencies:\n  typescript: "1.0.0+sha512-oldHash=="\n`);
+
+		const holdBack = Layer.succeed(ReleaseAge, {
+			gate: () => Effect.succeed(ReleaseAgeGate.combine({ ageMinutes: 1440 })),
+			filterVersions: (_pkg: string, versions: ReadonlyArray<string>) =>
+				Effect.succeed(versions.filter((v) => v !== "1.1.0")),
+		});
+
+		const result = await runWithService(
+			(s) => s.updateConfigDeps(["typescript"], tempDir),
+			{ typescript: { version: "1.1.0", versions: ["1.0.0", "1.1.0"], integrity: "sha512-newHash==" } },
+			holdBack,
+		);
+
+		expect(result).toHaveLength(0);
+		expect(readWorkspaceYaml().configDependencies.typescript).toBe("1.0.0+sha512-oldHash==");
 	});
 
 	it("skips dep when already on latest version", async () => {

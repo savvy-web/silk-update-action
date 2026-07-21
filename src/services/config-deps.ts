@@ -19,6 +19,7 @@ import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schemas/domain.js";
 import { parseConfigEntry } from "../utils/deps.js";
 import { configDepUpgradeRange, resolveLatestSatisfying } from "../utils/semver.js";
+import { ReleaseAge } from "./release-age.js";
 import { STRINGIFY_OPTIONS, readWorkspaceYaml, sortContent } from "./workspace-yaml.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -39,8 +40,10 @@ export const ConfigDepsLive = Layer.effect(
 	ConfigDeps,
 	Effect.gen(function* () {
 		const registry = yield* NpmRegistry;
+		const releaseAge = yield* ReleaseAge;
 		return {
-			updateConfigDeps: (deps, workspaceRoot = process.cwd()) => updateConfigDepsImpl(deps, registry, workspaceRoot),
+			updateConfigDeps: (deps, workspaceRoot = process.cwd()) =>
+				updateConfigDepsImpl(deps, registry, releaseAge, workspaceRoot),
 		};
 	}),
 );
@@ -96,6 +99,7 @@ const queryIntegrity = (
 const updateConfigDepsImpl = (
 	deps: ReadonlyArray<string>,
 	registry: NpmRegistryShape,
+	releaseAge: Effect.Success<typeof ReleaseAge>,
 	workspaceRoot: string,
 ): Effect.Effect<ReadonlyArray<DependencyUpdateResult>> =>
 	Effect.gen(function* () {
@@ -161,7 +165,11 @@ const updateConfigDepsImpl = (
 				continue;
 			}
 
-			const resolved = yield* resolveLatestSatisfying(versions, range);
+			// Mirror pnpm's minimumReleaseAge gate at resolution time so we never
+			// write a version pnpm would refuse to install.
+			const eligible = yield* releaseAge.filterVersions(dep, versions);
+
+			const resolved = yield* resolveLatestSatisfying(eligible, range);
 			if (!resolved) {
 				yield* Effect.logInfo(`No version of ${dep} satisfies ${range}`);
 				continue;

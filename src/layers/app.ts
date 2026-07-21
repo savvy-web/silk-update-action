@@ -31,6 +31,7 @@ import { ChangesetsLive } from "../services/changesets.js";
 import { ConfigDepsLive } from "../services/config-deps.js";
 import { PackageManagerUpgradeLive } from "../services/package-manager-upgrade.js";
 import { RegularDepsLive } from "../services/regular-deps.js";
+import { ReleaseAgeLive } from "../services/release-age.js";
 import { ReportLive } from "../services/report.js";
 import { RuntimeUpgradeLive } from "../services/runtime-upgrade.js";
 
@@ -67,6 +68,10 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 
 	const ghGraphql = GitHubGraphQLLive.pipe(Layer.provide(githubClient));
 	const npmRegistry = NpmRegistryLive.pipe(Layer.provide(CommandRunnerLive));
+	// Effective pnpm minimumReleaseAge gate (inline pnpm-workspace.yaml keys +
+	// config-dependency hook replay), applied by ConfigDeps/RegularDeps before
+	// version resolution. Inert when the workspace declares no gate.
+	const releaseAge = ReleaseAgeLive().pipe(Layer.provide(CommandRunnerLive));
 	const gitBranch = GitBranchLive.pipe(Layer.provide(githubClient));
 	const gitCommit = GitCommitLive.pipe(Layer.provide(githubClient));
 	const prLayer = PullRequestLive.pipe(Layer.provide(Layer.merge(githubClient, ghGraphql)));
@@ -110,11 +115,11 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 		ChangesetsLive.pipe(Layer.provide(depsRegen)),
 		BranchManagerLive.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, CommandRunnerLive))),
 		PackageManagerUpgradeLive.pipe(Layer.provide(npmRegistry)),
-		ConfigDepsLive.pipe(Layer.provide(npmRegistry)),
+		ConfigDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, releaseAge))),
 		CatalogConfigDepsLive.pipe(
 			Layer.provide(Layer.mergeAll(npmRegistry, lockfileReader, FetchHttpClient.layer, CommandRunnerLive)),
 		),
-		RegularDepsLive.pipe(Layer.provide(Layer.merge(npmRegistry, workspaceDiscovery))),
+		RegularDepsLive.pipe(Layer.provide(Layer.mergeAll(npmRegistry, workspaceDiscovery, releaseAge))),
 		ReportLive.pipe(Layer.provide(prLayer)),
 		RuntimeUpgradeLive.pipe(Layer.provide(makeRuntimeResolvers(options.runtimeLive))),
 	);

@@ -21,6 +21,7 @@ import type { DependencyUpdateResult } from "../schemas/domain.js";
 import { matchesPattern, parseSpecifier } from "../utils/deps.js";
 import { detectIndent } from "../utils/pnpm.js";
 import { resolutionRangeForSpecifier, resolveLatestSatisfying } from "../utils/semver.js";
+import { ReleaseAge } from "./release-age.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Service Interface
@@ -48,9 +49,10 @@ export const RegularDepsLive = Layer.effect(
 	Effect.gen(function* () {
 		const registry = yield* NpmRegistry;
 		const discovery = yield* WorkspaceDiscovery;
+		const releaseAge = yield* ReleaseAge;
 		return {
 			updateRegularDeps: (patterns, workspaceRoot = process.cwd(), exclude) =>
-				updateRegularDepsImpl(patterns, registry, discovery, workspaceRoot, exclude),
+				updateRegularDepsImpl(patterns, registry, discovery, releaseAge, workspaceRoot, exclude),
 		};
 	}),
 );
@@ -209,6 +211,7 @@ const updateRegularDepsImpl = (
 	patterns: ReadonlyArray<string>,
 	registry: NpmRegistryShape,
 	discovery: WorkspaceDiscoveryShape,
+	releaseAge: Effect.Success<typeof ReleaseAge>,
 	_workspaceRoot: string,
 	exclude: ReadonlySet<string> | undefined,
 ): Effect.Effect<ReadonlyArray<DependencyUpdateResult>> =>
@@ -263,6 +266,10 @@ const updateRegularDepsImpl = (
 				continue;
 			}
 
+			// Mirror pnpm's minimumReleaseAge gate at resolution time so we never
+			// write a specifier whose floor pnpm would refuse to install.
+			const eligible = yield* releaseAge.filterVersions(depName, versions);
+
 			for (const entry of entries) {
 				const parsed = parseSpecifier(entry.currentSpecifier);
 				if (!parsed) continue;
@@ -277,7 +284,7 @@ const updateRegularDepsImpl = (
 				// pre-stable dep roll forward across 0.x and adopt the first stable
 				// major. The original operator is re-applied verbatim below.
 				const range = resolutionRangeForSpecifier(parsed.prefix, parsed.version);
-				const resolved = yield* resolveLatestSatisfying(versions, range);
+				const resolved = yield* resolveLatestSatisfying(eligible, range);
 				if (!resolved) continue;
 
 				const newSpecifier = `${parsed.prefix}${resolved}`;

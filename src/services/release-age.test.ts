@@ -13,7 +13,14 @@ import { CommandRunner, CommandRunnerLive } from "@savvy-web/github-action-effec
 import { Effect, Layer, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { getPublishTimes, readInlineReleaseAge, replayHookReleaseAge } from "./release-age.js";
+import {
+	ReleaseAge,
+	ReleaseAgeLive,
+	ReleaseAgeNoop,
+	getPublishTimes,
+	readInlineReleaseAge,
+	replayHookReleaseAge,
+} from "./release-age.js";
 
 const runWith = <A, E>(effect: Effect.Effect<A, E, CommandRunner>, layer: Layer.Layer<CommandRunner>) =>
 	Effect.runPromise(
@@ -215,6 +222,144 @@ describe("release-age", () => {
 			const times = await runWith(getPublishTimes("prettier"), recordingRunner(calls, "not json"));
 
 			expect(times).toEqual({});
+		});
+	});
+
+	describe("ReleaseAge service", () => {
+		const OLD = "2020-01-01T00:00:00.000Z";
+		const young = () => new Date(Date.now() - 60_000).toISOString();
+
+		const timesRunner = (calls: string[][], times: Record<string, string>, fail = false) =>
+			Layer.succeed(CommandRunner, {
+				execCapture: (command: string, args: ReadonlyArray<string> = []) => {
+					calls.push([command, ...args]);
+					if (fail) {
+						return Effect.fail(new Error("npm view failed"));
+					}
+					return Effect.succeed({ stdout: JSON.stringify(times), stderr: "", exitCode: 0 });
+				},
+			} as never);
+
+		const runService = <A, E>(effect: Effect.Effect<A, E, ReleaseAge>, runner: Layer.Layer<CommandRunner>) =>
+			runWith(effect.pipe(Effect.provide(ReleaseAgeLive(root))) as Effect.Effect<A, E, CommandRunner>, runner);
+
+		it("assembles the effective gate from inline and hook sources, strictest age winning", async () => {
+			writeWorkspaceYaml(
+				[
+					"packages:",
+					"  - .",
+					"minimumReleaseAge: 720",
+					"minimumReleaseAgeExclude:",
+					'  - "@inline/*"',
+					"configDependencies:",
+					'  gate-plugin: "1.0.0+sha512-abc"',
+					"",
+				].join("\n"),
+			);
+			writeConfigDepPnpmfile(
+				"gate-plugin",
+				"pnpmfile.cjs",
+				[
+					"module.exports = {",
+					"  hooks: {",
+					"    updateConfig(config) {",
+					"      config.minimumReleaseAge = 1440;",
+					'      config.minimumReleaseAgeExclude = ["@hooks/*"];',
+					"      return config;",
+					"    },",
+					"  },",
+					"};",
+					"",
+				].join("\n"),
+			);
+
+			const gate = await runService(
+				Effect.gen(function* () {
+					const service = yield* ReleaseAge;
+					return yield* service.gate();
+				}),
+				CommandRunnerLive,
+			);
+
+			expect(gate.ageMinutes).toBe(1440);
+			expect([...gate.exclude].sort()).toEqual(["@hooks/*", "@inline/*"]);
+		});
+
+		it("drops versions younger than the cutoff", async () => {
+			writeWorkspaceYaml(["packages:", "  - .", "minimumReleaseAge: 1440", ""].join("\n"));
+			const calls: string[][] = [];
+
+			const eligible = await runService(
+				Effect.gen(function* () {
+					const service = yield* ReleaseAge;
+					return yield* service.filterVersions("prettier", ["1.0.0", "1.1.0"]);
+				}),
+				timesRunner(calls, { "1.0.0": OLD, "1.1.0": young() }),
+			);
+
+			expect(eligible).toEqual(["1.0.0"]);
+		});
+
+		it("leaves excluded packages unfiltered without fetching publish times", async () => {
+			writeWorkspaceYaml(
+				["packages:", "  - .", "minimumReleaseAge: 1440", "minimumReleaseAgeExclude:", '  - "@effected/*"', ""].join(
+					"\n",
+				),
+			);
+			const calls: string[][] = [];
+
+			const eligible = await runService(
+				Effect.gen(function* () {
+					const service = yield* ReleaseAge;
+					return yield* service.filterVersions("@effected/npm", ["1.0.0", "1.1.0"]);
+				}),
+				timesRunner(calls, {}),
+			);
+
+			expect(eligible).toEqual(["1.0.0", "1.1.0"]);
+			expect(calls).toHaveLength(0);
+		});
+
+		it("is inert without release-age settings and never fetches publish times", async () => {
+			writeWorkspaceYaml(["packages:", "  - .", ""].join("\n"));
+			const calls: string[][] = [];
+
+			const eligible = await runService(
+				Effect.gen(function* () {
+					const service = yield* ReleaseAge;
+					return yield* service.filterVersions("prettier", ["1.0.0", "1.1.0"]);
+				}),
+				timesRunner(calls, {}),
+			);
+
+			expect(eligible).toEqual(["1.0.0", "1.1.0"]);
+			expect(calls).toHaveLength(0);
+		});
+
+		it("fails open when publish times are unavailable", async () => {
+			writeWorkspaceYaml(["packages:", "  - .", "minimumReleaseAge: 1440", ""].join("\n"));
+			const calls: string[][] = [];
+
+			const eligible = await runService(
+				Effect.gen(function* () {
+					const service = yield* ReleaseAge;
+					return yield* service.filterVersions("prettier", ["1.0.0", "1.1.0"]);
+				}),
+				timesRunner(calls, {}, true),
+			);
+
+			expect(eligible).toEqual(["1.0.0", "1.1.0"]);
+		});
+
+		it("ReleaseAgeNoop passes versions through untouched", async () => {
+			const eligible = await Effect.runPromise(
+				Effect.gen(function* () {
+					const service = yield* ReleaseAge;
+					return yield* service.filterVersions("prettier", ["1.0.0"]);
+				}).pipe(Effect.provide(ReleaseAgeNoop), Effect.provideService(References.MinimumLogLevel, "None")),
+			);
+
+			expect(eligible).toEqual(["1.0.0"]);
 		});
 	});
 });
