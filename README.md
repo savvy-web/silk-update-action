@@ -10,6 +10,7 @@ A GitHub Action that updates pnpm config dependencies, workspace dependencies an
 
 - Updates config dependencies via direct npm queries and YAML editing, staying within a conservative range of the current major
 - Updates workspace dependencies (across `dependencies`, `devDependencies`, and `optionalDependencies`) within the semver ranges declared in `package.json`, with glob pattern support
+- Honors pnpm's [`minimumReleaseAge`](https://pnpm.io/settings#minimumreleaseage) gate at resolution time, holding back versions published inside the age window instead of proposing an update the install step would reject
 - Syncs peer dependency ranges with configurable lock/minor strategies
 - Creates verified, signed commits through GitHub App authentication
 - Integrates with Changesets for automated versioning of affected packages

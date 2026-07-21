@@ -1,3 +1,17 @@
+---
+status: current
+module: silk-update-action
+category: architecture
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # Effect Patterns
 
 [Back to index](./_index.md)
@@ -93,9 +107,9 @@ Each domain service uses `Context.Service` (v4; was `Context.Tag`) + `Layer`:
 - `BranchManager` / `BranchManagerLive` - Depends on `GitBranch`, `GitCommit`, `CommandRunner`
 - `PnpmUpgrade` / `PnpmUpgradeLive` - Depends on `NpmRegistry`
 - `RuntimeUpgrade` / `RuntimeUpgradeLive` - Depends on `NodeResolver`, `DenoResolver`, `BunResolver` (from `@effected/runtimes`)
-- `ConfigDeps` / `ConfigDepsLive` - Depends on `NpmRegistry`
-- `RegularDeps` / `RegularDepsLive` - Depends on `NpmRegistry`,
-  `WorkspaceDiscovery`
+- `ReleaseAge` / `ReleaseAgeLive(workspaceRoot?)` - Depends on `CommandRunner`. Parameterized layer factory (root bound at build); the effective pnpm `minimumReleaseAge` gate applied by `ConfigDeps` / `RegularDeps` before version resolution. `ReleaseAgeNoop` is the inert test layer.
+- `ConfigDeps` / `ConfigDepsLive` - Depends on `NpmRegistry`, `ReleaseAge`
+- `RegularDeps` / `RegularDepsLive` - Depends on `NpmRegistry`, `WorkspaceDiscovery`, `ReleaseAge`
 - `Changesets` / `ChangesetsLive` — Depends on `Changesets.DepsRegen` (from `@savvy-web/silk-effects`)
 - `Report` / `ReportLive` - Depends on `PullRequest`
 

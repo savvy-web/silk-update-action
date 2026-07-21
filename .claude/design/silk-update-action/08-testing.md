@@ -1,3 +1,17 @@
+---
+status: current
+module: silk-update-action
+category: architecture
+created: 2026-02-20
+updated: 2026-07-21
+last-synced: 2026-07-21
+completeness: 95
+related:
+  - ./_index.md
+dependencies: []
+implementation-plans: []
+---
+
 # Testing Strategy
 
 [Back to index](./_index.md)
@@ -35,7 +49,8 @@ Each `.ts` under `src/` has a co-located `.test.ts` sibling. Notable suites:
 - **Schemas and errors** (`schemas/domain.test.ts`, `errors/errors.test.ts`) —
   schema validation for the domain types and error construction, `_tag`
   matching and the `isRetryable` / `getErrorMessage` helpers.
-- **Dependency services** (`config-deps.test.ts`, `regular-deps.test.ts`, `peer-sync.test.ts`, `pnpm-upgrade.test.ts`, `runtime-upgrade.test.ts`) — npm-registry querying, range-respecting resolution (RegularDeps resolving within the current specifier's range, ConfigDeps within the synthesized major range, neither jumping to absolute `latest`), multi-section RegularDeps scanning with accurate per-section `type` reporting, `peer-lock`/`peer-minor` range computation, pnpm self-upgrade (driven through the library's in-memory `NpmRegistryTest` layer rather than a fake `CommandRunner`), and per-runtime `devEngines.runtime` rewriting (including `auto` no-op on static pins, the never-add rule — a missing entry is skipped with a warning in *every* mode, the dogfooded bun-only-manifest case included — exact-version write-back with no operator, and per-runtime resolver-failure resilience).
+- **Dependency services** (`config-deps.test.ts`, `regular-deps.test.ts`, `peer-sync.test.ts`, `pnpm-upgrade.test.ts`, `runtime-upgrade.test.ts`) — npm-registry querying, range-respecting resolution (RegularDeps resolving within the current specifier's range, ConfigDeps within the synthesized major range, neither jumping to absolute `latest`), multi-section RegularDeps scanning with accurate per-section `type` reporting, `peer-lock`/`peer-minor` range computation, pnpm self-upgrade (driven through the library's in-memory `NpmRegistryTest` layer rather than a fake `CommandRunner`), and per-runtime `devEngines.runtime` rewriting (including `auto` no-op on static pins, the never-add rule — a missing entry is skipped with a warning in *every* mode, the dogfooded bun-only-manifest case included — exact-version write-back with no operator, and per-runtime resolver-failure resilience). `config-deps.test.ts` and `regular-deps.test.ts` default their fixtures to `ReleaseAgeNoop` and each pin one hold-back case through a fake `ReleaseAge` layer.
+- **Release-age gate** (`release-age.test.ts`) — the `ReleaseAge` service and its standalone helpers: inline `pnpm-workspace.yaml` discovery, the subprocess hook replay (argv passing, `pnpmfile.mjs`/`.cjs` order, best-effort degradation to null with a warning), publish-time fetching (`npm view … time --json`, best-effort empty on failure), strictest-wins gate combination, exclude matching and the fail-open filtering paths (inert gate, excluded package, missing publish times).
 - **Lockfile and changesets** (`lockfile.test.ts`, `changesets.test.ts`) —
   `lockfile.test.ts` covers catalog and importer comparison emitting
   per-importer, per-section triples. `changesets.test.ts` exercises only the

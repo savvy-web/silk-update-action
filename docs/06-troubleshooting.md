@@ -59,6 +59,16 @@ Common issues and their solutions.
 - Re-run with debug logging enabled (`ACTIONS_STEP_DEBUG`) to see detailed lockfile comparison output
 - Run `pnpm outdated` locally to verify which packages have updates
 
+### An available update is not proposed
+
+**Cause**: The workspace declares pnpm's `minimumReleaseAge` setting (inline in `pnpm-workspace.yaml` or via a config dependency's `pnpmfile` `updateConfig` hook), and the newer version was published inside the age window. The action holds such versions back at resolution time so the install step cannot fail with `ERR_PNPM_NO_MATURE_MATCHING_VERSION`.
+
+**Solutions**:
+
+- Check the logs for `Release-age gate: holding back ...` to confirm the gate fired
+- Wait for the version to mature — a later run picks it up automatically
+- Add the package to `minimumReleaseAgeExclude` if it should bypass the gate
+
 ### Changes exist but action reports none
 
 **Cause**: The lockfile comparison may not detect certain types of changes.
