@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, References } from "effect";
@@ -124,6 +124,34 @@ describe("WorkspaceYaml.format", () => {
 				expect(result?.onlyBuiltDependencies).toEqual(["argon2", "sharp"]);
 			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
 		);
+	});
+
+	it("emits scoped keys double-quoted, not single-quoted (regression)", async () => {
+		const filepath = join(tempDir, "pnpm-workspace.yaml");
+		// Pre-fix state: a scoped configDependency key written single-quoted.
+		writeFileSync(filepath, `packages:\n  - .\nconfigDependencies:\n  '@parcel/watcher': 2.0.0\n`);
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const ws = yield* WorkspaceYaml;
+				yield* ws.format(tempDir);
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
+		);
+
+		const afterFirst = readFileSync(filepath, "utf-8");
+		// The scoped key must round-trip as DOUBLE-quoted, never single-quoted —
+		// otherwise the action churns every consumer's pnpm-workspace.yaml on each run.
+		expect(afterFirst).toContain(`"@parcel/watcher"`);
+		expect(afterFirst).not.toContain(`'@parcel/watcher'`);
+
+		// Idempotent: a second format must not change the bytes.
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const ws = yield* WorkspaceYaml;
+				yield* ws.format(tempDir);
+			}).pipe(Effect.provide(WorkspaceYamlLive), Effect.provideService(References.MinimumLogLevel, "None")),
+		);
+		expect(readFileSync(filepath, "utf-8")).toBe(afterFirst);
 	});
 
 	it("handles missing pnpm-workspace.yaml gracefully", async () => {

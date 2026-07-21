@@ -44,6 +44,12 @@ export const STRINGIFY_OPTIONS = {
 	// Indent block sequences one level under their mapping key, matching the
 	// legacy `yaml` npm package's default output (byte-parity with prior runs).
 	indentSequences: true,
+	// Fall back to double quotes (not @effected/yaml's single-quoted default) when
+	// a scalar requires quoting, so scoped keys like `"@parcel/watcher"` are not
+	// rewritten to single quotes on every run — matching the v3 `yaml` package's
+	// `singleQuote: false` posture and the @savvy-web/silk-effects PnpmWorkspace
+	// handler. Requires @effected/yaml >= 0.5.0 (quoteStyle).
+	quoteStyle: "double",
 } as const;
 
 /**
