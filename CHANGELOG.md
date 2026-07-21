@@ -1,5 +1,28 @@
 # silk-update-action
 
+## 4.2.0
+
+### Features
+
+* Config and regular dependency resolution now respects pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` settings. The action discovers the effective gate from both inline `pnpm-workspace.yaml` keys and config-dependency `pnpmfile` `updateConfig` hooks (replayed in a subprocess), fetches publish timestamps from the npm registry, and holds back any candidate version younger than the cutoff instead of proposing it. Runs no longer fail with `ERR_PNPM_NO_MATURE_MATCHING_VERSION` when a matched dependency published inside the age window — the update is deferred until the release matures, with a log line naming how many versions were held back. [#203][#203]
+
+### Dependencies
+
+* | Dependency                       | Type       | Action  | From   | To     |                                                                              |
+  | -------------------------------- | ---------- | ------- | ------ | ------ | ---------------------------------------------------------------------------- |
+  | @effected/lockfiles              | dependency | updated | ^0.1.6 | ^0.1.8 |                                                                              |
+  | @effected/runtimes               | dependency | updated | ^0.1.2 | ^0.1.3 |                                                                              |
+  | @effected/workspaces             | dependency | updated | ^0.5.0 | ^0.5.2 |                                                                              |
+  | @savvy-web/github-action-effects | dependency | updated | ^3.0.2 | ^3.0.3 |                                                                              |
+  | @savvy-web/silk-effects          | dependency | updated | ^4.1.0 | ^4.2.0 |                                                                              |
+  | @effected/npm                    | dependency | added   | —      | ^0.3.0 | [#203][#203] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
+
+### Patch Changes
+
+Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their contributions!
+
+[#203]: https://github.com/savvy-web/silk-update-action/pull/203
+
 ## 4.1.1
 
 ### Bug Fixes
