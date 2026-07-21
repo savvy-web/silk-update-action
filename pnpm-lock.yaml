@@ -6,23 +6,23 @@ importers:
   .:
     configDependencies:
       '@effected/pnpm-plugin-effect':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.3.0
+        version: 0.3.0
       '@savvy-web/pnpm-plugin-silk':
         specifier: 0.24.1
         version: 0.24.1
 
 packages:
 
-  '@effected/pnpm-plugin-effect@0.2.0':
-    resolution: {integrity: sha512-9FlDPXsSI7DfPHa80G1kSj4HEn9qB33K3uWMSIN0p/YyIJRNUh0xnPbbMnB4Ixm59D1/Jka0tNNe9H79zYjsdA==}
+  '@effected/pnpm-plugin-effect@0.3.0':
+    resolution: {integrity: sha512-LVEj0O0kGvLK6iFYUOZXyLxSs4c/p+SZjt1o9EzrETSEfE+tc9IQsHkxW3sp8ydBh9TloeM+wC6Kf7P3DQBTcQ==}
 
   '@savvy-web/pnpm-plugin-silk@0.24.1':
     resolution: {integrity: sha512-JlfQjiEYQAjdKDg2obndB29rmWVOYEo7A+gwUxprVVjbGsUvbvlNs+e7UGGRhTfkZmgTBHgBWYSXCQSeFMTNwg==}
 
 snapshots:
 
-  '@effected/pnpm-plugin-effect@0.2.0': {}
+  '@effected/pnpm-plugin-effect@0.3.0': {}
 
   '@savvy-web/pnpm-plugin-silk@0.24.1': {}
 
@@ -44,9 +44,8 @@ catalogs:
 
 overrides:
   '@microsoft/api-extractor>typescript': ^6.0.3
-  '@effected/npm': file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg
 
-pnpmfileChecksum: sha256-btCGws905KUNB3uDjjbuU95oXpSOC1v7QzxM1871wb0=
+pnpmfileChecksum: sha256-aoHt4GhesVXUIFkFmZVx85WJ5jLumtiN6eg69dT44ZQ=
 
 importers:
 
@@ -57,10 +56,10 @@ importers:
         version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@7.2.0))
       '@effected/lockfiles':
         specifier: ^0.1.8
-        version: 0.1.8(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/npm@file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/semver@0.2.0(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
+        version: 0.1.9(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/npm@0.3.0(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/semver@0.2.0(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
       '@effected/npm':
-        specifier: file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg
-        version: file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
+        specifier: ^0.3.0
+        version: 0.3.0(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
       '@effected/runtimes':
         specifier: ^0.1.3
         version: 0.1.3(effect@4.0.0-beta.99)
@@ -460,26 +459,32 @@ packages:
     peerDependencies:
       effect: 4.0.0-beta.99
 
-  '@effected/lockfiles@0.1.8':
-    resolution: {integrity: sha512-OnjDUeoJgM7OqKkYXv/w1bTSFf66wxOS5QVe0eLNBUSXFNMvMbX6TP5/F+1cDQR266dfqcx4J+mDLFlTyGVzkw==}
-    version: 0.1.8
+  '@effected/lockfiles@0.1.9':
+    resolution: {integrity: sha512-TMlY5UFoCWg+vM2tK1QfoJt/XdaYCiQ0SHre6Jmen9dS/ZyvO4iaetB4i5h3a5hD+R+SKdMEFf8AA3alykhFZQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@effected/jsonc': ~0.5.0
-      '@effected/npm': ~0.2.3
+      '@effected/npm': ~0.3.0
       '@effected/semver': ~0.2.0
       '@effected/yaml': ~0.5.0
       effect: 4.0.0-beta.99
 
-  '@effected/npm@file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg':
-    resolution: {directory: ../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg, type: directory}
+  '@effected/npm@0.2.3':
+    resolution: {integrity: sha512-6SJQrkNsxpfsI9TMDq1AiQDge6WtD75SmO4xz5zUVSJUQVB2UDms8ORjpg84+tr7iL7cazlJkO2DzVjhyUEUog==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@effected/semver': ~0.2.0
       effect: 4.0.0-beta.99
 
-  '@effected/package-json@0.4.1':
-    resolution: {integrity: sha512-03AnbViqT/skm4XkFYoh5mFEWKyo43Xiq3NFByq0R+A5DyFtvoEoL/la0ae3z0rpPb+sSBVBjA2Oqy4fC61Sfg==}
+  '@effected/npm@0.3.0':
+    resolution: {integrity: sha512-JeQZiVR5XH2RumrihRqqO4EaoggACOZ5j7uecE3fgD5/ZpNxLpe0Zv+9IcRfqy2MT30PoBrkxCPtV2TggZbWew==}
+    engines: {node: '>=24.11.0'}
+    peerDependencies:
+      '@effected/semver': ~0.2.0
+      effect: 4.0.0-beta.99
+
+  '@effected/package-json@0.4.2':
+    resolution: {integrity: sha512-eexZ0Gc1sVNPTqs0KxO0UC41CZGuzwxnzRoe9z8c+fjODMqtvkyDnnEMsJVLXDT7lhH5dQq+Lsws2rrIlzXrOg==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       effect: 4.0.0-beta.99
@@ -3859,22 +3864,35 @@ snapshots:
     dependencies:
       effect: 4.0.0-beta.99
 
-  '@effected/lockfiles@0.1.8(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/npm@file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/semver@0.2.0(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
+  '@effected/lockfiles@0.1.9(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/npm@0.2.3(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/semver@0.2.0(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
     dependencies:
       '@effected/jsonc': 0.5.0(effect@4.0.0-beta.99)
-      '@effected/npm': file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
+      '@effected/npm': 0.2.3(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
       '@effected/semver': 0.2.0(effect@4.0.0-beta.99)
       '@effected/yaml': 0.5.0(effect@4.0.0-beta.99)
       effect: 4.0.0-beta.99
 
-  '@effected/npm@file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
+  '@effected/lockfiles@0.1.9(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/npm@0.3.0(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/semver@0.2.0(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
+    dependencies:
+      '@effected/jsonc': 0.5.0(effect@4.0.0-beta.99)
+      '@effected/npm': 0.3.0(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
+      '@effected/semver': 0.2.0(effect@4.0.0-beta.99)
+      '@effected/yaml': 0.5.0(effect@4.0.0-beta.99)
+      effect: 4.0.0-beta.99
+
+  '@effected/npm@0.2.3(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
     dependencies:
       '@effected/semver': 0.2.0(effect@4.0.0-beta.99)
       effect: 4.0.0-beta.99
 
-  '@effected/package-json@0.4.1(effect@4.0.0-beta.99)':
+  '@effected/npm@0.3.0(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)':
     dependencies:
-      '@effected/npm': file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
+      '@effected/semver': 0.2.0(effect@4.0.0-beta.99)
+      effect: 4.0.0-beta.99
+
+  '@effected/package-json@0.4.2(effect@4.0.0-beta.99)':
+    dependencies:
+      '@effected/npm': 0.3.0(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
       '@effected/semver': 0.2.0(effect@4.0.0-beta.99)
       effect: 4.0.0-beta.99
       spdx-expression-parse: 4.0.0
@@ -3901,9 +3919,9 @@ snapshots:
     dependencies:
       '@effected/git': 0.4.1(effect@4.0.0-beta.99)
       '@effected/glob': 0.2.0(effect@4.0.0-beta.99)
-      '@effected/lockfiles': 0.1.8(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/npm@file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/semver@0.2.0(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
-      '@effected/npm': file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
-      '@effected/package-json': 0.4.1(effect@4.0.0-beta.99)
+      '@effected/lockfiles': 0.1.9(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/npm@0.2.3(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/semver@0.2.0(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
+      '@effected/npm': 0.2.3(@effected/semver@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
+      '@effected/package-json': 0.4.2(effect@4.0.0-beta.99)
       '@effected/semver': 0.2.0(effect@4.0.0-beta.99)
       '@effected/walker': 0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
       '@effected/yaml': 0.5.0(effect@4.0.0-beta.99)
@@ -4493,7 +4511,7 @@ snapshots:
       '@effected/git': 0.4.1(effect@4.0.0-beta.99)
       '@effected/glob': 0.2.0(effect@4.0.0-beta.99)
       '@effected/jsonc': 0.5.0(effect@4.0.0-beta.99)
-      '@effected/package-json': 0.4.1(effect@4.0.0-beta.99)
+      '@effected/package-json': 0.4.2(effect@4.0.0-beta.99)
       '@effected/walker': 0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
       '@effected/workspaces': 0.5.2(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99)
       '@effected/yaml': 0.5.0(effect@4.0.0-beta.99)
