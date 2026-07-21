@@ -115,8 +115,8 @@ We author every first-party dependency in the table below, so a bug or missing A
 
 | Package | Repo | Local checkout | Link mechanism |
 | ------- | ---- | -------------- | -------------- |
-| `@savvy-web/github-action-effects` | `savvy-web/github-action-effects` | `../github-action-effects` | direct → `pnpm link` |
-| `@savvy-web/github-action-builder` | `savvy-web/github-action-builder` | `../github-action-builder` | direct (build tool) → `pnpm link` |
+| `@savvy-web/github-action-effects` | `savvy-web/systems` (monorepo, `packages/github-action-effects`) | `../systems` (pkg: `../systems/packages/github-action-effects`) | direct → `pnpm link` |
+| `@savvy-web/github-action-builder` | `savvy-web/systems` (monorepo, `packages/github-action-builder`) | `../systems` (pkg: `../systems/packages/github-action-builder`) | direct (build tool) → `pnpm link` |
 | `@savvy-web/silk-effects` | `savvy-web/systems` (monorepo, `packages/silk-effects`) | `../systems` (pkg: `../systems/packages/silk-effects`) | direct → `pnpm link` |
 | `@effected/*` (`workspaces`, `runtimes`, `semver`, `lockfiles`, `yaml` + transitives) | `spencerbeggs/effected` (single monorepo) | `../../spencerbeggs/effected` (pkg: `packages/<name>`) | direct + transitive → override |
 
@@ -124,7 +124,7 @@ As of the Effect v4 migration the first-party Effect-native libraries are the `@
 
 **Two ways to link a local library build:**
 
-- **Direct-only dependency → `pnpm link`.** e.g. `pnpm link ../github-action-effects` symlinks `node_modules/@savvy-web/github-action-effects` to the local build. Verify the linked `package.json` via `node:fs` (NOT `require(...package.json)` — the `exports` map does not expose `./package.json`), or `pnpm why <pkg>`.
+- **Direct-only dependency → `pnpm link`.** e.g. `pnpm link ../systems/packages/github-action-effects` symlinks `node_modules/@savvy-web/github-action-effects` to the local build. Verify the linked `package.json` via `node:fs` (NOT `require(...package.json)` — the `exports` map does not expose `./package.json`), or `pnpm why <pkg>`.
 - **Also a transitive dependency → `pnpm-workspace.yaml` override.** A bare `pnpm link` redirects only the direct import, leaving the transitive copy (e.g. `@effected/workspaces` pulled in by `silk-effects`) on the registry version and bundling **two** copies. A `link:` override forces every resolution to one local copy:
 
   ```yaml
@@ -147,7 +147,7 @@ As of the Effect v4 migration the first-party Effect-native libraries are the `@
 
 **Committing while a link/override is active:** commit the **full dogfood state** to `dev` — `src` + rebuilt `dist` + changeset **and** the `pnpm-workspace.yaml` override + `pnpm-lock.yaml`. The override holds a machine-specific link path, so `dev` only installs cleanly with the sibling repos checked out at the paths in the table above; that is the accepted dogfooding trade-off, and the cleanup in step 7 reverts it. No CI runs on a plain `dev` push, so the committed `dev` source may reference an unpublished library API until it publishes — expected during dogfooding. Commits must be GPG-signed with the GitHub-verified key for `C. Spencer Beggs <spencer@savvyweb.systems>` or the signature ruleset rejects them.
 
-**Currently active:** nothing is linked — `pnpm-workspace.yaml` has no `overrides` block and every first-party dep resolves to its published registry version (`@savvy-web/silk-effects@^4.0.0`, `@savvy-web/github-action-effects@^3.0.0`, `@effected/workspaces@^0.3.0`, `@effected/runtimes@^0.1.0`, `@effected/semver@^0.1.0`, `@effected/lockfiles@^0.1.2`, `@effected/yaml@^0.2.0`, `effect@4.0.0-beta.98` via `catalog:effect`, all unlinked). The Effect v4 / `@effected`-kit migration (`b9225b4`) is bundled into the committed `dist`.
+**Currently active:** one package is linked — `pnpm-workspace.yaml` carries an `overrides` block with `"@effected/npm": "file:../../spencerbeggs/effected/packages/npm/dist/prod/npm/pkg"`, dogfooding the unreleased ReleaseAgeGate API from a local `effected` build. This is transient dogfood state: once the next `@effected` release publishes, the override is removed and the published range pinned (procedure step 7). Every other first-party dep resolves to its published registry version (`@savvy-web/github-action-effects@^3.0.3`, `@savvy-web/silk-effects@^4.2.0`, `@effected/lockfiles@^0.1.8`, `@effected/npm@^0.3.0` — the declared range, with resolution overridden to the local build — `@effected/runtimes@^0.1.3`, `@effected/semver@^0.2.0`, `@effected/workspaces@^0.5.2`, `@effected/yaml@^0.5.0`, `effect@4.0.0-beta.99` via `catalog:effect`).
 
 ## Development & Release Cycle
 

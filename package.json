@@ -1,82 +1,75 @@
 {
-  "name": "silk-update-action",
-  "version": "4.1.0",
-  "private": true,
-  "description": "GitHub Action for updating pnpm config dependencies and regular dependencies with automated PR creation",
-  "keywords": [
-    "github-action",
-    "pnpm",
-    "config-dependencies",
-    "dependency-updates",
-    "monorepo",
-    "changesets"
-  ],
-  "homepage": "https://github.com/savvy-web/silk-update-action#readme",
-  "bugs": {
-    "url": "https://github.com/savvy-web/silk-update-action/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/savvy-web/silk-update-action.git"
-  },
-  "license": "MIT",
-  "author": {
-    "name": "C. Spencer Beggs",
-    "email": "spencer@savvyweb.systems",
-    "url": "https://savvyweb.systems"
-  },
-  "type": "module",
-  "scripts": {
-    "build": "turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
-    "build:prod": "github-action-builder build && node scripts/assert-native-dynamic-import.mjs",
-    "ci:build": "CI=\"true\" turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
-    "ci:test": "CI=\"true\" vitest run --coverage",
-    "lint": "biome check --max-diagnostics=none",
-    "lint:fix": "biome check --write --max-diagnostics=none",
-    "lint:fix:unsafe": "biome check --write --unsafe --max-diagnostics=none",
-    "lint:md": "markdownlint-cli2 --config './lib/configs/.markdownlint-cli2.jsonc'",
-    "lint:md:fix": "markdownlint-cli2  --config './lib/configs/.markdownlint-cli2.jsonc' --fix",
-    "prepare": "husky",
-    "test": "vitest run --pass-with-no-tests",
-    "test:coverage": "vitest run --coverage --pass-with-no-tests",
-    "test:watch": "vitest --watch --pass-with-no-tests",
-    "typecheck": "turbo run types:check --log-prefix=none --log-order=grouped",
-    "types:check": "tsc --noEmit",
-    "validate": "github-action-builder validate"
-  },
-  "dependencies": {
-    "@effect/platform-node": "catalog:effect",
-    "@effected/lockfiles": "^0.1.6",
-    "@effected/npm": "^0.2.3",
-    "@effected/runtimes": "^0.1.2",
-    "@effected/semver": "^0.2.0",
-    "@effected/workspaces": "^0.5.0",
-    "@effected/yaml": "^0.5.0",
-    "@savvy-web/github-action-effects": "^3.0.2",
-    "@savvy-web/silk-effects": "^4.1.0",
-    "effect": "catalog:effect"
-  },
-  "devDependencies": {
-    "@savvy-web/github-action-builder": "^2.0.3",
-    "@savvy-web/silk": "^3.0.4",
-    "@vitest-agent/plugin": "^2.0.2"
-  },
-  "packageManager": "pnpm@11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065",
-  "engines": {
-    "node": ">=24.11.0"
-  },
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065",
-      "onFail": "ignore"
-    },
-    "runtime": [
-      {
-        "name": "node",
-        "version": "26.5.0",
-        "onFail": "ignore"
-      }
-    ]
-  }
+	"name": "silk-update-action",
+	"version": "4.1.1",
+	"private": true,
+	"description": "GitHub Action for updating pnpm config dependencies and regular dependencies with automated PR creation",
+	"keywords": ["github-action", "pnpm", "config-dependencies", "dependency-updates", "monorepo", "changesets"],
+	"homepage": "https://github.com/savvy-web/silk-update-action#readme",
+	"bugs": {
+		"url": "https://github.com/savvy-web/silk-update-action/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/savvy-web/silk-update-action.git"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@savvyweb.systems",
+		"url": "https://savvyweb.systems"
+	},
+	"type": "module",
+	"scripts": {
+		"build": "turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
+		"build:prod": "github-action-builder build && node scripts/assert-native-dynamic-import.mjs",
+		"ci:build": "CI=\"true\" turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
+		"ci:test": "CI=\"true\" vitest run --coverage",
+		"lint": "biome check --max-diagnostics=none",
+		"lint:fix": "biome check --write --max-diagnostics=none",
+		"lint:fix:unsafe": "biome check --write --unsafe --max-diagnostics=none",
+		"lint:md": "markdownlint-cli2 --config './lib/configs/.markdownlint-cli2.jsonc'",
+		"lint:md:fix": "markdownlint-cli2  --config './lib/configs/.markdownlint-cli2.jsonc' --fix",
+		"prepare": "husky",
+		"test": "vitest run --pass-with-no-tests",
+		"test:coverage": "vitest run --coverage --pass-with-no-tests",
+		"test:watch": "vitest --watch --pass-with-no-tests",
+		"typecheck": "turbo run types:check --log-prefix=none --log-order=grouped",
+		"types:check": "tsc --noEmit",
+		"validate": "github-action-builder validate"
+	},
+	"dependencies": {
+		"@effect/platform-node": "catalog:effect",
+		"@effected/lockfiles": "^0.1.8",
+		"@effected/npm": "^0.3.0",
+		"@effected/runtimes": "^0.1.3",
+		"@effected/semver": "^0.2.0",
+		"@effected/workspaces": "^0.5.2",
+		"@effected/yaml": "^0.5.0",
+		"@savvy-web/github-action-effects": "^3.0.3",
+		"@savvy-web/silk-effects": "^4.2.0",
+		"effect": "catalog:effect"
+	},
+	"devDependencies": {
+		"@savvy-web/github-action-builder": "^2.0.4",
+		"@savvy-web/silk": "^3.0.5",
+		"@vitest-agent/plugin": "^2.0.3"
+	},
+	"packageManager": "pnpm@11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065",
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"devEngines": {
+		"packageManager": {
+			"name": "pnpm",
+			"version": "11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065",
+			"onFail": "ignore"
+		},
+		"runtime": [
+			{
+				"name": "node",
+				"version": "26.5.0",
+				"onFail": "ignore"
+			}
+		]
+	}
 }
