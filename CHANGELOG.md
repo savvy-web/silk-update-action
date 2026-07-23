@@ -1,5 +1,17 @@
 # silk-update-action
 
+## 4.2.2
+
+### Dependencies
+
+* | Dependency         | Type       | Action  | From   | To     |                                                                              |
+  | ------------------ | ---------- | ------- | ------ | ------ | ---------------------------------------------------------------------------- |
+  | @effected/runtimes | dependency | updated | ^0.1.3 | ^0.1.4 | [#210][#210] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
+
+### Patch Changes
+
+[#210]: https://github.com/savvy-web/silk-update-action/pull/210
+
 ## 4.2.1
 
 ### Dependencies
