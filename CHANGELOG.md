@@ -1,5 +1,15 @@
 # silk-update-action
 
+## 4.11.17
+
+### Maintenance
+
+- Bumps effected kit to the latest version.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 4.11.16
 
 ### Dependencies
