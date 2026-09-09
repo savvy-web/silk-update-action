@@ -1,5 +1,21 @@
 # silk-update-action
 
+## 4.11.18
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/runtimes | dependency | updated | ^0.5.0 | ^0.5.1 |
+
+[#412][#412]
+
+### Thanks
+
+Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their contributions!
+
+[#412]: https://github.com/savvy-web/silk-update-action/pull/412
+
 ## 4.11.17
 
 ### Maintenance
@@ -337,8 +353,11 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 
 ### Refactoring
 
-- Tarball fetching, integrity verification and extraction now come from&#10;`@effected/npm`'s `PackageTarball`, and entry-point resolution from&#10;`@effected/package-json`'s `resolveEntryPoint`. Both were harvested out of this
-  action upstream. Loading the resolved entry stays here, because a dynamic&#10;`import()` of a computed path is compiled into a context module by bundlers and
+- Tarball fetching, integrity verification and extraction now come from
+  `@effected/npm`'s `PackageTarball`, and entry-point resolution from
+  `@effected/package-json`'s `resolveEntryPoint`. Both were harvested out of this
+  action upstream. Loading the resolved entry stays here, because a dynamic
+  `import()` of a computed path is compiled into a context module by bundlers and
   a kit-level loader would hand every bundling consumer that problem.
 
 - One behavior change comes with the resolver. When a package's `exports` field
@@ -355,9 +374,13 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 | @effected/pnpm-plugin-effect | config | updated | 0.6.4 | 0.6.5 |
 
 - The config dependency carries the catalog every `@effected/*` range resolves
-  through, so this is what moves `@effected/npm` to `0.12.0` and&#10;`@effected/package-json` to `0.11.0` — the releases that carry `PackageTarball`&#10;and `resolveEntryPoint`.
+  through, so this is what moves `@effected/npm` to `0.12.0` and
+  `@effected/package-json` to `0.11.0` — the releases that carry `PackageTarball`
+  and `resolveEntryPoint`.
 
-- `TarballError.reason` widened from four members to five in that release:&#10;`integrityUnverifiable` (the digest could not be computed) is now distinct from&#10;`integrityMismatch` (two digests existed and differed). Config-dependency base
+- `TarballError.reason` widened from four members to five in that release:
+  `integrityUnverifiable` (the digest could not be computed) is now distinct from
+  `integrityMismatch` (two digests existed and differed). Config-dependency base
   routing needed no change — an unrecognised reason already takes the
   conservative skip route. [#338][#338]
 
@@ -390,9 +413,11 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 - `config` in the `result` output now means pnpm `configDependencies` and nothing
   else. A consumer matching `type === "config" && dependency === "pnpm"` to detect
   a package-manager upgrade will stop matching — and will do so silently, since
-  the row is still present under its accurate type. Match `type === "packageManager"`&#10;instead, which also covers bun and npm.
+  the row is still present under its accurate type. Match `type === "packageManager"`
+  instead, which also covers bun and npm.
 
-- The `DependencyType` enum in `docs/schema/run-result.schema.json` gained&#10;`packageManager`. Existing documents remain valid.
+- The `DependencyType` enum in `docs/schema/run-result.schema.json` gained
+  `packageManager`. Existing documents remain valid.
 
 ### Features
 
@@ -420,14 +445,16 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 ### Tests
 
 - The changeset table-escaping canary now compares against the shipped canonical
-  serializer instead of banning backslashes outright. `@effected/markdown@0.6.3`&#10;makes canonical stringify a stability commitment: cells are escaped and the
+  serializer instead of banning backslashes outright. `@effected/markdown@0.6.3`
+  makes canonical stringify a stability commitment: cells are escaped and the
   escapes round-trip, so the old assertion rejected correct output. The three
   value assertions beside it never discriminated — `toContain("~0.2.0")` passes
   against `\~0.2.0` — so they were replaced rather than kept.
 - `DependencyType` is now asserted at compile time to be a subset of the shared
   vocabulary, so a member this action emits but CSH005 rejects fails the build
   here rather than in the consumer's repository.
-- Added an end-to-end round trip proving a `packageManager` row and a `runtime`&#10;row leave the schema, survive rendering, and land in the pull-request body as
+- Added an end-to-end round trip proving a `packageManager` row and a `runtime`
+  row leave the schema, survive rendering, and land in the pull-request body as
   cells the shared vocabulary decodes.
 
 ### Dependencies
@@ -441,12 +468,16 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 
 - Only the config-dependency pin was hand-edited; every other move follows from it
   through `catalog:effected` and a lockfile refresh. `@effected/workspaces` also
-  closes a duplicate resolution that has been open since this action moved to&#10;`^0.17.0` ahead of `@savvy-web/silk-effects` — both now resolve `0.18.0`, and&#10;`pnpm why` reports a single copy of every kit package.
+  closes a duplicate resolution that has been open since this action moved to
+  `^0.17.0` ahead of `@savvy-web/silk-effects` — both now resolve `0.18.0`, and
+  `pnpm why` reports a single copy of every kit package.
 
 ### Maintenance
 
 - Test doubles for `WorkspaceDiscovery` implement the per-call-root members
-  (`infoIn`, `listPackagesIn`, `refreshIn`) that `@effected/workspaces@0.18.0`&#10;adds, and the `RegenResult` doubles carry the new informational `coexisting`&#10;bucket. [#333][#333]
+  (`infoIn`, `listPackagesIn`, `refreshIn`) that `@effected/workspaces@0.18.0`
+  adds, and the `RegenResult` doubles carry the new informational `coexisting`
+  bucket. [#333][#333]
 
 ### Thanks
 
@@ -475,10 +506,12 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 - Fix PR-title mislabeling of devDependencies as "dependencies". The subject
   builder's header budget is raised from a self-imposed 72 characters to the 100
-  that commitlint actually enforces (`header-max-length` via&#10;`@commitlint/config-conventional`), so the accurate typed breakdown
+  that commitlint actually enforces (`header-max-length` via
+  `@commitlint/config-conventional`), so the accurate typed breakdown
   (`upgrade pnpm, update 1 config dependency and 3 devDependencies`) no longer
   degrades to the coarse form on the most common run shape. The coarse form
-  itself is now honest as a last resort: a batch containing non-`dependencies`&#10;sections is lumped as "packages", never as "dependencies", so a
+  itself is now honest as a last resort: a batch containing non-`dependencies`
+  sections is lumped as "packages", never as "dependencies", so a
   release-neutral devDependency run can no longer read as release-triggering. [#328][#328]
 
 ### Patch Changes
@@ -597,7 +630,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   commit and reports any unsatisfied peer dependencies in the pull request body,
   the job summary and the structured `result` output.
 
-  Values are `false` (do not run), `warn` (report only, never gate) and&#10;`no-auto-merge` (report, and skip the auto-merge request when a required peer is
+  Values are `false` (do not run), `warn` (report only, never gate) and
+  `no-auto-merge` (report, and skip the auto-merge request when a required peer is
   unsatisfied).
 
   Left unset, the default is derived from `auto-merge`: `no-auto-merge` when
@@ -620,12 +654,14 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   `RunResultDocument` gains a required `peerIssues` array, and its version field
   moves from `1` to `2`.
 
-  The bump is not ceremonial. The generated JSON Schema lowers this document with&#10;`additionalProperties: false`, so a consumer validating a new run against a
+  The bump is not ceremonial. The generated JSON Schema lowers this document with
+  `additionalProperties: false`, so a consumer validating a new run against a
   pinned copy of the v1 schema will reject it on the unrecognised field. Adding a
   field is breaking under a strict schema in a way it would not be under a
   permissive one, and `schemaVersion` exists to signal exactly that.
 
-  The four scalar outputs — `pr-number`, `pr-url`, `updates-count`, `has-changes`&#10;— are unchanged. A consumer that parses `result` without validating it against a
+  The four scalar outputs — `pr-number`, `pr-url`, `updates-count`, `has-changes`
+  — are unchanged. A consumer that parses `result` without validating it against a
   pinned schema, or that checks `schemaVersion` before reading, needs no change.
   ### Peer results appear in the job summary as well as the pull request
   The job summary renders the same peer table and withheld-gate note as the pull
@@ -638,8 +674,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   an empty result that means "not examined" rather than "nothing wrong".
 
   This matters because pnpm records resolution-affecting configuration in the
-  lockfile and discards reporting-affecting configuration: `peerDependencyRules`&#10;appears nowhere in a lockfile, so a check reading the lockfile alone would report
-  peers that pnpm deliberately suppresses. Those rules are read through&#10;`@effected/workspaces`, including rules injected by config-dependency plugins
+  lockfile and discards reporting-affecting configuration: `peerDependencyRules`
+  appears nowhere in a lockfile, so a check reading the lockfile alone would report
+  peers that pnpm deliberately suppresses. Those rules are read through
+  `@effected/workspaces`, including rules injected by config-dependency plugins
   rather than declared in `pnpm-workspace.yaml`.
 
   Two limits are deliberate. Optional peers are reported but never gate. A pnpm
@@ -682,11 +720,15 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   trailer is well-formed and DCO checks pass — the commit simply named two
   different identities as author and signer.
 
-  Repositories using a GitHub App will see the trailer change from&#10;`github-actions[bot]` to `<your-app>[bot]` on the next run. Runs where the token
+  Repositories using a GitHub App will see the trailer change from
+  `github-actions[bot]` to `<your-app>[bot]` on the next run. Runs where the token
   cannot be read still fall back to the well-known `github-actions[bot]` identity,
   byte-identical to what was written before.
   ### A malformed registry integrity no longer produces a package-manager pin corepack rejects
-  When upgrading a corepack-managed package manager (pnpm, npm), the&#10;`+sha512.<hex>` integrity written into `packageManager` and&#10;`devEngines.packageManager.version` is now derived by `@effected/npm`'s&#10;`CorepackIntegrityHash.fromSri`, which validates the registry's SRI hash before
+  When upgrading a corepack-managed package manager (pnpm, npm), the
+  `+sha512.<hex>` integrity written into `packageManager` and
+  `devEngines.packageManager.version` is now derived by `@effected/npm`'s
+  `CorepackIntegrityHash.fromSri`, which validates the registry's SRI hash before
   converting it.
 
   The previous conversion decoded whatever followed `sha512-` and emitted the hex,
@@ -697,7 +739,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   integrity already took, with a warning.
   ### A malformed `packageManager` pin is reported as "no reference" rather than "unsatisfiable"
   Reading the `packageManager` and `devEngines.packageManager` fields now goes
-  through `@effected/npm`'s `PackageManagerPin` grammar. The previous check tested&#10;`/^\d+\.\d+\.\d+/` against the version tail, which matched a *prefix* — so&#10;`pnpm@11.12.0garbage` was accepted as a reference and the run then reported
+  through `@effected/npm`'s `PackageManagerPin` grammar. The previous check tested
+  `/^\d+\.\d+\.\d+/` against the version tail, which matched a *prefix* — so
+  `pnpm@11.12.0garbage` was accepted as a reference and the run then reported
   "no pnpm release satisfies the range", which is this action's diagnosis for a
   range typed for the wrong package manager. It now reports that there is no usable
   reference, which is what actually happened.
@@ -708,10 +752,13 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Refactoring
 
-- `corepackHashFromIntegrity` removed from `src/utils/pnpm.ts`, which now exports&#10;`detectIndent` alone. The kit shipped the conversion this repository's copy
+- `corepackHashFromIntegrity` removed from `src/utils/pnpm.ts`, which now exports
+  `detectIndent` alone. The kit shipped the conversion this repository's copy
   motivated upstream.
-- `resolveSignoff()` added at `src/utils/commit-signoff.ts`, matching&#10;`silk-release-action`'s module of the same name — both actions commit through
-  the Git Data API, so both must supply a trailer no porcelain adds. `Report`&#10;resolves it once when its layer is built.
+- `resolveSignoff()` added at `src/utils/commit-signoff.ts`, matching
+  `silk-release-action`'s module of the same name — both actions commit through
+  the Git Data API, so both must supply a trailer no porcelain adds. `Report`
+  resolves it once when its layer is built.
 
 ### Tests
 
@@ -737,8 +784,12 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 | @savvy-web/silk | devDependency | updated | ^3.7.9 | ^3.7.11 |
 
 - `@effected/github` had to move because `@effected/github-actions@0.9.1` depends
-  on it and the lockfile still held `0.6.0`, whose `GitHubClient` embeds&#10;`@octokit/types@16`. `0.6.1` moved to `@octokit/types@17`, so at `0.6.0` the&#10;`GitHubClient` that `GitHubToken.clientLayer()` produced no longer matched the
-  one the resource layers required, and the build failed. Two copies of&#10;`@effected/github` are not themselves a problem — a copy at `0.6.1` alongside&#10;`github-actions`' `0.7.0` typechecks — but this repository keeps one copy of
+  on it and the lockfile still held `0.6.0`, whose `GitHubClient` embeds
+  `@octokit/types@16`. `0.6.1` moved to `@octokit/types@17`, so at `0.6.0` the
+  `GitHubClient` that `GitHubToken.clientLayer()` produced no longer matched the
+  one the resource layers required, and the build failed. Two copies of
+  `@effected/github` are not themselves a problem — a copy at `0.6.1` alongside
+  `github-actions`' `0.7.0` typechecks — but this repository keeps one copy of
   each kit package regardless, so the range moved to `^0.7.0`.
 
   `@savvy-web/silk-effects@6.0.0` brings `@effected/github-references` in
@@ -816,7 +867,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ```
   The application layer provided the `PackageJsonFile` service to only one of
   the two consumers that needed it, so the service graph failed to build and
-  the run died as an unhandled defect roughly 30ms in. If you're tracking the&#10;`@v4` alias tag, taking this release fixes it automatically; if you're pinned
+  the run died as an unhandled defect roughly 30ms in. If you're tracking the
+  `@v4` alias tag, taking this release fixes it automatically; if you're pinned
   to `4.6.0` exactly, upgrade to pick up the fix.
   - Adds a compile-time guard that fails the build if the application layer is
     ever again composed with a service it doesn't provide, naming the missing
@@ -929,17 +981,20 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 ### Documentation
 
 - `docs/schema/run-result.schema.json` gains a `$defs/DependencyType` definition,
-  and the `type` field of `DependencyUpdateResult` and `LockfileChange` now&#10;`$ref`s it instead of repeating the enum inline. The constraint each field
+  and the `type` field of `DependencyUpdateResult` and `LockfileChange` now
+  `$ref`s it instead of repeating the enum inline. The constraint each field
   imposes is unchanged, so validation of an existing `result` document is
   unaffected. [#250][#250]
 
 ### Refactoring
 
-- Error classes in `src/errors/errors.ts` now extend `Schema.TaggedError`, which&#10;`effect@4.0.0-beta.107` renamed back from `Schema.TaggedErrorClass`. The curried
+- Error classes in `src/errors/errors.ts` now extend `Schema.TaggedError`, which
+  `effect@4.0.0-beta.107` renamed back from `Schema.TaggedErrorClass`. The curried
   shape is identical, so the four declarations are the only source change; the
   action's runtime behavior is unchanged.
 - `DependencyType` now carries an explicit `identifier` annotation. The beta.107
-  JSON Schema lowering hoists a sub-schema used in more than one place into&#10;`$defs` rather than inlining it at each use site, and names it positionally when
+  JSON Schema lowering hoists a sub-schema used in more than one place into
+  `$defs` rather than inlining it at each use site, and names it positionally when
   there is no identifier to use.
 
 ### Dependencies
@@ -970,7 +1025,9 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 ### Maintenance
 
 - Adopts the `@effected` kit's coordinated `effect@4.0.0-beta.107` wave. The whole
-  graph now resolves a single `effect` copy, which retires both the&#10;`@effect/platform-node-shared` override and the duplicate `@effected/workspaces`&#10;resolution that was previously bundled into `dist/main.js`.
+  graph now resolves a single `effect` copy, which retires both the
+  `@effect/platform-node-shared` override and the duplicate `@effected/workspaces`
+  resolution that was previously bundled into `dist/main.js`.
 
   `@effect/vitest` moves from an exact literal to `catalog:effect` — the same
   catalog entry as `effect` itself — so the lockstep those two must keep is now
@@ -1005,7 +1062,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ### Custom commands ran in the wrong directory
   Every command in the `run` input inherited the action's process directory rather
   than the detected workspace root. When the action is invoked from a
-  subdirectory those are different trees, so a configured `pnpm test` or&#10;`pnpm build` linted, tested or built something other than what the run had just
+  subdirectory those are different trees, so a configured `pnpm test` or
+  `pnpm build` linted, tested or built something other than what the run had just
   edited — and passed, reporting green about the wrong tree.
   ### Glob patterns in `peer-lock` / `peer-minor` silently did nothing
   `dependencies` entries are globs; peer entries are matched as exact package
@@ -1027,7 +1085,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ### Release-age gate: one narrow case now loses the gate
   Gate discovery moved to `@effected/workspaces`, whose replay reads its child's
   payload from the last line of stdout. A config-dependency `pnpmfile` hook that
-  writes to stdout **after** that payload — cleanup logging from a&#10;`process.on("exit")` handler, for instance — now makes discovery fail, and the
+  writes to stdout **after** that payload — cleanup logging from a
+  `process.on("exit")` handler, for instance — now makes discovery fail, and the
   action falls back to running with no release-age gate (logged as a warning).
 
   A hook that logs during execution, which is the ordinary case, is unaffected.
@@ -1039,12 +1098,14 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   Tracked upstream as [spencerbeggs/effected#292](https://github.com/spencerbeggs/effected/issues/292).
   ### The `result` document described the wrong run on the non-success exits
   A run that ended at the no-changes exit, or because a custom command failed,
-  published the *pre-run baseline* document — `packageManager: null`,&#10;`workspaceRoot: ""` — even though detection had already succeeded. It parsed,
+  published the *pre-run baseline* document — `packageManager: null`,
+  `workspaceRoot: ""` — even though detection had already succeeded. It parsed,
   every field was present, and nothing in the log distinguished it from a run that
   genuinely never detected anything.
 
   The failed-command exit additionally reported an **empty update set** for work
-  that had actually happened: a run that bumped three dependencies and then failed&#10;`pnpm test` left those bumps in the working tree while telling consumers it had
+  that had actually happened: a run that bumped three dependencies and then failed
+  `pnpm test` left those bumps in the working tree while telling consumers it had
   changed nothing. Both exits now carry the run's real context *and* its completed
   updates, and `updates-count` matches, so the scalar and the document cannot
   disagree.
@@ -1072,11 +1133,17 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   written to the checkout's own git config once per run instead of being passed
   per command, so the two readers cannot drift apart.
 
-- **Every domain service layer moved from an `XLive` constant to a `static layer`&#10;on its class**, matching the `@effected` kit's own convention:&#10;`BranchManager.layer`, `ReleaseAge.layer` (plus `ReleaseAge.layerNoop`),&#10;`Report.layer`, `Changesets.layer`, `ConfigDeps.layer`,&#10;`CatalogConfigDeps.layer`, `RegularDeps.layer`, `RuntimeUpgrade.layer`,&#10;`PackageManagerUpgrade.layer` and `Lockfile.layer`. None was part of a
+- **Every domain service layer moved from an `XLive` constant to a `static layer`
+  on its class**, matching the `@effected` kit's own convention:
+  `BranchManager.layer`, `ReleaseAge.layer` (plus `ReleaseAge.layerNoop`),
+  `Report.layer`, `Changesets.layer`, `ConfigDeps.layer`,
+  `CatalogConfigDeps.layer`, `RegularDeps.layer`, `RuntimeUpgrade.layer`,
+  `PackageManagerUpgrade.layer` and `Lockfile.layer`. None was part of a
   documented public API — the action ships as a bundle, not a library.
 
 - `WorkspaceYamlLive` and its `WorkspaceYaml` tag were **deleted** rather than
-  renamed: nothing outside their own test suite ever wired them. The standalone&#10;`formatWorkspaceYaml` / `readWorkspaceYaml` helpers are unchanged and are what
+  renamed: nothing outside their own test suite ever wired them. The standalone
+  `formatWorkspaceYaml` / `readWorkspaceYaml` helpers are unchanged and are what
   the action actually calls. [#244][#244]
 
 ### Dependencies
@@ -1186,7 +1253,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
     with:
       upgrade-package-manager: "true" # or "auto", or an explicit semver range
   ```
-  A workflow that configures no update type at all (no `config-dependencies`, no&#10;`dependencies`, no `upgrade-package-manager`, no `upgrade-runtime-*`) now fails
+  A workflow that configures no update type at all (no `config-dependencies`, no
+  `dependencies`, no `upgrade-package-manager`, no `upgrade-runtime-*`) now fails
   fast with `At least one update type must be active` instead of silently running
   a package-manager-only upgrade.
   ### Malformed inputs now fail instead of falling back to defaults
@@ -1198,15 +1266,19 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Refactoring
 
-- Migrated the action off the now-deleted `@savvy-web/github-action-effects`&#10;library onto the `@effected/*` kit (`github-actions`, `github`, `commands`,&#10;`npm`) plus `@savvy-web/silk-effects` 5.0.0. All action inputs are now read
+- Migrated the action off the now-deleted `@savvy-web/github-action-effects`
+  library onto the `@effected/*` kit (`github-actions`, `github`, `commands`,
+  `npm`) plus `@savvy-web/silk-effects` 5.0.0. All action inputs are now read
   through the kit's `ActionInput` accessors — the mechanism behind both breaking
   changes above.
 
   Consequences for consumers:
   - The `pre`/`post` bundles are roughly 20% smaller (the previous octokit
     auth-app strategy is no longer bundled).
-  - Bundled third-party license attribution is restored inline in the built&#10;`dist` output.
-  - Test suite relocated to `__test__/unit/**` and partially converted to&#10;`@effect/vitest`; the documented multi-value input grammar (bulleted lists,
+  - Bundled third-party license attribution is restored inline in the built
+    `dist` output.
+  - Test suite relocated to `__test__/unit/**` and partially converted to
+    `@effect/vitest`; the documented multi-value input grammar (bulleted lists,
     JSON arrays, comma-separated values) is unchanged and still enforced by tests.
 
 ### Dependencies
@@ -1913,7 +1985,8 @@ Adopt `@savvy-web/silk-effects` for publishability detection, replacing the acti
 
 - [`66ebacd`](https://github.com/savvy-web/silk-update-action/commit/66ebacd92c126eb454b45f26a7d5dada28955933) ### Match dependencies across all writable sections
 
-The `dependencies` input now matches against `dependencies`,&#10;`devDependencies`, and `optionalDependencies` of each workspace
+The `dependencies` input now matches against `dependencies`,
+`devDependencies`, and `optionalDependencies` of each workspace
 package's `package.json`. Previously, only `devDependencies` were
 scanned, so deps declared in `dependencies` (e.g. a runtime dep of a
 publishable package) or `optionalDependencies` were silently skipped
@@ -1929,15 +2002,21 @@ section.
 
 ### Refactoring
 
-- [`66ebacd`](https://github.com/savvy-web/silk-update-action/commit/66ebacd92c126eb454b45f26a7d5dada28955933) Removed the local `Workspaces` service wrapper now that&#10;`workspaces-effect@0.5.1` exposes `WorkspaceDiscovery.listPackages(cwd)`&#10;and `WorkspaceDiscovery.importerMap(cwd)` upstream. Domain services
-  yield `WorkspaceDiscovery` directly; `makeAppLayer` wires&#10;`WorkspaceDiscoveryLive` and `WorkspaceRootLive` with `NodeContext.layer`.
+- [`66ebacd`](https://github.com/savvy-web/silk-update-action/commit/66ebacd92c126eb454b45f26a7d5dada28955933) Removed the local `Workspaces` service wrapper now that
+  `workspaces-effect@0.5.1` exposes `WorkspaceDiscovery.listPackages(cwd)`
+  and `WorkspaceDiscovery.importerMap(cwd)` upstream. Domain services
+  yield `WorkspaceDiscovery` directly; `makeAppLayer` wires
+  `WorkspaceDiscoveryLive` and `WorkspaceRootLive` with `NodeContext.layer`.
   No user-facing API changes.
 
 ### Accurate dependency type reporting
 
 `DependencyUpdateResult.type` now reflects the actual section a dep
 was found in (`dependency` / `devDependency` / `optionalDependency`)
-instead of always reporting `devDependency`. `Changesets.create`&#10;routes these by `update.type`: `dependency` and `optionalDependency`&#10;trigger changeset emission for the affected workspace package, and&#10;`devDependency` remains informational only. Catalog-resolved peer
+instead of always reporting `devDependency`. `Changesets.create`
+routes these by `update.type`: `dependency` and `optionalDependency`
+trigger changeset emission for the affected workspace package, and
+`devDependency` remains informational only. Catalog-resolved peer
 changes and peer-sync rewrites continue to trigger as before.
 
 ## 0.12.0
@@ -2019,7 +2098,8 @@ The `--frozen-lockfile=false` flag is required because pnpm auto-enables `--froz
 
 ### Features
 
-- [`d7c18a6`](https://github.com/savvy-web/silk-update-action/commit/d7c18a6b5f741b526d7048b37815d5543024816d) Migrate to @savvy-web/github-action-effects v0.11 API, replacing legacy&#10;`@actions/*` imports and `Action.parseInputs()` with the modern library API.
+- [`d7c18a6`](https://github.com/savvy-web/silk-update-action/commit/d7c18a6b5f741b526d7048b37815d5543024816d) Migrate to @savvy-web/github-action-effects v0.11 API, replacing legacy
+  `@actions/*` imports and `Action.parseInputs()` with the modern library API.
 
 * Use Effect's `Config.*` API for typed input parsing
 * Use `ActionEnvironment` for GitHub context (SHA, repository)
@@ -2123,12 +2203,15 @@ The fix compares both `specifier` and `version` fields of `ResolvedCatalogEntry`
 - 826309a: Initial release of the Silk Update Action.
 
   A GitHub Action that automates updates to pnpm config dependencies and regular
-  dependencies, filling the gap left by Dependabot's lack of support for pnpm's&#10;`configDependencies` feature in `pnpm-workspace.yaml`.
+  dependencies, filling the gap left by Dependabot's lack of support for pnpm's
+  `configDependencies` feature in `pnpm-workspace.yaml`.
   ### Features
   - **Config dependency updates**: Updates config dependencies via `pnpm add --config`,
     tracking version changes with before/after comparison
-  - **Regular dependency updates**: Updates regular dependencies via `pnpm up --latest`&#10;with glob pattern support (e.g., `effect`, `@effect/*`, `@savvy-web/*`)
-  - **Custom post-update commands**: Execute commands after dependency updates via the&#10;`run` input (e.g., `pnpm lint:fix`, `pnpm test`). All commands run sequentially;
+  - **Regular dependency updates**: Updates regular dependencies via `pnpm up --latest`
+    with glob pattern support (e.g., `effect`, `@effect/*`, `@savvy-web/*`)
+  - **Custom post-update commands**: Execute commands after dependency updates via the
+    `run` input (e.g., `pnpm lint:fix`, `pnpm test`). All commands run sequentially;
     if any fail, the job fails and no PR is created
   - **Changeset integration**: Automatically creates patch changesets for affected
     packages, with empty changesets for root workspace config dependency updates
