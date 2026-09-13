@@ -1,0 +1,7 @@
+# Limitation
+
+* [A pnpmfile hook that logs after its payload breaks the release-age replay](hook-logging-after-payload.md) - The subprocess replay reads its child's last non-empty stdout line as the payload; a hook that writes after that line (process.on("exit", ...) cleanup logging) is misread and the gate degrades to no gate.
+* [No main/index.js fallback when a config dependency's exports map does not match](exports-encapsulation-no-main-fallback.md) - The bun catalog-merge path's entry resolver is stricter than this action's own hand-rolled predecessor — a require-only config dependency shipping main but no matching exports condition resolves to nothing instead of falling back.
+* [The peer gate covers less than "no peer problems" implies](peer-check-coverage.md) - Optional peers never gate, a workspace package's own peer declarations are undetectable, and the ignoreMissing/allowAny rule axes fail closed rather than being honored.
+* [Yarn is detected and then rejected, not supported](yarn-is-rejected.md) - detectPackageManager fails InvalidInputError inside the check run when the workspace is yarn — nothing downstream is wired or tested for it.
+* [npm has nothing to reproduce pnpm's config dependencies with](npm-has-no-config-dependencies.md) - Under npm, config-dependencies is skipped with a warning rather than applied — npm implements no catalog protocol for the action to hook into or reproduce.

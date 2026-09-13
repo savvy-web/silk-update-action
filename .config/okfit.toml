@@ -1,0 +1,24 @@
+#:schema https://raw.githubusercontent.com/spencerbeggs/okfit/main/schemas/config/okfit-1.0.0.json
+
+[bundle]
+path = "okf"
+profile = "software-project"
+
+[actors]
+agent = "okfit/claude-code"
+humans = ["human:spencer"]
+
+[types.Incident]
+description = "A dated production failure: what shipped, what it looked like to the consumer, the root cause, and the guard that now prevents a recurrence."
+guidance = "Record the date and the consumer where it surfaced, state the root cause as a mechanism rather than a symptom, and point guard at the test or code that would now catch it. An Incident whose guard is 'be more careful' has no guard; say so plainly."
+required = ["occurred"]
+
+[types.Incident.fields.occurred]
+description = "The date the failure surfaced, ISO 8601."
+
+[types.Incident.fields.guard]
+description = "A path relative to this concept file to the test, assertion, or code that now prevents a recurrence."
+kind = "path"
+
+[tags.docs]
+description = "Concerns the documentation itself: provenance, rot, re-derivation, and what a claim would take to falsify."
