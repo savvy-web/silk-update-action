@@ -20,6 +20,16 @@
  * Change the contract by editing these types and running `pnpm generate-schema`;
  * never by editing the emitted JSON.
  *
+ * **Every struct here is published as a CLOSED object (`additionalProperties:
+ * false`), and that closedness is stated on the generator's `SchemaTarget`
+ * (`jsonSchema: { onExcessProperty: "error" }`), not inherited from the
+ * lowering's default.** Core flipped that default to open (`"ignore"`) at
+ * `effect@4.0.0-rc.113`; the drift test caught the flip as a `contract` change
+ * when this repo crossed it. The `schemaVersion` description below relies on
+ * the strictness, so if the emitted schema ever shows `additionalProperties:
+ * true`, the option has been lost — restore it on the target, do not commit the
+ * permissive output.
+ *
  * @module schema/domain
  */
 

@@ -201,6 +201,22 @@ using its `SchemaPipeline.run` (structural lint + ajv strict gate + content-comp
 It lives in `lib/scripts/` rather than `scripts/` because that path is
 cache-invalidating for turbo. Run with `pnpm generate-schema`.
 
+**Every struct lowers to a closed object, and the closedness is an explicit
+option, not a default.** `SchemaTarget.make` in the generator passes
+`jsonSchema: { onExcessProperty: "error" }` (core's
+`Schema.ToJsonSchemaOptions`, passed through `@effected/schemastore`'s target).
+`effect@4.0.0-rc.113` flipped the lowering's default to `"ignore"` — open
+objects — and this repo crossed that boundary in one hop (`rc.112` → `rc.115`),
+at which point `pnpm generate-schema` rewrote all seven structs to
+`additionalProperties: true` and the drift test reported `contract`. That was
+the guard doing its job: the `schemaVersion` description says adding a field is
+breaking *because* the structs are closed, so committing the permissive output
+would have silently loosened the contract the document describes about itself.
+The option lives on the shared `targets` constant, so the generator and the
+drift test agree by construction. *Falsified if* the emitted file ever carries
+`additionalProperties: true` — the fix is the option on the target, never the
+JSON.
+
 **Every shared schema must carry an explicit `identifier` annotation.** From
 `effect@4.0.0-beta.107` the lowering **hoists a sub-schema used in more than one
 place into `$defs`** and `$ref`s it, where it previously inlined the same enum at
