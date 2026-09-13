@@ -1,8 +1,8 @@
 {
 	"enableAllProjectMcpServers": true,
 	"enabledPlugins": {
-		"design-docs@spencerbeggs": true,
 		"effected@spencerbeggs": true,
+		"okfit@spencerbeggs": true,
 		"silk@savvy-web-systems": true,
 		"vitest-agent@spencerbeggs": true
 	},

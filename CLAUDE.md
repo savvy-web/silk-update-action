@@ -203,6 +203,13 @@ and do not need the pointer.
   devDependency, previously transitive-only); change it by editing the domain
   types and running `pnpm generate-schema`. The four scalar outputs are
   unchanged.
+  - **The structs are closed (`additionalProperties: false`) because the
+    generator's `SchemaTarget` says `jsonSchema: { onExcessProperty: "error" }`,
+    not because the lowering defaults to it** — it stopped defaulting to it at
+    `effect@4.0.0-rc.113`. If `pnpm generate-schema` ever flips every struct to
+    `additionalProperties: true` (the drift test reports `contract`), the option
+    has been lost from `lib/scripts/generate-schema.ts`; restore it there and do
+    not commit the permissive output.
   - **Every shared schema needs an explicit `identifier` annotation.** From
     beta.107 the lowering hoists a sub-schema used in more than one place into
     `$defs` and invents a *positional* name when there is none — so a second

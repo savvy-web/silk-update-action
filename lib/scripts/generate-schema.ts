@@ -56,12 +56,23 @@ export const RUN_RESULT_SCHEMA_URL =
  *
  * `name` is only required for versioned catalog naming, which this unversioned
  * document does not use.
+ *
+ * `jsonSchema.onExcessProperty: "error"` is load-bearing, not a preference.
+ * Every struct in this document is published as a **closed** object
+ * (`additionalProperties: false`); `RunResultDocument.schemaVersion`'s own
+ * description relies on that strictness — it is what makes adding a field a
+ * breaking change here. Core flipped the lowering's default to `"ignore"`
+ * (open objects) on the rc line, so the contract has to be stated on the
+ * target rather than inherited from whatever the installed `effect` defaults
+ * to. Set here, on the shared target, so the drift test and the generator
+ * agree by construction.
  */
 export const targets: ReadonlyArray<SchemaTarget> = [
 	SchemaTarget.make({
 		schema: RunResultDocument,
 		$id: RUN_RESULT_SCHEMA_URL,
 		path: resolve(REPO_ROOT, "docs/schema/run-result.schema.json"),
+		jsonSchema: { onExcessProperty: "error" },
 	}),
 ];
 
