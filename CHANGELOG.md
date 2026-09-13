@@ -1,5 +1,15 @@
 # silk-update-action
 
+## 4.11.20
+
+### Maintenance
+
+- Udates core kit.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 4.11.19
 
 ### Dependencies
