@@ -30,6 +30,7 @@ skip it entirely for a simple, self-contained bug fix or test-only change.
 | Overall architecture, services, steps, data flow | [`okf/modules/silk-update-action.md`](okf/modules/silk-update-action.md) |
 | Action inputs | [`okf/interfaces/action-inputs.md`](okf/interfaces/action-inputs.md) |
 | Action outputs, the `result` document | [`okf/interfaces/action-outputs.md`](okf/interfaces/action-outputs.md) |
+| The `result` JSON Schema: label, identity, rebuild | [`okf/runbooks/rebuild-the-result-schema.md`](okf/runbooks/rebuild-the-result-schema.md), [`okf/conventions/annotate-shared-schemas.md`](okf/conventions/annotate-shared-schemas.md) |
 | Wiring or editing a service/layer | [`okf/decisions/compile-time-layer-guard.md`](okf/decisions/compile-time-layer-guard.md), [`okf/conventions/adopting-a-service-is-a-wiring-change.md`](okf/conventions/adopting-a-service-is-a-wiring-change.md), [`okf/gotchas/unprovided-service-is-not-a-type-error.md`](okf/gotchas/unprovided-service-is-not-a-type-error.md) |
 | Reading/adding an action input | [`okf/conventions/read-inputs-via-actioninput.md`](okf/conventions/read-inputs-via-actioninput.md) |
 | Tests: layout, collection, coverage | [`okf/conventions/test-layout.md`](okf/conventions/test-layout.md), [`okf/gotchas/uncollected-test-suite.md`](okf/gotchas/uncollected-test-suite.md), [`okf/gotchas/aggregate-coverage-gate.md`](okf/gotchas/aggregate-coverage-gate.md) |
@@ -55,7 +56,8 @@ pnpm run typecheck                 # tsc via Turbo
 pnpm run test / test:watch         # Vitest
 pnpm run test:coverage             # Coverage (aggregate gate — see okf/gotchas/aggregate-coverage-gate.md)
 pnpm run build / build:prod        # Bundle via github-action-builder
-pnpm run generate-schema           # Regenerate docs/schema/run-result.schema.json
+pnpm run schema:build              # Regenerate schemas/<label>/output.json via schemastore CLI
+pnpm run schema:check              # Drift guard (runs before vitest in ci:test)
 pnpm run lint:md                   # markdownlint-cli2 (docs + this file)
 
 pnpm vitest run __test__/unit/services/regular-deps.test.ts   # single file
@@ -97,6 +99,11 @@ concept for the full mechanism and evidence:
 - Tests for `src/utils/` live in `__test__/unit/utilities/`, not
   `__test__/unit/utils/` — `utils` is a reserved, silently-excluded directory
   name. See [uncollected-test-suite](okf/gotchas/uncollected-test-suite.md).
+- The schema label in `src/schema/hosted.ts` (`SCHEMA_VERSION`) is the
+  action's NEXT major, not its version; that module is the only place the
+  hosting URL is spelled, and `pnpm schema:check` is the whole drift guard —
+  there is no generator script or drift test. See
+  [rebuild-the-result-schema](okf/runbooks/rebuild-the-result-schema.md).
 - A stated test count is evidence to re-derive (`pnpm vitest run`), never to
   carry forward — coverage is an aggregate gate, so a whole module can run zero
   times while the suite stays green. See

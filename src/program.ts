@@ -22,9 +22,10 @@ import type {
 	PullRequestResult,
 	RunResultDocument,
 } from "./schema/domain.js";
+import { SCHEMA_URL } from "./schema/hosted.js";
 import type { InnerProgramInputs } from "./schema/inputs.js";
 import { readInputs } from "./schema/inputs.js";
-import { emitOutputs, encodeRunResult, initialOutputs } from "./schema/outputs.js";
+import { emitOutputs, emitRunResult, initialOutputs } from "./schema/outputs.js";
 import { LOCKFILE_NAMES, compareLockfiles } from "./services/lockfile.js";
 import type { DetectedPm } from "./services/package-manager.js";
 import { Report } from "./services/report.js";
@@ -65,7 +66,7 @@ const buildRunResult = (params: {
 	readonly peerIssues: ReadonlyArray<PeerIssue>;
 	readonly pullRequest: PullRequestResult | null;
 }): RunResultDocument => ({
-	schemaVersion: 2,
+	$schema: SCHEMA_URL,
 	hasChanges: params.hasChanges,
 	dryRun: params.dryRun,
 	packageManager: params.detected.pm,
@@ -339,27 +340,24 @@ export const innerProgram = (
 						// Publishing an empty update set here would be a false statement
 						// about a run that a consumer is reading precisely to find out
 						// what happened before it broke.
-						yield* outputs.set(
-							"result",
-							encodeRunResult(
-								buildRunResult({
-									hasChanges: false,
-									dryRun,
-									detected,
-									branch: inputs.branch,
-									targetBranch: inputs.targetBranch,
-									updates: allUpdates,
-									deltas: configDeltas,
-									peerIssues,
-									// The "after" lockfile snapshot and its comparison run
-									// below this exit, so there is genuinely nothing to
-									// report here — empty because it was never computed,
-									// not because it was discarded.
-									lockfileChanges: [],
-									changesets: [],
-									pullRequest: null,
-								}),
-							),
+						yield* emitRunResult(
+							buildRunResult({
+								hasChanges: false,
+								dryRun,
+								detected,
+								branch: inputs.branch,
+								targetBranch: inputs.targetBranch,
+								updates: allUpdates,
+								deltas: configDeltas,
+								peerIssues,
+								// The "after" lockfile snapshot and its comparison run
+								// below this exit, so there is genuinely nothing to
+								// report here — empty because it was never computed,
+								// not because it was discarded.
+								lockfileChanges: [],
+								changesets: [],
+								pullRequest: null,
+							}),
 						);
 
 						return yield* Effect.fail(new Error(`Custom commands failed: ${failedCommandNames(commandsResult)}`));
@@ -402,23 +400,20 @@ export const innerProgram = (
 						// no-changes run is the case a consumer is MOST likely to inspect
 						// programmatically, and "which package manager and root did you
 						// find nothing in?" is the first question it would ask.
-						yield* outputs.set(
-							"result",
-							encodeRunResult(
-								buildRunResult({
-									hasChanges: false,
-									dryRun,
-									detected,
-									branch: inputs.branch,
-									targetBranch: inputs.targetBranch,
-									updates: allUpdates,
-									deltas: configDeltas,
-									peerIssues,
-									lockfileChanges: changes,
-									changesets: [],
-									pullRequest: null,
-								}),
-							),
+						yield* emitRunResult(
+							buildRunResult({
+								hasChanges: false,
+								dryRun,
+								detected,
+								branch: inputs.branch,
+								targetBranch: inputs.targetBranch,
+								updates: allUpdates,
+								deltas: configDeltas,
+								peerIssues,
+								lockfileChanges: changes,
+								changesets: [],
+								pullRequest: null,
+							}),
 						);
 
 						return;
@@ -511,23 +506,20 @@ export const innerProgram = (
 						yield* outputs.set("pr-number", String(pr.number));
 						yield* outputs.set("pr-url", pr.url);
 					}
-					yield* outputs.set(
-						"result",
-						encodeRunResult(
-							buildRunResult({
-								hasChanges: true,
-								dryRun,
-								detected,
-								branch: inputs.branch,
-								targetBranch: inputs.targetBranch,
-								updates: allUpdates,
-								deltas: configDeltas,
-								peerIssues,
-								lockfileChanges: changes,
-								changesets: changesetFiles,
-								pullRequest: pr,
-							}),
-						),
+					yield* emitRunResult(
+						buildRunResult({
+							hasChanges: true,
+							dryRun,
+							detected,
+							branch: inputs.branch,
+							targetBranch: inputs.targetBranch,
+							updates: allUpdates,
+							deltas: configDeltas,
+							peerIssues,
+							lockfileChanges: changes,
+							changesets: changesetFiles,
+							pullRequest: pr,
+						}),
 					);
 
 					// Write job summary

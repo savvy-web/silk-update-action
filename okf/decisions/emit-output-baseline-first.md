@@ -8,8 +8,8 @@ tags:
   - observability
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: 3a9a9eecaf93fc95cf74b2161a418d9651606110a099c5a78717a6d81805a3be
+  at: 2026-09-15T18:43:07Z
+  body_sha256: 0531aaff5fca4d5fe6741cb557fdd70ccfeef71ea9d8d5aa6abd8ba305f5e7b4
 sources:
   - id: outputs-schema
     resource: ../../src/schema/outputs.ts
@@ -37,7 +37,7 @@ path: the entire point of a structured output is that a consumer can
 `fromJSON(...)` it without a guard, and a baseline of `""` would push that
 guard onto every reader — the same defect as an unset scalar wearing a
 different shape. `emptyRunResult` is therefore a full empty-run document
-(`schemaVersion`, every array empty, `packageManager: null`,
+(`$schema`, every array empty, `packageManager: null`,
 `pullRequest: null`) rather than an empty string.[^outputs-schema]
 
 ## Decision

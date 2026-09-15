@@ -8,15 +8,13 @@ tags:
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: f237b98e4a3f0bba37d21bbaff1c47b5db75d650d8b6b6da7171cc4cd588a2eb
+  at: 2026-09-15T18:43:07Z
+  body_sha256: 72707fed3996d6cda4f495df6656dd243f7f9ca20760e12a384afbd8b4b4e8e9
 sources:
   - id: domain-schema
     resource: ../../src/schema/domain.ts
-  - id: generate-schema
-    resource: ../../lib/scripts/generate-schema.ts
-  - id: generate-schema-test
-    resource: ../../__test__/unit/generate-schema.test.ts
+  - id: schemastore-config
+    resource: ../../lib/scripts/schemastore.config.ts
 ---
 
 # Annotate every schema reused in more than one place with an explicit identifier
@@ -31,7 +29,7 @@ wrong.
 
 ## Why
 
-The generated `docs/schema/run-result.schema.json` is published at a public
+The generated `schemas/5.0/output.json` is published at a public
 `$id` and read by consumers outside this repository. Effect's JSON Schema
 lowering hoists a schema used in more than one place into `$defs` and, when
 that schema has no `identifier`, invents a *positional* name (`Union_`,
@@ -50,42 +48,33 @@ site — never an artifact to commit as-is.
 
 Separately, and worth stating alongside this because the two are easy to
 conflate: every struct in the generated schema is published **closed**
-(`additionalProperties: false`). That closedness comes from an explicit
-option on the generator's `SchemaTarget` (`jsonSchema: { onExcessProperty:
-"error" }`), not from a default the lowering happens to choose — the
-lowering's own default flipped to open (`"ignore"`) partway through this
-project's Effect version history, and this repository crossed that boundary
-in one dependency bump. If `pnpm generate-schema` ever rewrites every struct
-to `additionalProperties: true`, the option was lost from
-`lib/scripts/generate-schema.ts` and must be restored there; the fix is never
-to commit the permissive output.[^generate-schema]
+(`additionalProperties: false`). That is `@effected/schemastore`'s default
+lowering (since 0.12), stricter than core's own open default — the config
+in `lib/scripts/schemastore.config.ts` pins nothing. If `pnpm schema:build`
+ever rewrites every struct to `additionalProperties: true`, the library's
+default has moved; pin `jsonSchema: { onExcessProperty: "error" }` on the
+entry rather than committing the permissive output.[^schemastore-config]
 
 ## How to check
 
-1. Run `pnpm generate-schema` and diff `docs/schema/run-result.schema.json`.
-   A `$defs` entry named `Union_`, `Union_1`, `Struct_`, or similar is a
-   missing `identifier` on the schema hoisted at that position — add
+1. Run `pnpm schema:build` and diff `schemas/5.0/output.json`. A `$defs`
+   entry named `Union_`, `Union_1`, `Struct_`, or similar is a missing
+   `identifier` on the schema hoisted at that position — add
    `.annotate({ identifier, title })` to it in `src/schema/domain.ts` and
-   regenerate.
-2. `__test__/unit/generate-schema.test.ts` imports the generator's own
-   exported `targets` (not a copy) and asserts `wouldWrite === false` — a
-   passing suite means the committed schema already matches what the current
-   source would generate.[^generate-schema-test] A drift here is reported as
-   either a `contract` change (a consumer-visible break, including a renamed
-   `$defs` key) or an `annotations` change (documentation only); the
-   generator's own diagnostic tells you which.
+   rebuild.
+2. `pnpm schema:check` (run before vitest by `ci:test`) reports drift
+   between the committed document and what the current source would
+   generate, classified as `contract` (a consumer-visible break, including
+   a renamed `$defs` key) or `annotations` (documentation only).
 3. If `additionalProperties: true` appears anywhere in the generated file,
-   check `jsonSchema: { onExcessProperty: "error" }` is still present on the
-   `SchemaTarget` in `lib/scripts/generate-schema.ts` before assuming the
-   schema itself changed.
+   the library's default lowering has changed — see above — before assuming
+   the schema itself changed.
 
 See [the result output interface](../interfaces/action-outputs.md) for the
 contract this schema publishes, and
-[regenerate the result schema](../runbooks/regenerate-the-result-schema.md)
+[rebuild the result schema](../runbooks/rebuild-the-result-schema.md)
 for the full regeneration procedure.
 
 [^domain-schema]: `src/schema/domain.ts:10-84` (the `identifier`-annotation
   rule and the `DependencyType` example)
-[^generate-schema]: `lib/scripts/generate-schema.ts` (`SchemaTarget` /
-  `onExcessProperty`)
-[^generate-schema-test]: `__test__/unit/generate-schema.test.ts`
+[^schemastore-config]: `lib/scripts/schemastore.config.ts`

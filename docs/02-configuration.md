@@ -340,7 +340,7 @@ Whether any dependency changes were detected (`"true"` or `"false"`).
 
 ### `result`
 
-The complete run as a single JSON document. Its shape is published as a JSON Schema at [`docs/schema/run-result.schema.json`](./schema/run-result.schema.json), generated from the action's own types, which is the authoritative field list.
+The complete run as a single JSON document. Its shape is published as a JSON Schema at [`schemas/5.0/output.json`](../schemas/5.0/output.json), generated from the action's own types, which is the authoritative field list. Every document names that schema in `$schema`; the version label in the URL is the document format version, and it moves only on a breaking change to this shape.
 
 The property to design around: `result` is **always valid JSON**. A run that did nothing, or that failed before it detected anything, publishes an empty-run document rather than an empty string, so a consuming step can call `fromJSON()` unconditionally instead of guarding for the empty case. Every array is present and empty rather than omitted, so **iterating** one is safe without a presence check — `updates` is never `null` and never absent.
 
@@ -348,7 +348,7 @@ Indexing is a different claim, and it does not follow. A present-but-empty array
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schemaVersion` | `1` | Document format version, incremented only on a breaking change to this shape |
+| `$schema` | string | URL of the JSON Schema this document conforms to; the label in the path is the format version |
 | `hasChanges` | boolean | Whether the run produced any committable change |
 | `dryRun` | boolean | Whether the run was a rehearsal that skipped commit, push and PR |
 | `packageManager` | `"pnpm"` \| `"bun"` \| `"npm"` \| `null` | The package manager detected for this run; `null` when the run ended before detection |
@@ -393,7 +393,7 @@ this:
 
 ```json
 {
-  "schemaVersion": 1,
+  "$schema": "https://raw.githubusercontent.com/savvy-web/silk-update-action/main/schemas/5.0/output.json",
   "hasChanges": false,
   "dryRun": false,
   "packageManager": null,

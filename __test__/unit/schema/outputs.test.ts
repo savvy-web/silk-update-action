@@ -3,6 +3,7 @@ import { ActionOutputs } from "@effected/github-actions";
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { RunResultDocument } from "../../../src/schema/domain.js";
+import { SCHEMA_URL } from "../../../src/schema/hosted.js";
 import {
 	OUTPUT_NAMES,
 	emitOutputs,
@@ -64,7 +65,7 @@ describe("initialOutputs", () => {
 		// action promises and its own schema rejects.
 		const decoded = Schema.decodeUnknownSync(RunResultDocument)(JSON.parse(initialOutputs.result));
 		expect(decoded.hasChanges).toBe(false);
-		expect(decoded.schemaVersion).toBe(2);
+		expect(decoded.$schema).toBe(SCHEMA_URL);
 		expect(decoded.pullRequest).toBeNull();
 		// Null, not a placeholder: a run that ended before detection has no package
 		// manager, and a value that decodes and is false is worse than an absent one.
