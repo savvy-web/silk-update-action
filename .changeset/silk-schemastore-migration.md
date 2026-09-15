@@ -1,10 +1,10 @@
 ---
-"silk-update-action": major
+"silk-update-action": minor
 ---
 
-## Breaking Changes
+## Features
 
-### `result` output document drops `schemaVersion` for `$schema`
+### `result` output document names its schema via `$schema`
 
 The `result` output's JSON document no longer carries an in-band
 `schemaVersion` field. Every document now names its own hosted JSON Schema
@@ -19,11 +19,10 @@ directly via `$schema`:
 }
 ```
 
-Because every field in this document is published as a closed schema
-(`additionalProperties: false`), any addition to the shape is a breaking
-change to consumers validating against a pinned schema — that is why the
-version now lives in the schema's own label (`5.0`) and URL rather than in a
-field a consumer has to know to check.
+The version now lives in the schema's own label (`5.0`, the action's next
+major) and URL rather than in a field a consumer has to know to check. The
+label is not yet submitted anywhere and iterates in place until that major
+ships; the document at it is regenerated, not frozen.
 
 **Migration:** replace any code that reads or asserts on `result.schemaVersion`
 with a check against `result.$schema`, or drop the check entirely and instead
@@ -37,7 +36,7 @@ reference to the old path — including local validation tooling — to the new
 location, or better, read the URL directly from a document's own `$schema`
 field.
 
-## Features
+### `result` is logged before it is set
 
 - The `result` document is now printed pretty inside a collapsed "Structured result output" log group in the workflow log immediately before it is set as an output, so the full payload is visible without a downstream step reading `steps.<id>.outputs.result`.
 
