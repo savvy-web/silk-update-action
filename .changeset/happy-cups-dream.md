@@ -1,0 +1,9 @@
+---
+"silk-update-action": patch
+---
+
+## Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @savvy-web/silk-effects | dependency | updated | ^8.0.2 | ^8.0.4 |
