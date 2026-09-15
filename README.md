@@ -92,7 +92,7 @@ Values are validated as they are read. An input whose value cannot be parsed —
 | `pr-url` | Pull request URL (if created or updated) |
 | `updates-count` | Number of dependencies updated |
 | `has-changes` | Whether any dependencies were updated |
-| `result` | The whole run as a JSON document ([schema](./docs/schema/run-result.schema.json)) |
+| `result` | The whole run as a JSON document ([schema](./schemas/5.0/output.json)) |
 
 Every output is set on every exit path. `result` is always valid JSON — a run that did nothing publishes an empty-run document rather than an empty string, so a consuming step can call `fromJSON()` without guarding. See [Configuration](./docs/02-configuration.md#result).
 

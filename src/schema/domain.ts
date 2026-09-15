@@ -14,26 +14,23 @@
  * `$defs` key matching `Union_`/`Struct_` is a missing annotation here, not an
  * artifact to commit.
  *
- * The JSON Schema is generated from {@link RunResultDocument} by
- * `lib/scripts/generate-schema.ts` through `@effected/schemastore`'s
- * `SchemaPipeline` — lint, ajv strict-mode gate, write-if-content-changed.
- * Change the contract by editing these types and running `pnpm generate-schema`;
- * never by editing the emitted JSON.
+ * The JSON Schema is generated from {@link RunResultDocument} by the
+ * `schemastore` CLI (`lib/scripts/schemastore.config.ts`) into
+ * `schemas/<label>/output.json`; `pnpm schema:check` fails CI when the
+ * committed document is stale. Change the contract by editing these types and
+ * running `pnpm schema:build`; never by editing the emitted JSON.
  *
  * **Every struct here is published as a CLOSED object (`additionalProperties:
- * false`), and that closedness is stated on the generator's `SchemaTarget`
- * (`jsonSchema: { onExcessProperty: "error" }`), not inherited from the
- * lowering's default.** Core flipped that default to open (`"ignore"`) at
- * `effect@4.0.0-rc.113`; the drift test caught the flip as a `contract` change
- * when this repo crossed it. The `schemaVersion` description below relies on
- * the strictness, so if the emitted schema ever shows `additionalProperties:
- * true`, the option has been lost — restore it on the target, do not commit the
- * permissive output.
+ * false`)** — `@effected/schemastore`'s default lowering, which is stricter
+ * than core's. Adding a field is therefore a breaking change to the document a
+ * consumer validates against, which is why the schema label in
+ * `./hosted.ts` is the action's NEXT major.
  *
  * @module schema/domain
  */
 
 import { Schema } from "effect";
+import { SCHEMA_URL } from "./hosted.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Primitive Schemas
@@ -283,13 +280,13 @@ export type LockfileChange = typeof LockfileChange.Type;
  * rather than omitted, so a consumer can index without guarding.
  */
 export const RunResultDocument = Schema.Struct({
-	schemaVersion: Schema.Literal(2).annotate({
+	$schema: Schema.Literal(SCHEMA_URL).annotate({
+		title: "JSON Schema URL",
 		description:
-			"Document format version. Incremented only on a breaking change to this shape. " +
-			"Bumped 1 -> 2 when `peerIssues` was added: this struct lowers to " +
-			"`additionalProperties: false`, so a consumer validating a new document against " +
-			"a pinned v1 schema rejects it. Adding a field is therefore breaking HERE in a way " +
-			"it would not be for a permissive schema — the strictness is what makes it so.",
+			"URL of the hosted JSON Schema this document conforms to. The version label in the path is the " +
+			"document format version: this struct lowers to `additionalProperties: false`, so a consumer " +
+			"validating a new document against a pinned older schema rejects it, and adding a field is a " +
+			"breaking change here in a way it would not be for a permissive schema.",
 	}),
 	hasChanges: Schema.Boolean.annotate({
 		description: "Whether the run produced any committable change.",

@@ -3,15 +3,15 @@ type: Interface
 title: Action outputs
 description: The five action outputs, the every-exit-path guarantee, and the closed, generated JSON Schema for `result`.
 kind: config
-resource: ../../docs/schema/run-result.schema.json
+resource: ../../schemas/5.0/output.json
 status: draft
 tags:
   - ci
   - observability
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: c6204c4b072dadc67418c3b2b2a2133edbf0f4af5db7e1de0991672278a8dfb6
+  at: 2026-09-15T18:43:07Z
+  body_sha256: 9edd06388ecfe358287df8a2d012469786ea19342cc130a3dd223212b116de90
 sources:
   - id: action-yml
     resource: ../../action.yml
@@ -19,8 +19,10 @@ sources:
     resource: ../../src/schema/outputs.ts
   - id: domain-ts
     resource: ../../src/schema/domain.ts
-  - id: generate-schema
-    resource: ../../lib/scripts/generate-schema.ts
+  - id: schemastore-config
+    resource: ../../lib/scripts/schemastore.config.ts
+  - id: hosted
+    resource: ../../src/schema/hosted.ts
 ---
 
 # Action outputs
@@ -72,7 +74,7 @@ value that decodes, serializes, and is falsy would be worse than an absent
 one, since a consumer branching on it could not tell it was branching on a
 lie.[^domain-ts]
 
-`result`'s shape is `RunResultDocument` (`schemaVersion: 2`), composed
+`result`'s shape is `RunResultDocument`, composed
 entirely from the schemas the run already produces — `DependencyUpdateResult`,
 `CatalogDelta`, `PeerIssue`, `LockfileChange`, `ChangesetFile`,
 `PullRequestResult` — rather than restated in a parallel reporting shape, so
@@ -82,18 +84,24 @@ happened.[^domain-ts] See
 
 ## The generated JSON Schema is closed, on purpose
 
-`docs/schema/run-result.schema.json` is generated from `RunResultDocument`
-by `lib/scripts/generate-schema.ts` via `@effected/schemastore`'s
-`SchemaPipeline` (structural lint, an ajv strict-mode gate, and a
-write-only-if-content-differs pass).[^generate-schema] Every struct lowers to
-a **closed** object (`additionalProperties: false`). That closedness is an
-explicit option on the generator's `SchemaTarget`
-(`jsonSchema: { onExcessProperty: "error" }`), not a default the lowering
-supplies on its own — core flipped its own default to permissive
-(`"ignore"`) at `effect@4.0.0-rc.113`, and losing the option would silently
-loosen the contract `schemaVersion`'s own description states about
-itself.[^domain-ts] Regenerate with `pnpm generate-schema`; see
-[Regenerate the result schema](../runbooks/regenerate-the-result-schema.md).
+`schemas/5.0/output.json` is generated from `RunResultDocument` by the
+`schemastore` CLI (`@effected/schemastore-cli`) reading
+`lib/scripts/schemastore.config.ts` (structural lint, an ajv strict-mode
+gate, and a write-only-if-content-differs pass).[^schemastore-config] Every
+struct lowers to a **closed** object (`additionalProperties: false`) — the
+library's default lowering, which is stricter than core's. Adding a field is
+therefore a breaking change for a consumer validating against a pinned
+document, which is why the label is the action's **next major**.
+
+The document names its own schema: `$schema` is a `Schema.Literal` of
+`SCHEMA_URL`, and `SCHEMA_URL` is `OutputSchemaIdentity.$id` — the
+`HostedSchema` built once in `src/schema/hosted.ts` and handed to the config
+as `hosted`. That is the only place the repository, path and label
+(`SCHEMA_VERSION = "5.0"`) are spelled; the `$id` the CLI writes and the URL
+every payload carries are one derivation.[^hosted] There is no in-band
+`schemaVersion` field: the version is in the URL. Rebuild with
+`pnpm schema:build`; see
+[Rebuild the result schema](../runbooks/rebuild-the-result-schema.md).
 
 **Every schema shared by more than one struct field needs an explicit
 `identifier` annotation.** The lowering hoists a repeated sub-schema into
@@ -103,12 +111,20 @@ itself.[^domain-ts] Regenerate with `pnpm generate-schema`; see
 union silently renumbers the first. `DependencyType` and `PeerIssue` both
 carry explicit `identifier` annotations for exactly this reason.[^domain-ts]
 
-A drift test imports the generator's own `targets` constant and runs
-`SchemaPipeline.check` — the identical walk without writing — so a test that
-rebuilt its own target list independently could pass while the generator
-wrote something different; importing the same constant is the point.
+`pnpm schema:check` is the whole drift guard: `ci:test` runs it before
+vitest, and turbo's `build:prod` depends on `schema:build`, so a stale
+document can neither pass CI nor ship inside `dist/`. There is no separate
+drift test — the identity is handed to the config as a value, so a
+"derived `$id` equals the constant" assertion has nothing to check.
+
+Before `result` is set, `emitRunResult` (`src/schema/outputs.ts`) encodes
+the document through `RunResultDocument` and prints it pretty inside a
+collapsed `Structured result output` log group, then sets it through
+`setJson` with the same codec — so what the log shows is what the runner
+stores.[^outputs-ts]
 
 [^action-yml]: `../../action.yml`
 [^outputs-ts]: `../../src/schema/outputs.ts`
 [^domain-ts]: `../../src/schema/domain.ts`
-[^generate-schema]: `../../lib/scripts/generate-schema.ts`
+[^schemastore-config]: `../../lib/scripts/schemastore.config.ts`
+[^hosted]: `../../src/schema/hosted.ts`

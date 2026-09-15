@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://raw.githubusercontent.com/savvy-web/silk-update-action/main/docs/schema/run-result.schema.json",
+	"$id": "https://raw.githubusercontent.com/savvy-web/silk-update-action/main/schemas/5.0/output.json",
 	"$ref": "#/$defs/RunResultDocument",
 	"$defs": {
 		"DependencyType": {
@@ -222,10 +222,11 @@
 		"RunResultDocument": {
 			"type": "object",
 			"properties": {
-				"schemaVersion": {
-					"type": "number",
-					"enum": [2],
-					"description": "Document format version. Incremented only on a breaking change to this shape. Bumped 1 -> 2 when `peerIssues` was added: this struct lowers to `additionalProperties: false`, so a consumer validating a new document against a pinned v1 schema rejects it. Adding a field is therefore breaking HERE in a way it would not be for a permissive schema — the strictness is what makes it so."
+				"$schema": {
+					"type": "string",
+					"enum": ["https://raw.githubusercontent.com/savvy-web/silk-update-action/main/schemas/5.0/output.json"],
+					"title": "JSON Schema URL",
+					"description": "URL of the hosted JSON Schema this document conforms to. The version label in the path is the document format version: this struct lowers to `additionalProperties: false`, so a consumer validating a new document against a pinned older schema rejects it, and adding a field is a breaking change here in a way it would not be for a permissive schema."
 				},
 				"hasChanges": {
 					"type": "boolean",
@@ -307,7 +308,7 @@
 				}
 			},
 			"required": [
-				"schemaVersion",
+				"$schema",
 				"hasChanges",
 				"dryRun",
 				"packageManager",

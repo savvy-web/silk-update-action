@@ -10,9 +10,10 @@
  */
 
 import type { ActionOutputError } from "@effected/github-actions";
-import { ActionOutputs } from "@effected/github-actions";
-import { Effect } from "effect";
-import type { RunResultDocument } from "./domain.js";
+import { ActionLogger, ActionOutputs } from "@effected/github-actions";
+import { Effect, Schema } from "effect";
+import { RunResultDocument } from "./domain.js";
+import { SCHEMA_URL } from "./hosted.js";
 
 /**
  * Every output declared in `action.yml`, in manifest order.
@@ -45,7 +46,7 @@ export type OutputsModel = Readonly<Record<OutputName, string>>;
  * than a new concept.
  */
 export const emptyRunResult: RunResultDocument = {
-	schemaVersion: 2,
+	$schema: SCHEMA_URL,
 	hasChanges: false,
 	dryRun: false,
 	packageManager: null,
@@ -82,6 +83,32 @@ export const initialOutputs: OutputsModel = {
 	"has-changes": "false",
 	result: encodeRunResult(emptyRunResult),
 };
+
+/**
+ * Publish the structured `result` document: log it, then set it.
+ *
+ * @remarks
+ * The collapsed log group is the one place the full payload is visible without
+ * a downstream step reading `steps.<id>.outputs.result`. The document is
+ * encoded through {@link RunResultDocument} for both the log and the output, so
+ * what the log shows is what the runner stores. An encode failure skips the
+ * log and is reported once, by `setJson`'s error.
+ */
+export const emitRunResult = (
+	document: RunResultDocument,
+): Effect.Effect<void, ActionOutputError, ActionOutputs | ActionLogger> =>
+	Effect.gen(function* () {
+		const outputs = yield* ActionOutputs;
+		const logger = yield* ActionLogger;
+		yield* logger.group(
+			"Structured result output",
+			Schema.encodeEffect(RunResultDocument)(document).pipe(
+				Effect.flatMap((encoded) => Effect.logInfo(JSON.stringify(encoded, null, 2))),
+				Effect.ignore,
+			),
+		);
+		yield* outputs.setJson("result", document, RunResultDocument);
+	});
 
 /**
  * Publish a full set of outputs.

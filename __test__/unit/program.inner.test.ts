@@ -35,7 +35,7 @@ import type { ScriptResult, SpawnRecord } from "@effected/commands";
 import type { StatusEntry } from "@effected/git";
 import { Git } from "@effected/git";
 import { CheckRun } from "@effected/github";
-import { ActionOutputs } from "@effected/github-actions";
+import { ActionLogger, ActionOutputs } from "@effected/github-actions";
 import { PackageJsonFile } from "@effected/package-json";
 import type { WorkspacePackage } from "@effected/workspaces";
 import {
@@ -45,7 +45,7 @@ import {
 	WorkspaceDiscovery,
 	WorkspaceRoot,
 } from "@effected/workspaces";
-import { Cause, Effect, Exit, Layer, Logger, Option, References } from "effect";
+import { Cause, Effect, Exit, Layer, Logger, Option, References, Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InvalidInputError } from "../../src/errors/errors.js";
 import type { makeAppLayer } from "../../src/layers/app.js";
@@ -298,8 +298,24 @@ const makeHarness = (options: HarnessOptions = {}) => {
 					outputs.set(name, value);
 					return Effect.void;
 				}),
+			// The double has already encoded `value` through `schema` (and failed
+			// typed on a drift) before this runs; store the JSON text the runner
+			// would have read, so `result` assertions parse what a workflow sees.
+			setJson: (name, value, schema) =>
+				Schema.encodeEffect(schema)(value).pipe(
+					// Cannot fail here: the double already encoded `value` above and
+					// would have failed typed before reaching this override.
+					Effect.orDie,
+					Effect.flatMap((encoded) =>
+						Effect.sync(() => {
+							outputs.set(name, JSON.stringify(encoded));
+						}),
+					),
+				),
 			summary: () => Effect.void,
 		}),
+		// `emitRunResult` logs the document in a group before setting it.
+		ActionLogger.layerTest(),
 		// withCheckRun concludes on EVERY exit path now, defaulting to
 		// success/failure, and a verdict recorded via `conclude` wins.
 		CheckRun.layerTest({
