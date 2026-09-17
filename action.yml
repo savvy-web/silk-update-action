@@ -132,8 +132,17 @@ inputs:
     description: |
       Maximum time in seconds for the main action to run before cancelling.
       Prevents the action from hanging indefinitely on slow installs or commands.
+      Must cover the retry-unmatched waits (3 minutes for one retry, 9 for two).
     required: false
-    default: "180"
+    default: "480"
+  retry-unmatched:
+    description: |
+      How many times to retry the install when a requested version is not on the
+      registry yet (npm's publish-time malware scan can hold a fresh publish back
+      for minutes). Waits 3, 6, 10, 15, then +10 minutes between attempts; the
+      total wait must fit inside `timeout`. Set to 0 to disable.
+    required: false
+    default: "1"
   auto-merge:
     description: |
       Enable auto-merge on the dependency update PR.

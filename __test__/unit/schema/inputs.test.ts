@@ -101,10 +101,26 @@ describe("readInputs — runner-shaped environment", () => {
 	});
 
 	it("reads changesets and timeout, which are typed rather than string inputs", async () => {
-		const result = await readOrThrow({ dependencies: "effect", changesets: "false", timeout: "42" });
+		// A 42-second timeout cannot hold the default retry's 3-minute wait, so
+		// the retry is switched off alongside — the pairing a real workflow with
+		// a short timeout has to make.
+		const result = await readOrThrow({
+			dependencies: "effect",
+			changesets: "false",
+			timeout: "42",
+			"retry-unmatched": "0",
+		});
 
 		expect(result.inputs.changesets).toBe(false);
 		expect(result.timeout).toBe(42);
+	});
+
+	it("reads retry-unmatched as an integer", async () => {
+		// The default is 1, so the value read must differ from it — and 0 is the
+		// value a workflow uses to opt out, which must not read as absent.
+		const result = await readOrThrow({ dependencies: "effect", "retry-unmatched": "0" });
+
+		expect(result.inputs["retry-unmatched"]).toBe(0);
 	});
 
 	it("selects the live runtime resolver when runtime-data says so", async () => {
@@ -122,7 +138,8 @@ describe("readInputs — defaults and absence", () => {
 		expect(result.inputs.sourceBranch).toBe("main");
 		expect(result.inputs["upgrade-package-manager"]).toBe("false");
 		expect(result.dryRun).toBe(false);
-		expect(result.timeout).toBe(180);
+		expect(result.timeout).toBe(480);
+		expect(result.inputs["retry-unmatched"]).toBe(1);
 	});
 
 	it("treats an empty target-branch as absent and follows source-branch", async () => {
@@ -200,6 +217,30 @@ describe("readInputs — validation", () => {
 		const exit = await read({ dependencies: "effect", "upgrade-runtime-node": "not-a-range" });
 
 		expect(Exit.isFailure(exit)).toBe(true);
+	});
+
+	it("rejects a retry-unmatched budget that does not fit inside timeout", async () => {
+		// Two retries wait 3 + 6 = 9 minutes; the default timeout is 8. Rejected
+		// rather than clamped, and named against retry-unmatched so the reader
+		// lands on the input that asked for more than the run can hold.
+		const exit = await read({ dependencies: "effect", "retry-unmatched": "2" });
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		expect(failedField(exit)).toBe("retry-unmatched");
+	});
+
+	it("accepts the same retry-unmatched budget once timeout is raised to cover it", async () => {
+		// The control: the rejection above is about the pair, not the value 2.
+		const exit = await read({ dependencies: "effect", "retry-unmatched": "2", timeout: "600" });
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+	});
+
+	it("rejects a negative retry-unmatched", async () => {
+		const exit = await read({ dependencies: "effect", "retry-unmatched": "-1" });
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		expect(failedField(exit)).toBe("retry-unmatched");
 	});
 });
 

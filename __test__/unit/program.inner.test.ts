@@ -407,6 +407,10 @@ const baseInputs = (overrides: Partial<InnerProgramInputs> = {}): InnerProgramIn
 	changesets: false,
 	"auto-merge": "",
 	run: [],
+	// Zero, not the input's default of 1: a composition test that parked in a
+	// three-minute retry delay would hang the real clock, and the retry itself
+	// is pinned in steps/install.test.ts under TestClock.
+	"retry-unmatched": 0,
 	runtime: { node: "false", deno: "false", bun: "false" },
 	runtimeData: "offline",
 	...overrides,

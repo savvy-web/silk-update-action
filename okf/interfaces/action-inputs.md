@@ -10,8 +10,8 @@ tags:
   - dx
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: fd513cf7ad0e383e06056a9fff03cced8a567781123316eb0db16d9dccc07d99
+  at: 2026-09-17T15:37:50Z
+  body_sha256: d2521c4c704b5cb56466dadf4ef6ddc8e7ca1aada51b7be26cfd0355c921d2db
 sources:
   - id: action-yml
     resource: ../../action.yml
@@ -50,7 +50,8 @@ partially-applied update.[^inputs-ts]
 | `runtime-data` | `offline` \| `live` | `offline` | **fails**, rather than warning and falling back, on any other value — silently resolving from the bundled snapshot when a workflow asked for live data is the same class of quiet wrong answer as an input that never arrived |
 | `dry-run` | boolean | `"false"` | — |
 | `changesets` | boolean | `"true"` | — |
-| `timeout` | integer (seconds) | `"180"` | bounds how long `main` may run before `Effect.timeoutOrElse` fails it |
+| `timeout` | integer (seconds) | `"480"` | bounds how long `main` may run before `Effect.timeoutOrElse` fails it; must also cover the `retry-unmatched` waits |
+| `retry-unmatched` | integer (retries) | `"1"` | retries of an install that failed because a requested version is not on the registry yet, waiting 3, 6, 10, 15, then +10 minutes between attempts; **fails** at read time when the total wait is not below `timeout` (rejected, never clamped) — see [npm-scan-holds-a-published-version](../gotchas/npm-scan-holds-a-published-version.md) |
 | `auto-merge` | `""` \| `merge` \| `squash` \| `rebase` | `""` | validated against this exact union and typed, not cast, so a typo fails here rather than reaching the GraphQL mutation as an invalid enum |
 | `check-peers` | `false` \| `warn` \| `no-auto-merge` | **derived**, not static (see below) | `fail` is deliberately not a value — it would need a second, concurrent check run |
 
