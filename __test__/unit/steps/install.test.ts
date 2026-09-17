@@ -1,7 +1,11 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, References } from "effect";
+import type { ScriptResult } from "@effected/commands";
+import { ScriptedSpawner } from "@effected/commands";
+import type { Duration } from "effect";
+import { Effect, Exit, Fiber, References } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import { runInstall } from "../../../src/steps/install.js";
 import { fromMap } from "../../utils/spawner.js";
@@ -84,5 +88,126 @@ describe("runInstall", () => {
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
+	});
+});
+
+/**
+ * A spawner whose `pnpm install` fails with `outcomes[n]` on the n-th call and
+ * answers a silent success once the script runs out — the shape of a package
+ * held by npm's publish-time scan and then released.
+ */
+const failThenSucceed = (outcomes: ReadonlyArray<ScriptResult>) => {
+	let installs = 0;
+	const spawner = ScriptedSpawner.make((command, args) => {
+		if (command === "pnpm" && args[0] === "install") {
+			const outcome = outcomes[installs] ?? {};
+			installs++;
+			return outcome;
+		}
+		return {};
+	});
+	return spawner;
+};
+
+const UNMATCHED: ScriptResult = {
+	exit: 1,
+	stderr: " ERR_PNPM_NO_MATCHING_VERSION  No matching version found for @effected/github-actions@^0.13.1",
+};
+const OUTDATED: ScriptResult = { exit: 1, stderr: " ERR_PNPM_OUTDATED_LOCKFILE  lockfile is not up to date" };
+
+/**
+ * Run `runInstall` under the virtual clock, advancing it by `advance` while the
+ * install is parked in a retry delay, and return the exit plus the install
+ * command lines that were attempted.
+ */
+const runWithRetries = (spawner: ScriptedSpawner, retries: number, advance: Duration.Input) =>
+	Effect.runPromise(
+		Effect.gen(function* () {
+			const fiber = yield* Effect.forkChild(runInstall("pnpm", "/ws", retries));
+			yield* TestClock.adjust(advance);
+			const exit = yield* Fiber.await(fiber);
+			return {
+				exit,
+				installs: spawner.spawns.filter((call) => call.args[0] === "install").length,
+			};
+		}).pipe(
+			Effect.provide(spawner.layer),
+			Effect.provide(TestClock.layer()),
+			Effect.provideService(References.MinimumLogLevel, "None"),
+		),
+	);
+
+describe("runInstall — retry-unmatched", () => {
+	it("retries after the scan-delay wait when the version is not yet on the registry", async () => {
+		const spawner = failThenSucceed([UNMATCHED]);
+
+		const { exit, installs } = await runWithRetries(spawner, 1, "3 minutes");
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		expect(installs).toBe(2);
+	});
+
+	it("re-runs the whole clean-and-install sequence on each attempt", async () => {
+		// pnpm clean removed the lockfile before the failed install; a retry that
+		// only re-ran `install` would leave the clean step's guarantees behind.
+		const spawner = failThenSucceed([UNMATCHED]);
+
+		await runWithRetries(spawner, 1, "3 minutes");
+
+		expect(spawner.spawns.map((call) => [call.command, ...call.args].join(" "))).toEqual([
+			"pnpm clean --lockfile",
+			"pnpm install --frozen-lockfile=false",
+			"pnpm clean --lockfile",
+			"pnpm install --frozen-lockfile=false",
+		]);
+	});
+
+	it("does not retry before the first delay has elapsed", async () => {
+		const spawner = failThenSucceed([UNMATCHED]);
+
+		const fiber = await Effect.runPromise(
+			Effect.gen(function* () {
+				const fiber = yield* Effect.forkChild(runInstall("pnpm", "/ws", 1));
+				yield* TestClock.adjust("2 minutes");
+				const attempted = spawner.spawns.filter((call) => call.args[0] === "install").length;
+				yield* Fiber.interrupt(fiber);
+				return { attempted };
+			}).pipe(
+				Effect.provide(spawner.layer),
+				Effect.provide(TestClock.layer()),
+				Effect.provideService(References.MinimumLogLevel, "None"),
+			),
+		);
+
+		expect(fiber.attempted).toBe(1);
+	});
+
+	it("fails once the retries are exhausted, with the unmatched error", async () => {
+		const spawner = failThenSucceed([UNMATCHED, UNMATCHED, UNMATCHED]);
+
+		const { exit, installs } = await runWithRetries(spawner, 2, "9 minutes");
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		expect(installs).toBe(3);
+	});
+
+	it("does not retry an install failure that is not an unmatched version", async () => {
+		// The discriminating negative: a genuinely broken install keeps the
+		// fail-the-job posture rather than burning the retry budget.
+		const spawner = failThenSucceed([OUTDATED]);
+
+		const { exit, installs } = await runWithRetries(spawner, 2, "9 minutes");
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		expect(installs).toBe(1);
+	});
+
+	it("does not retry at all when retries are zero", async () => {
+		const spawner = failThenSucceed([UNMATCHED]);
+
+		const { exit, installs } = await runWithRetries(spawner, 0, "9 minutes");
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		expect(installs).toBe(1);
 	});
 });

@@ -6,7 +6,10 @@
  *
  * **Failure posture: fail-the-job.** `runInstall` uses `Run.text`, which fails
  * typed on a non-zero exit, so an install failure aborts the run rather than
- * committing a lockfile that does not match the manifests.
+ * committing a lockfile that does not match the manifests. The one exception is
+ * a version the registry has not started serving yet (npm's publish-time scan
+ * holds new versions back for minutes): that failure is retried on the
+ * `retry-unmatched` schedule before the posture above applies.
  *
  * @module steps/install
  */
@@ -15,11 +18,12 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { CommandFailedError, CommandOutputError } from "@effected/commands";
 import { Run } from "@effected/commands";
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChildProcess } from "effect/unstable/process";
 import { INSTALL_LABEL } from "../format.js";
 import type { SupportedPm } from "../services/package-manager.js";
+import { isUnmatchedVersion, unmatchedDelayMinutes, unmatchedSchedule } from "../utils/unmatched-retry.js";
 
 /**
  * Regenerate the lockfile and install, dispatched on the detected package manager.
@@ -49,8 +53,43 @@ import type { SupportedPm } from "../services/package-manager.js";
  * Every command — and the npm lockfile removal — is anchored at `workspaceRoot`
  * (the root the package manager was detected at), not at the process cwd: the
  * action can legitimately be invoked from a subdirectory of the workspace.
+ *
+ * `retries` is the `retry-unmatched` input: how many times a no-matching-version
+ * failure (see `utils/unmatched-retry`) is retried, waiting 3, 6, 10, 15, … minutes
+ * between attempts. The whole sequence re-runs per attempt — `pnpm clean` has
+ * already removed the lockfile, so re-running only the install would skip the
+ * clean-slate guarantee. Any other failure is not retried.
  */
 export const runInstall = (
+	pm: SupportedPm,
+	workspaceRoot: string,
+	retries = 0,
+): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
+	runInstallOnce(pm, workspaceRoot).pipe(Effect.retry(unmatchedPolicy(retries)));
+
+/**
+ * The retry policy for {@link runInstall}: continue only while the failure is
+ * an unmatched version and the budget remains, announcing each wait so the job
+ * log explains the pause. The `tap` sits after the `while` deliberately — a
+ * halted schedule never reaches it, so nothing is announced on the attempt
+ * that gives up.
+ */
+const unmatchedPolicy = (retries: number): Schedule.Schedule<number, CommandFailedError | CommandOutputError> =>
+	unmatchedSchedule.pipe(
+		Schedule.while(
+			({ input, attempt }: Schedule.Metadata<number, CommandFailedError | CommandOutputError>) =>
+				attempt <= retries && input._tag === "CommandFailedError" && isUnmatchedVersion(input),
+		),
+		Schedule.tap(({ input, attempt }) =>
+			Effect.logWarning(
+				`Install failed because a requested version is not on the registry yet (npm may still be scanning it): ${input.message}. ` +
+					`Retrying in ${unmatchedDelayMinutes(attempt)} minute(s) (retry ${attempt} of ${retries})`,
+			),
+		),
+	);
+
+/** One clean-and-install pass, no retry. */
+const runInstallOnce = (
 	pm: SupportedPm,
 	workspaceRoot: string,
 ): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
@@ -88,6 +127,7 @@ export const installStep = (
 	shouldInstall: boolean,
 	pm: SupportedPm,
 	workspaceRoot: string,
+	retries: number,
 ): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.gen(function* () {
 		if (!shouldInstall) {
@@ -98,5 +138,5 @@ export const installStep = (
 		}
 
 		yield* Effect.logInfo(`Step: install — ${INSTALL_LABEL[pm]}  (config + regular updates pending)`);
-		yield* runInstall(pm, workspaceRoot);
+		yield* runInstall(pm, workspaceRoot, retries);
 	});

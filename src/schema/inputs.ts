@@ -14,6 +14,7 @@ import { Config, Effect } from "effect";
 import { InvalidInputError } from "../errors/errors.js";
 import { resolveTargetBranch } from "../utils/branch.js";
 import { matchesPattern } from "../utils/deps.js";
+import { unmatchedWaitSeconds } from "../utils/unmatched-retry.js";
 
 /**
  * Every input declared in `action.yml`, in manifest order.
@@ -40,6 +41,7 @@ export const INPUT_NAMES = [
 	"run",
 	"changesets",
 	"timeout",
+	"retry-unmatched",
 	"auto-merge",
 	"check-peers",
 ] as const;
@@ -82,6 +84,8 @@ export interface InnerProgramInputs {
 	"auto-merge": "" | "merge" | "squash" | "rebase";
 	"check-peers": CheckPeersMode;
 	run: ReadonlyArray<string>;
+	/** Retries of an install whose requested version the registry does not serve yet. */
+	"retry-unmatched": number;
 	runtime: { node: string; deno: string; bun: string };
 	/** `"offline"` | `"live"` — reported in the Run-context log line only. */
 	runtimeData: string;
@@ -159,7 +163,35 @@ export const readInputs = Effect.gen(function* () {
 		);
 	}
 	const dryRun = yield* ActionInput.boolean("dry-run").pipe(Config.withDefault(false));
-	const timeout = yield* ActionInput.integer("timeout").pipe(Config.withDefault(180));
+	const timeout = yield* ActionInput.integer("timeout").pipe(Config.withDefault(480));
+	const retryUnmatched = yield* ActionInput.integer("retry-unmatched").pipe(Config.withDefault(1));
+	if (retryUnmatched < 0) {
+		yield* Effect.fail(
+			new InvalidInputError({
+				field: "retry-unmatched",
+				reason: "Expected a non-negative number of retries",
+				value: retryUnmatched,
+			}),
+		);
+	}
+	// The retry waits count against `timeout`, which wraps the whole run. A
+	// budget that cannot fit is rejected here rather than discovered as a
+	// timeout nine minutes in — and rejected, not clamped, because silently
+	// doing fewer retries than asked is the kind of quiet default this module
+	// exists to avoid. `timeout-minutes` on the job is not observable from
+	// inside the run, so `timeout` is the only ceiling that can be checked.
+	const retryWait = unmatchedWaitSeconds(retryUnmatched);
+	if (retryWait >= timeout) {
+		yield* Effect.fail(
+			new InvalidInputError({
+				field: "retry-unmatched",
+				reason:
+					`${retryUnmatched} retries wait ${retryWait} seconds in total, which does not fit inside timeout (${timeout} seconds). ` +
+					`Raise timeout above ${retryWait} seconds (plus headroom for the installs themselves) or lower retry-unmatched.`,
+				value: retryUnmatched,
+			}),
+		);
+	}
 	const rawRuntimeNode = yield* ActionInput.string("upgrade-runtime-node").pipe(Config.withDefault("false"));
 	const rawRuntimeDeno = yield* ActionInput.string("upgrade-runtime-deno").pipe(Config.withDefault("false"));
 	const rawRuntimeBun = yield* ActionInput.string("upgrade-runtime-bun").pipe(Config.withDefault("false"));
@@ -288,6 +320,7 @@ export const readInputs = Effect.gen(function* () {
 			"auto-merge": autoMerge,
 			"check-peers": checkPeers as CheckPeersMode,
 			run,
+			"retry-unmatched": retryUnmatched,
 			runtime: { node: rawRuntimeNode, deno: rawRuntimeDeno, bun: rawRuntimeBun },
 			runtimeData,
 		} satisfies InnerProgramInputs,

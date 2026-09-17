@@ -81,7 +81,8 @@ Values are validated as they are read. An input whose value cannot be parsed —
 | `run` | No | `""` | Commands to run after updates (one per line) |
 | `changesets` | No | `true` | Create changesets when `.changeset/` exists. Requires a full-history checkout (`fetch-depth: 0`) so the base-branch diff can be computed |
 | `dry-run` | No | `false` | Detect changes without committing |
-| `timeout` | No | `180` | Maximum time in seconds before cancelling |
+| `timeout` | No | `480` | Maximum time in seconds before cancelling; must cover the `retry-unmatched` waits |
+| `retry-unmatched` | No | `1` | Retries of the install when a requested version is not on the registry yet (npm's publish-time scan); waits 3, 6, 10, 15, then +10 minutes between attempts, and the total must fit inside `timeout`. `0` disables |
 | `auto-merge` | No | `""` | Enable auto-merge (`merge`, `squash`, or `rebase`) |
 
 ## Outputs
