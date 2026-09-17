@@ -1,5 +1,10 @@
 # Log
 
+## 2026-09-17
+
+* Added A just-published npm version can be unresolvable for minutes after publish succeeds
+* Updated Action inputs
+
 ## 2026-09-15
 
 * Updated Action outputs
