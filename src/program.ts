@@ -294,7 +294,7 @@ export const innerProgram = (
 						regularUpdates.length > 0 ||
 						configUpdatesFromPackageManager.length > 0 ||
 						peerUpdates.length > 0;
-					yield* installStep(shouldInstall, detected.pm, detected.root);
+					yield* installStep(shouldInstall, detected.pm, detected.root, inputs["retry-unmatched"]);
 
 					// ── workspace formatting ────────────────────────────────────────
 					yield* formatWorkspaceStep(detected.pm, detected.root);
