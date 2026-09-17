@@ -8,7 +8,7 @@
 
 import { Git } from "@effected/git";
 import { CheckRun, GitBranch, GitCommit, PullRequest, Repo } from "@effected/github";
-import { DryRun, GitHubToken } from "@effected/github-actions";
+import { DryRun, GitHubToken, PackageManagerInstaller, ToolInstaller } from "@effected/github-actions";
 import { NpmRegistry, PackageTarball } from "@effected/npm";
 import { PackageJsonFile } from "@effected/package-json";
 import { BunResolver, DenoResolver, NodeResolver, GitHubClient as RuntimesGitHubClient } from "@effected/runtimes";
@@ -144,7 +144,14 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 		DryRun.layerFrom(dryRun),
 	);
 
+	// The tool-cache installer behind `steps/activate-package-manager`. Its
+	// `ToolInstaller` is provided INWARD: nothing else here installs tools. Both
+	// layers' own requirements — ActionEnvironment, FileSystem, Path, HttpClient,
+	// ChildProcessSpawner — are ActionServices members and stay in the channel.
+	const packageManagerInstaller = PackageManagerInstaller.layer.pipe(Layer.provide(ToolInstaller.layer));
+
 	const domainLayers = Layer.mergeAll(
+		packageManagerInstaller,
 		workspaceRoot,
 		workspaceDiscovery,
 		packageManagerDetector,

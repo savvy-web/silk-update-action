@@ -35,7 +35,13 @@ import type { ScriptResult, SpawnRecord } from "@effected/commands";
 import type { StatusEntry } from "@effected/git";
 import { Git } from "@effected/git";
 import { CheckRun } from "@effected/github";
-import { ActionLogger, ActionOutputs } from "@effected/github-actions";
+import {
+	ActionLogger,
+	ActionOutputs,
+	CachedPackageManager,
+	PackageManagerInstaller,
+	PackageManagerInstallerError,
+} from "@effected/github-actions";
 import { PackageJsonFile } from "@effected/package-json";
 import type { WorkspacePackage } from "@effected/workspaces";
 import {
@@ -168,6 +174,8 @@ interface Spies {
 	readonly changesetsCreate: ReturnType<typeof vi.fn>;
 	readonly commitChanges: ReturnType<typeof vi.fn>;
 	readonly createOrUpdatePR: ReturnType<typeof vi.fn>;
+	/** The installer behind the activation step; called only for an applied pin. */
+	readonly installPackageManager: ReturnType<typeof vi.fn>;
 	/** Every spawned command as a flat line, e.g. `pnpm install --frozen-lockfile=false`. */
 	readonly execLines: ReadonlyArray<SpawnRecord>;
 }
@@ -189,6 +197,12 @@ interface HarnessOptions {
 	readonly packageManagerUpgrade?: Effect.Success<typeof PackageManagerUpgrade>["upgrade"];
 	/** Extra scripted command results, keyed by full command line. */
 	readonly commands?: ReadonlyMap<string, ScriptResult>;
+	/**
+	 * Where the installer double reports it put a provisioned manager. The
+	 * default is a directory no real runner has, so a `PATH` that leads with it
+	 * can only have come from the activation step.
+	 */
+	readonly installedBinDir?: string;
 }
 
 const update = (dependency: string, from: string, to: string): DependencyUpdateResult => ({
@@ -207,6 +221,8 @@ const update = (dependency: string, from: string, to: string): DependencyUpdateR
  */
 const makeHarness = (options: HarnessOptions = {}) => {
 	const outputs = new Map<string, string>();
+	/** Directories handed to `ActionOutputs.addPath`, in order. */
+	const addedPaths: string[] = [];
 	/** Check runs created, and the verdict each was concluded with. */
 	const checkRunState = {
 		runs: [] as Array<{
@@ -246,6 +262,18 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		commitChanges: vi.fn(() => Effect.void),
 		createOrUpdatePR: vi.fn(() =>
 			Effect.succeed({ number: 1, url: "https://github.com/o/r/pull/1", created: true, nodeId: "PR_1" }),
+		),
+		installPackageManager: vi.fn((pin: { name: string; version: { toString(): string } }) =>
+			Effect.succeed(
+				CachedPackageManager.make({
+					source: "tool-cache",
+					name: pin.name as "pnpm",
+					version: String(pin.version),
+					directory: "/toolcache/pm",
+					binDir: options.installedBinDir ?? "/toolcache/pm/.bin",
+					bins: {},
+				}),
+			),
 		),
 		execLines,
 	};
@@ -297,6 +325,12 @@ const makeHarness = (options: HarnessOptions = {}) => {
 				Effect.suspend(() => {
 					outputs.set(name, value);
 					return Effect.void;
+				}),
+			// The activation step publishes the provisioned manager for LATER
+			// workflow steps; record it so the suite can assert that too.
+			addPath: (dir: string) =>
+				Effect.sync(() => {
+					addedPaths.push(dir);
 				}),
 			// The double has already encoded `value` through `schema` (and failed
 			// typed on a drift) before this runs; store the JSON text the runner
@@ -351,6 +385,13 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		discovery,
 		detection,
 		packageManagerUpgrade,
+		// The activation step's installer. `install` is the spy: the pin it is
+		// handed proves the step ran for an applied upgrade and stayed silent
+		// otherwise. The double answers `tool-cache`, the only source
+		// `allowAmbient: false` admits.
+		PackageManagerInstaller.layerTest({
+			install: spies.installPackageManager as unknown as Effect.Success<typeof PackageManagerInstaller>["install"],
+		}),
 		Layer.succeed(ConfigDeps, {
 			updateConfigDeps: spies.configDeps as unknown as Effect.Success<typeof ConfigDeps>["updateConfigDeps"],
 		}),
@@ -383,6 +424,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
 	return {
 		spies,
 		outputs,
+		addedPaths,
 		checkRunState,
 		spawner,
 		gitConfig,
@@ -632,6 +674,120 @@ describe("innerProgram — install gate", () => {
 			harness.spies.execLines.some((call) => [call.command, ...call.args].join(" ").startsWith("pnpm install")),
 		).toBe(false);
 		expect(findLine("Info", "Step: install — SKIPPED", "nothing to install")).toBeDefined();
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 4b. Package-manager activation — the pinned manager runs the install
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("innerProgram — package-manager activation", () => {
+	/** A fake upgrade that WROTE a new pin, so the manager on PATH is now stale. */
+	const appliedUpgrade = () =>
+		vi.fn(() =>
+			Effect.succeed({
+				applied: true as const,
+				pm: "pnpm" as const,
+				reference: "11.27.0",
+				referenceSource: "devEngines" as const,
+				targetRange: "^12.0.0",
+				from: "11.27.0",
+				to: "12.4.2",
+				pin: "pnpm@12.4.2+sha512.abc",
+				packageManagerUpdated: true,
+				devEnginesUpdated: true,
+				added: false,
+			}),
+		);
+
+	const lines = (harness: ReturnType<typeof makeHarness>) =>
+		harness.spies.execLines.map((call) => [call.command, ...call.args].join(" "));
+
+	it("provisions the new pin and runs the install AND the custom commands with its bin directory ahead on PATH", async () => {
+		writeFixture("pnpm");
+		const packageManagerUpgrade = appliedUpgrade();
+		const harness = makeHarness({
+			packageManagerUpgrade: packageManagerUpgrade as unknown as Effect.Success<
+				typeof PackageManagerUpgrade
+			>["upgrade"],
+			installedBinDir: "/toolcache/pnpm/12.4.2/x64/.bin",
+		});
+
+		const exit = await runInner(harness, baseInputs({ "upgrade-package-manager": "^12.0.0", run: ["pnpm lint:fix"] }));
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+
+		// The installer received the hashed pin the manifest now carries.
+		expect(harness.spies.installPackageManager).toHaveBeenCalledTimes(1);
+		const [pin, installOptions] = harness.spies.installPackageManager.mock.calls[0] as [
+			{ name: string; version: { toString(): string }; integrity: unknown },
+			{ allowAmbient: boolean },
+		];
+		expect(pin.name).toBe("pnpm");
+		expect(String(pin.version)).toBe("12.4.2");
+		expect(installOptions).toEqual({ allowAmbient: false });
+
+		// Every spawn that could run the manager leads with the provisioned
+		// directory: the two install commands and the shelled custom command.
+		const spawned = lines(harness);
+		expect(spawned).toContain("pnpm clean --lockfile");
+		expect(spawned).toContain("pnpm install --frozen-lockfile=false");
+		expect(spawned).toContain("sh -c pnpm lint:fix");
+		const pathOf = (call: SpawnRecord) => call.env?.PATH ?? call.env?.Path;
+		const managerSpawns = harness.spies.execLines.filter((call) =>
+			["pnpm clean --lockfile", "pnpm install --frozen-lockfile=false", "sh -c pnpm lint:fix"].includes(
+				[call.command, ...call.args].join(" "),
+			),
+		);
+		expect(managerSpawns).toHaveLength(3);
+		for (const call of managerSpawns) {
+			expect(pathOf(call)?.startsWith("/toolcache/pnpm/12.4.2/x64/.bin")).toBe(true);
+			// Without this the env REPLACES the child's environment.
+			expect(call.extendEnv).toBe(true);
+		}
+		// And later workflow steps get it through GITHUB_PATH.
+		expect(harness.addedPaths).toEqual(["/toolcache/pnpm/12.4.2/x64/.bin"]);
+		expect(findLine("Info", "Step: package manager activation", "pnpm@12.4.2+sha512.abc")).toBeDefined();
+	});
+
+	it("does NOT provision anything, and leaves the inherited PATH alone, when the pin did not move", async () => {
+		writeFixture("pnpm");
+		const harness = makeHarness({ regularUpdates: [update("effect", "^3.0.0", "^3.1.0")] });
+
+		const exit = await runInner(harness, baseInputs({ dependencies: ["effect"], run: ["pnpm lint:fix"] }));
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		expect(harness.spies.installPackageManager).not.toHaveBeenCalled();
+		// The control for the positive case: these spawns DID happen, with no env.
+		expect(lines(harness)).toContain("pnpm install --frozen-lockfile=false");
+		for (const call of harness.spies.execLines.filter((c) => c.command === "pnpm" || c.command === "sh")) {
+			expect(call.env).toBeUndefined();
+		}
+	});
+
+	it("FAILS the run when the new pin cannot be provisioned — never installs under the old manager", async () => {
+		writeFixture("pnpm");
+		const packageManagerUpgrade = appliedUpgrade();
+		const harness = makeHarness({
+			packageManagerUpgrade: packageManagerUpgrade as unknown as Effect.Success<
+				typeof PackageManagerUpgrade
+			>["upgrade"],
+		});
+		harness.spies.installPackageManager.mockImplementation(() =>
+			Effect.fail(
+				new PackageManagerInstallerError({
+					reason: "downloadFailed",
+					name: "pnpm",
+					version: "12.4.2",
+					subject: "https://registry.npmjs.org/pnpm/-/pnpm-12.4.2.tgz",
+				}),
+			),
+		);
+
+		const exit = await runInner(harness, baseInputs({ "upgrade-package-manager": "^12.0.0" }));
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		expect(lines(harness)).not.toContain("pnpm install --frozen-lockfile=false");
 	});
 });
 

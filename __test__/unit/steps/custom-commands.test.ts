@@ -1,5 +1,5 @@
 import type { ScriptResult } from "@effected/commands";
-import { Effect, References } from "effect";
+import { Effect, Option, References } from "effect";
 import { describe, expect, it } from "vitest";
 import { runCommands } from "../../../src/steps/custom-commands.js";
 import { fromMap } from "../../utils/spawner.js";
@@ -32,6 +32,23 @@ describe("runCommands", () => {
 		);
 		expect(result.successful).toEqual([]);
 		expect(result.failed).toEqual([]);
+	});
+
+	it("runs every command with the activated manager's bin dir ahead on PATH", async () => {
+		const spawner = fromMap();
+
+		await Effect.runPromise(
+			runCommands(["pnpm lint:fix", "pnpm test"], "/tmp/ws", Option.some("/toolcache/pnpm/12.4.2/x64/.bin")).pipe(
+				Effect.provide(spawner.layer),
+				Effect.provideService(References.MinimumLogLevel, "None"),
+			),
+		);
+
+		expect(spawner.spawns).toHaveLength(2);
+		for (const call of spawner.spawns) {
+			expect((call.env?.PATH ?? call.env?.Path)?.startsWith("/toolcache/pnpm/12.4.2/x64/.bin")).toBe(true);
+			expect(call.extendEnv).toBe(true);
+		}
 	});
 
 	it("runs each command sequentially", async () => {

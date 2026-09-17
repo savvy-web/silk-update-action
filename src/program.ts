@@ -10,7 +10,7 @@
 
 import { CheckRun, CheckRunOutput } from "@effected/github";
 import { ActionEnvironment, ActionOutputs } from "@effected/github-actions";
-import { Duration, Effect, References } from "effect";
+import { Duration, Effect, Option, References } from "effect";
 import { resultLines, runContextLines } from "./format.js";
 import { makeAppLayer } from "./layers/app.js";
 import type {
@@ -29,6 +29,7 @@ import { emitOutputs, emitRunResult, initialOutputs } from "./schema/outputs.js"
 import { LOCKFILE_NAMES, compareLockfiles } from "./services/lockfile.js";
 import type { DetectedPm } from "./services/package-manager.js";
 import { Report } from "./services/report.js";
+import { activatePackageManagerStep } from "./steps/activate-package-manager.js";
 import { branchStep } from "./steps/branch.js";
 import { changesetsStep } from "./steps/changesets.js";
 import { commitAndPrStep } from "./steps/commit-and-pr.js";
@@ -245,6 +246,14 @@ export const innerProgram = (
 					const configUpdatesFromPackageManager = pmOutcome.updates;
 					const pmSkipReason = pmOutcome.skipReason;
 
+					// ── package manager activation ──────────────────────────────────
+					// Only when the pin moved. The `PATH` this process inherited leads
+					// with the manager the job STARTED on; every spawn below that must
+					// see the new one gets this directory prepended. `None` when nothing
+					// changed — the inherited manager is then the pinned one already.
+					const pmBinDir =
+						pmOutcome.pin === null ? Option.none<string>() : yield* activatePackageManagerStep(pmOutcome.pin);
+
 					// ── runtimes ─────────────────────────────────────────────────────
 					const runtimeUpdates = (yield* upgradeRuntimesStep(inputs.runtime, detected.root)).updates;
 
@@ -294,7 +303,7 @@ export const innerProgram = (
 						regularUpdates.length > 0 ||
 						configUpdatesFromPackageManager.length > 0 ||
 						peerUpdates.length > 0;
-					yield* installStep(shouldInstall, detected.pm, detected.root, inputs["retry-unmatched"]);
+					yield* installStep(shouldInstall, detected.pm, detected.root, inputs["retry-unmatched"], pmBinDir);
 
 					// ── workspace formatting ────────────────────────────────────────
 					yield* formatWorkspaceStep(detected.pm, detected.root);
@@ -316,7 +325,7 @@ export const innerProgram = (
 					// The step reports what happened; concluding the check run and
 					// publishing outputs stay here, because the run's verdict is a
 					// composition concern.
-					const commandsResult = yield* customCommandsStep(inputs.run, detected.root);
+					const commandsResult = yield* customCommandsStep(inputs.run, detected.root, pmBinDir);
 					if (commandsResult !== null && commandsResult.failed.length > 0) {
 						yield* conclude(
 							"failure",
