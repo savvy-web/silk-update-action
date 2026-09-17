@@ -18,8 +18,15 @@
  * field and verifies its `+sha512.<hex>` hash, so the resolved version is
  * written directly into both fields as a pinned `version+sha512.<hex>`
  * string (derived from the npm registry integrity) — no `corepack use` is
- * invoked. The subsequent `runInstall` activates the new version via
- * corepack reading the updated fields. bun is NOT corepack-managed — it is
+ * invoked. Writing the fields does NOT activate the new version: the runtime
+ * action put a version-pinned shim directory on `PATH` (there is no corepack
+ * on the runner any more), so `pnpm` keeps answering as the OLD version until
+ * `steps/activate-package-manager` provisions the resolved `pin` and the
+ * install runs with its bin directory ahead on `PATH`. Relying on pnpm's own
+ * `manage-package-manager-versions` self-switch is not enough — in a
+ * workspace whose `devEngines.packageManager` carries `onFail: ignore`, a
+ * pnpm 11 `install` ran and wrote the lockfile as 11 after the pin said 12
+ * (savvy-web/pnpm-module-template#196). bun is NOT corepack-managed — it is
  * installed by its own toolchain and never consults `packageManager` — so it
  * is written as a bare `bun@<version>` with no hash suffix, and the integrity
  * fetch is skipped entirely (a wasted registry round-trip otherwise). No
@@ -96,6 +103,13 @@ export interface PackageManagerUpgradeApplied {
 	readonly targetRange: string;
 	readonly from: string | null;
 	readonly to: string;
+	/**
+	 * The exact spec written to `packageManager`, `<pm>@<version>[+<hash>]` —
+	 * what `steps/activate-package-manager` hands the installer, hash included,
+	 * so the provisioned tarball is verified against the same integrity the
+	 * manifest now pins.
+	 */
+	readonly pin: string;
 	readonly packageManagerUpdated: boolean;
 	readonly devEnginesUpdated: boolean;
 	readonly added: boolean;
@@ -397,6 +411,7 @@ const upgradePackageManagerImpl = (
 			targetRange,
 			from: reference,
 			to: resolved,
+			pin: packageManagerSpec,
 			packageManagerUpdated,
 			devEnginesUpdated,
 			added,

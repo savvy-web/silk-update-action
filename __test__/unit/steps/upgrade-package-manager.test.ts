@@ -104,6 +104,7 @@ describe("upgradePackageManagerStep", () => {
 			targetRange: "^11.0.0",
 			from: "11.0.0",
 			to: "11.20.0",
+			pin: "pnpm@11.20.0+sha512.abc",
 			packageManagerUpdated: true,
 			devEnginesUpdated: true,
 			added: false,
@@ -113,6 +114,15 @@ describe("upgradePackageManagerStep", () => {
 			{ dependency: "pnpm", from: "11.0.0", to: "11.20.0", type: "packageManager", package: null },
 		]);
 		expect(result.skipReason).toBeNull();
+		// The pin is what the activation step hands the installer: the hashed
+		// spec the manifest now carries, not the bare version.
+		expect(result.pin).toBe("pnpm@11.20.0+sha512.abc");
+	});
+
+	it("reports no pin when nothing was written", async () => {
+		const { result } = await runStep("auto", skipped("already-current", "up to date"));
+
+		expect(result.pin).toBeNull();
 	});
 
 	it("WARNS on unsatisfiable — the acceptance signal", async () => {

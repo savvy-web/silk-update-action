@@ -15,9 +15,10 @@
  */
 
 import { Run } from "@effected/commands";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChildProcess } from "effect/unstable/process";
+import { spawnOptions } from "./install.js";
 
 /**
  * Result of running custom commands.
@@ -37,12 +38,18 @@ export interface RunCommandsResult {
  * cwd. The two differ whenever the action is invoked from a subdirectory, and a
  * command inheriting the process cwd would then lint, test or build a different
  * tree than the one this run just edited: it would pass while proving nothing.
+ *
+ * `binDir` is the same directory the install step prepends: when the run moved
+ * the package manager pin, a `pnpm lint:fix` here must run under the version the
+ * manifest now names, not the one the job started on.
  */
 export const runCommands = (
 	commands: ReadonlyArray<string>,
 	workspaceRoot: string,
+	binDir: Option.Option<string> = Option.none(),
 ): Effect.Effect<RunCommandsResult, never, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.gen(function* () {
+		const options = spawnOptions(binDir);
 		const successful: string[] = [];
 		const failed: Array<{ command: string; error: string; exitCode?: number | undefined }> = [];
 
@@ -53,7 +60,7 @@ export const runCommands = (
 			// is driven by the exit code rather than the error channel; the catch
 			// covers only a genuine spawn failure.
 			const result = yield* Run.collect(
-				ChildProcess.make("sh", ["-c", command]).pipe(ChildProcess.setCwd(workspaceRoot)),
+				ChildProcess.make("sh", ["-c", command], options).pipe(ChildProcess.setCwd(workspaceRoot)),
 			).pipe(
 				Effect.map((output) =>
 					output.succeeded
@@ -98,6 +105,7 @@ export const runCommands = (
 export const customCommandsStep = (
 	commands: ReadonlyArray<string>,
 	workspaceRoot: string,
+	binDir: Option.Option<string> = Option.none(),
 ): Effect.Effect<RunCommandsResult | null, never, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.gen(function* () {
 		if (commands.length === 0) {
@@ -106,7 +114,7 @@ export const customCommandsStep = (
 		}
 
 		yield* Effect.logInfo(`Step: custom commands — ${commands.length} command(s)`);
-		const result = yield* runCommands(commands, workspaceRoot);
+		const result = yield* runCommands(commands, workspaceRoot, binDir);
 
 		if (result.failed.length > 0) {
 			const failedCommands = result.failed.map((f) => f.command).join(", ");

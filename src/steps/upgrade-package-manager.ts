@@ -36,6 +36,12 @@ import { PackageManagerUpgrade } from "../services/package-manager-upgrade.js";
 export interface UpgradePackageManagerResult {
 	readonly updates: ReadonlyArray<DependencyUpdateResult>;
 	readonly skipReason: string | null;
+	/**
+	 * The `<pm>@<version>[+<hash>]` spec the manifest now pins, or `null` when
+	 * nothing was written. Non-null means the manager on `PATH` is the OLD one
+	 * and `steps/activate-package-manager` must run before anything spawns it.
+	 */
+	readonly pin: string | null;
 }
 
 /** Render the reference/range prefix both the applied and skipped branches log. */
@@ -66,7 +72,7 @@ export const upgradePackageManagerStep = (
 		if (mode === "false") {
 			const skipReason = "disabled (upgrade-package-manager: false)";
 			yield* Effect.logInfo(`Step: package manager — SKIPPED: ${skipReason}`);
-			return { updates: [], skipReason };
+			return { updates: [], skipReason, pin: null };
 		}
 
 		yield* Effect.logInfo(`Step: package manager — upgrade-package-manager "${mode}" applies to ${pm}`);
@@ -98,6 +104,7 @@ export const upgradePackageManagerStep = (
 			return {
 				updates: [{ dependency: pm, from: outcome.from, to: outcome.to, type: "packageManager", package: null }],
 				skipReason: null,
+				pin: outcome.pin,
 			};
 		}
 
@@ -109,10 +116,10 @@ export const upgradePackageManagerStep = (
 					`workspace uses ${outcome.pm}, so check that the upgrade-package-manager range is a ` +
 					`${outcome.pm} range`,
 			);
-			return { updates: [], skipReason: outcome.reason };
+			return { updates: [], skipReason: outcome.reason, pin: null };
 		}
 
 		yield* Effect.logInfo(`  ${reference} → no upgrade`);
 		yield* Effect.logInfo(`  SKIPPED: ${outcome.reason}`);
-		return { updates: [], skipReason: outcome.reason };
+		return { updates: [], skipReason: outcome.reason, pin: null };
 	});

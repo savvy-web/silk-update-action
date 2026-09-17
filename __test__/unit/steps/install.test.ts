@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { ScriptResult } from "@effected/commands";
 import { ScriptedSpawner } from "@effected/commands";
 import type { Duration } from "effect";
-import { Effect, Exit, Fiber, References } from "effect";
+import { Effect, Exit, Fiber, Option, References } from "effect";
 import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import { runInstall } from "../../../src/steps/install.js";
@@ -53,6 +53,40 @@ describe("runInstall", () => {
 		const calls = await run("pnpm", "/ws");
 
 		expect(calls.cwds).toEqual(["/ws", "/ws"]);
+	});
+
+	it("puts the activated manager's bin dir ahead on every command's PATH", async () => {
+		const spawner = fromMap();
+		await Effect.runPromise(
+			runInstall("pnpm", "/ws", 0, Option.some("/toolcache/pnpm/12.4.2/x64/.bin")).pipe(
+				Effect.provide(spawner.layer),
+				Effect.provideService(References.MinimumLogLevel, "None"),
+			),
+		);
+
+		expect(spawner.spawns).toHaveLength(2);
+		for (const call of spawner.spawns) {
+			const path = call.env?.PATH ?? call.env?.Path;
+			expect(path?.startsWith("/toolcache/pnpm/12.4.2/x64/.bin")).toBe(true);
+			// The rest of the inherited PATH survives: a `pnpm` that shells out to
+			// `git` or `node` must still find them.
+			expect(path?.length).toBeGreaterThan("/toolcache/pnpm/12.4.2/x64/.bin".length + 1);
+			expect(call.extendEnv).toBe(true);
+		}
+	});
+
+	it("leaves the child's environment alone when no manager was activated", async () => {
+		// The control for the case above: with `None` the spawn carries no env at
+		// all, so an inherited PATH is exactly what the child gets.
+		const spawner = fromMap();
+		await Effect.runPromise(
+			runInstall("pnpm", "/ws").pipe(
+				Effect.provide(spawner.layer),
+				Effect.provideService(References.MinimumLogLevel, "None"),
+			),
+		);
+
+		expect(spawner.spawns.map((call) => call.env)).toEqual([undefined, undefined]);
 	});
 
 	it("deletes the lockfile and installs for npm", async () => {

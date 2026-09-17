@@ -18,7 +18,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { CommandFailedError, CommandOutputError } from "@effected/commands";
 import { Run } from "@effected/commands";
-import { Effect, Schedule } from "effect";
+import { ChildEnv } from "@effected/github-actions";
+import { Effect, Option, Schedule } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChildProcess } from "effect/unstable/process";
 import { INSTALL_LABEL } from "../format.js";
@@ -59,13 +60,33 @@ import { isUnmatchedVersion, unmatchedDelayMinutes, unmatchedSchedule } from "..
  * between attempts. The whole sequence re-runs per attempt — `pnpm clean` has
  * already removed the lockfile, so re-running only the install would skip the
  * clean-slate guarantee. Any other failure is not retried.
+ *
+ * `binDir` is where `steps/activate-package-manager` put the manager the
+ * manifest NOW pins, when the run changed it. It goes ahead of the inherited
+ * `PATH` for every command here, because the `PATH` this process inherited still
+ * leads with the manager the job started on — and the lockfile must be written
+ * by the pinned version, not that one.
  */
 export const runInstall = (
 	pm: SupportedPm,
 	workspaceRoot: string,
 	retries = 0,
+	binDir: Option.Option<string> = Option.none(),
 ): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
-	runInstallOnce(pm, workspaceRoot).pipe(Effect.retry(unmatchedPolicy(retries)));
+	runInstallOnce(pm, workspaceRoot, binDir).pipe(Effect.retry(unmatchedPolicy(retries)));
+
+/**
+ * The spawn options that put `binDir` ahead on the child's `PATH`, or nothing.
+ *
+ * `ChildEnv.prependPath` owns the two traps a hand-rolled version walks into —
+ * the `Path`-vs-`PATH` key spelling on Windows and the `extendEnv: true` without
+ * which `env` REPLACES the child's environment rather than extending it.
+ */
+export const spawnOptions = (binDir: Option.Option<string>) =>
+	Option.match(binDir, {
+		onNone: () => ({}),
+		onSome: (dir) => ChildEnv.prependPath([dir], { base: process.env, platform: process.platform }),
+	});
 
 /**
  * The retry policy for {@link runInstall}: continue only while the failure is
@@ -92,12 +113,14 @@ const unmatchedPolicy = (retries: number): Schedule.Schedule<number, CommandFail
 const runInstallOnce = (
 	pm: SupportedPm,
 	workspaceRoot: string,
+	binDir: Option.Option<string>,
 ): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.gen(function* () {
 		// Run.text fails typed on a non-zero exit, preserving the old `exec`
 		// contract that an install failure aborts the run.
+		const options = spawnOptions(binDir);
 		const run = (executable: string, args: ReadonlyArray<string>) =>
-			Run.text(ChildProcess.make(executable, [...args]).pipe(ChildProcess.setCwd(workspaceRoot)));
+			Run.text(ChildProcess.make(executable, [...args], options).pipe(ChildProcess.setCwd(workspaceRoot)));
 
 		switch (pm) {
 			case "pnpm":
@@ -128,6 +151,7 @@ export const installStep = (
 	pm: SupportedPm,
 	workspaceRoot: string,
 	retries: number,
+	binDir: Option.Option<string> = Option.none(),
 ): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.gen(function* () {
 		if (!shouldInstall) {
@@ -138,5 +162,5 @@ export const installStep = (
 		}
 
 		yield* Effect.logInfo(`Step: install — ${INSTALL_LABEL[pm]}  (config + regular updates pending)`);
-		yield* runInstall(pm, workspaceRoot, retries);
+		yield* runInstall(pm, workspaceRoot, retries, binDir);
 	});
