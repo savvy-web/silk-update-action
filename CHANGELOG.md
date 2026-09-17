@@ -1,5 +1,33 @@
 # silk-update-action
 
+## 4.13.1
+
+### Bug Fixes
+
+- Installs and runs custom commands under the package manager version that was just pinned, instead of the version the job started on.
+
+- After `upgrade-package-manager` rewrites the pin, the exact `<pm>@<version>+<hash>` is now provisioned and put on `PATH` before `pnpm clean --lockfile && pnpm install` and any `run` custom commands execute
+
+- Fixes lockfile rejections (`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`) that occurred when, e.g., pnpm was pinned to 12 but the install still ran under pnpm 11
+
+- Applies to pnpm, npm, and bun
+
+- If the pinned version cannot be provisioned, the run now fails instead of silently installing under the old manager [#450][#450]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github-actions | dependency | updated | ^0.13.1 | ^0.13.2 |
+
+[#450][#450]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#450]: https://github.com/savvy-web/silk-update-action/pull/450
+
 ## 4.13.0
 
 ### Features
