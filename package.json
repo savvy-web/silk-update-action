@@ -53,7 +53,7 @@
 		"@effected/semver": "catalog:effected",
 		"@effected/workspaces": "catalog:effected",
 		"@effected/yaml": "catalog:effected",
-		"@savvy-web/silk-effects": "^8.2.1",
+		"@savvy-web/silk-effects": "^9.0.1",
 		"effect": "catalog:effect"
 	},
 	"devDependencies": {
@@ -73,7 +73,7 @@
 		"packageManager": {
 			"name": "pnpm",
 			"version": "12.5.0+sha512.9cdbaa34ffacae1768635ac0d23e94db6201c7d59bf3da236b23d67c8f6b794d1dab323bcd5bcc51b55c8cafbf6f19a24e4aa61d6ab7772aa3b5cc85e325dc4d",
-			"onFail": "ignore"
+			"onFail": "warn"
 		},
 		"runtime": [
 			{
