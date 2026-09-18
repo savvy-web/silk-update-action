@@ -1,5 +1,17 @@
 # silk-update-action
 
+## 4.13.5
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @savvy-web/silk-effects | dependency | updated | ^8.2.1 | ^9.0.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 4.13.4
 
 ### Dependencies

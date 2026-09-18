@@ -1,6 +1,6 @@
 {
 	"name": "silk-update-action",
-	"version": "4.13.4",
+	"version": "4.13.5",
 	"private": true,
 	"description": "GitHub Action for updating pnpm config dependencies and regular dependencies with automated PR creation",
 	"keywords": ["github-action", "pnpm", "config-dependencies", "dependency-updates", "monorepo", "changesets"],
@@ -73,7 +73,7 @@
 		"packageManager": {
 			"name": "pnpm",
 			"version": "12.5.0+sha512.9cdbaa34ffacae1768635ac0d23e94db6201c7d59bf3da236b23d67c8f6b794d1dab323bcd5bcc51b55c8cafbf6f19a24e4aa61d6ab7772aa3b5cc85e325dc4d",
-			"onFail": "ignore"
+			"onFail": "warn"
 		},
 		"runtime": [
 			{
