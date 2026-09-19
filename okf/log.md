@@ -4,6 +4,7 @@
 
 * Added A just-published npm version can be unresolvable for minutes after publish succeeds
 * Updated Action inputs
+* Added A pnpm 11 to 12 upgrade committed a lockfile pnpm 12 refuses
 
 ## 2026-09-15
 
