@@ -9,8 +9,8 @@ tags:
 resource: ../../.github/workflows/silk-update.yml
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: 57177fd4683b8c11ff8da3dbf8f0c9bccca97dd5c374a511041f57dc7b5820a1
+  at: 2026-09-19T03:30:32Z
+  body_sha256: 90e690a7c05bdcc62c0294a6f02e824016e052114729435f39fb18dcc25f0cdc
 sources:
   - id: silk-update-workflow
     resource: ../../.github/workflows/silk-update.yml
@@ -50,11 +50,12 @@ needs to be proven against a real workspace before it merges toward `main`.
      `uses: savvy-web/.github/.github/workflows/release.yml@main` at line
      23.[^release-workflow] Flip that ref to `@dev` to exercise the release
      path itself against the dev-branch build.
-   - **A second, permanently-pinned consumer — usually the better test, and
-     it needs no ref flip at all.** `savvy-web/systems` pins
-     `@dev` permanently; dispatch its `Update Silk Dependencies` workflow
-     directly. See
-     [savvy-web/systems](../consumers/savvy-web-systems.md).
+   - **Another consumer, with its ref flipped the same way.** No consumer
+     pins `@dev` permanently any more — `savvy-web/systems` did until
+     2026-08-20 and now pins `@v4` like everyone else (see
+     [savvy-web/systems](../consumers/savvy-web-systems.md)) — so a
+     second-repo test is a temporary ref flip there too, chosen when the
+     change needs a workspace shape this repository does not have.
 5. Watch the triggered run (for example `gh run watch`) to completion and
    read its outcome — a real workspace, real config-dependency plugins, and
    (where the workflow reaches that step) a real pull request.

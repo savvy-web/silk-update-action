@@ -1,5 +1,9 @@
 # Log
 
+## 2026-09-19
+
+* Added npm 11 to 12 pin bump probe against the bundled kit
+
 ## 2026-09-17
 
 * Added A just-published npm version can be unresolvable for minutes after publish succeeds
