@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: be5c8f36f0f5b7024e06754c0da4dc002f3e0f980a1a31416f49d4abebcd2397
+  at: 2026-09-19T03:30:32Z
+  body_sha256: cefc9cd6cd481aca973b67a741d95b415daac72d2291f45404854f408e830c51
 sources:
   - id: app-layer
     resource: ../../src/layers/app.ts
@@ -34,9 +34,9 @@ merged.
 ## Where it surfaced
 
 The first end-to-end run of the newly added `check-peers` gate, exercised as
-a real consumer run against `savvy-web/systems` (which pins this action's
-`dev` branch permanently, letting a rebuilt `dist` be tested against a real
-monorepo). This was the first of three runs on that consumer that each
+a real consumer run against `savvy-web/systems` (which at the time pinned
+this action's `dev` branch permanently, letting a rebuilt `dist` be tested
+against a real monorepo; it has pinned `@v4` since 2026-08-20). This was the first of three runs on that consumer that each
 failed differently before the feature was proven — see
 [the savvy-web/systems consumer](../consumers/savvy-web-systems.md).
 
