@@ -76,7 +76,7 @@ jobs:
           ignore-scripts: true
       - name: Update Config Dependencies
         id: update
-        uses: savvy-web/silk-update-action@dev
+        uses: savvy-web/silk-update-action@v4
         with:
           app-client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
