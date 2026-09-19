@@ -789,6 +789,84 @@ describe("innerProgram — package-manager activation", () => {
 		expect(Exit.isFailure(exit)).toBe(true);
 		expect(lines(harness)).not.toContain("pnpm install --frozen-lockfile=false");
 	});
+
+	// npm 11 → 12 is the next major inside the package-manager support window
+	// (issue #449). npm's `bin` shape did not move between 11 and 12, so the
+	// activation contract is the same as pnpm's — but nothing above exercises
+	// the npm dispatch, and an npm workspace is where a stale manager would
+	// silently commit a lockfile the consumer's `npm ci` then refuses under
+	// `devEngines` (`EBADDEVENGINES`). Same guard, other manager.
+	const appliedNpmUpgrade = () =>
+		vi.fn(() =>
+			Effect.succeed({
+				applied: true as const,
+				pm: "npm" as const,
+				reference: "11.19.1",
+				referenceSource: "devEngines" as const,
+				targetRange: "^12.0.0",
+				from: "11.19.1",
+				to: "12.0.2",
+				pin: "npm@12.0.2+sha512.abc",
+				packageManagerUpdated: true,
+				devEnginesUpdated: true,
+				added: false,
+			}),
+		);
+
+	it("provisions an npm 11 → 12 pin and runs `npm install` with its bin directory ahead on PATH", async () => {
+		writeFixture("npm");
+		const packageManagerUpgrade = appliedNpmUpgrade();
+		const harness = makeHarness({
+			packageManagerUpgrade: packageManagerUpgrade as unknown as Effect.Success<
+				typeof PackageManagerUpgrade
+			>["upgrade"],
+			installedBinDir: "/toolcache/npm/12.0.2/x64/.bin",
+		});
+
+		const exit = await runInner(harness, baseInputs({ "upgrade-package-manager": "^12.0.0" }));
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		expect(harness.spies.installPackageManager).toHaveBeenCalledTimes(1);
+		const [pin, installOptions] = harness.spies.installPackageManager.mock.calls[0] as [
+			{ name: string; version: { toString(): string } },
+			{ allowAmbient: boolean },
+		];
+		expect(pin.name).toBe("npm");
+		expect(String(pin.version)).toBe("12.0.2");
+		// The runner's ambient npm is the stale 11 — it must never answer here.
+		expect(installOptions).toEqual({ allowAmbient: false });
+
+		const installs = harness.spies.execLines.filter((call) => [call.command, ...call.args].join(" ") === "npm install");
+		expect(installs).toHaveLength(1);
+		expect((installs[0]?.env?.PATH ?? installs[0]?.env?.Path)?.startsWith("/toolcache/npm/12.0.2/x64/.bin")).toBe(true);
+		expect(installs[0]?.extendEnv).toBe(true);
+		expect(harness.addedPaths).toEqual(["/toolcache/npm/12.0.2/x64/.bin"]);
+	});
+
+	it("FAILS an npm 11 → 12 run when npm 12 cannot be provisioned — the pin bump never reaches a PR", async () => {
+		writeFixture("npm");
+		const packageManagerUpgrade = appliedNpmUpgrade();
+		const harness = makeHarness({
+			packageManagerUpgrade: packageManagerUpgrade as unknown as Effect.Success<
+				typeof PackageManagerUpgrade
+			>["upgrade"],
+		});
+		harness.spies.installPackageManager.mockImplementation(() =>
+			Effect.fail(
+				new PackageManagerInstallerError({
+					reason: "downloadFailed",
+					name: "npm",
+					version: "12.0.2",
+					subject: "https://registry.npmjs.org/npm/-/npm-12.0.2.tgz",
+				}),
+			),
+		);
+
+		const exit = await runInner(harness, baseInputs({ "upgrade-package-manager": "^12.0.0" }));
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		expect(lines(harness)).not.toContain("npm install");
+	});
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

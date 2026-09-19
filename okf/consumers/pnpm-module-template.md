@@ -6,8 +6,8 @@ repository: spencerbeggs/pnpm-module-template
 status: draft
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: c6a2ada05726fe3dc41e7c8d7168473394a3e621a5714739cbbb623e1d8a834f
+  at: 2026-09-19T03:30:32Z
+  body_sha256: 8e97bf076077712756ea4034ede6d7b24249875729c921f87942336a899db690
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -53,9 +53,10 @@ only by a real config-dependency version bump landing in a real run.
   addresses the one memo this action itself holds
   (`WorkspaceCatalogs`), not every possible staleness in the wider
   config-dependency hook chain.
-- This consumer is not permanently pinned to `@dev` the way
-  [savvy-web/systems](savvy-web-systems.md) is, so it is a point-in-time
-  witness to the incident rather than an ongoing proving ground.
+- This consumer is not permanently pinned to `@dev` (no consumer is, since
+  [savvy-web/systems](savvy-web-systems.md) moved to `@v4` on 2026-08-20),
+  so it is a point-in-time witness to the incident rather than an ongoing
+  proving ground.
 
 See [the peer-rules time-skew incident](../incidents/peer-rules-time-skew.md)
 for the dated write-up of #84 and #85, and
