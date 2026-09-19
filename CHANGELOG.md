@@ -1,5 +1,22 @@
 # silk-update-action
 
+## 4.13.7
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github-actions | dependency | updated | ^0.13.3 | ^0.13.4 |
+| @effected/npm | dependency | updated | ^0.14.1 | ^0.14.2 |
+
+[#467][#467]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#467]: https://github.com/savvy-web/silk-update-action/pull/467
+
 ## 4.13.6
 
 ### Dependencies
