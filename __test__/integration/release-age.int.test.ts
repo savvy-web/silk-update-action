@@ -78,9 +78,22 @@ describe("release-age", () => {
 		writeFileSync(join(root, "pnpm-workspace.yaml"), content, "utf-8");
 	};
 
-	const writeConfigDepPnpmfile = (name: string, filename: string, source: string) => {
+	/**
+	 * Every fixture declares the config dependency at `1.0.0+sha512-abc`.
+	 * `@effected/workspaces` replays hooks at the DECLARED version and fails
+	 * closed, so the installed `.pnpm-config/<name>/` dir must carry a manifest
+	 * whose `version` matches the text before the `+` — a dir without one is
+	 * "not installed", not "no hooks".
+	 */
+	const writeConfigDepManifest = (name: string) => {
 		const dir = join(root, "node_modules", ".pnpm-config", name);
 		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version: "1.0.0" }), "utf-8");
+		return dir;
+	};
+
+	const writeConfigDepPnpmfile = (name: string, filename: string, source: string) => {
+		const dir = writeConfigDepManifest(name);
 		writeFileSync(join(dir, filename), source, "utf-8");
 	};
 
@@ -234,7 +247,7 @@ describe("release-age", () => {
 			writeWorkspaceYaml(
 				["packages:", "  - .", "configDependencies:", '  no-hooks-plugin: "1.0.0+sha512-abc"', ""].join("\n"),
 			);
-			mkdirSync(join(root, "node_modules", ".pnpm-config", "no-hooks-plugin"), { recursive: true });
+			writeConfigDepManifest("no-hooks-plugin");
 
 			const gate = await gateAt(root);
 
