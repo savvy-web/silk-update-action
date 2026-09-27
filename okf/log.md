@@ -1,5 +1,12 @@
 # Log
 
+## 2026-09-27
+
+* Updated A pnpm 11 to 12 upgrade committed a lockfile pnpm 12 refuses
+* Added Write package-manager and config-dependency pins bare; the lockfile holds integrity
+* Updated config dependency
+* Updated npm 11 to 12 pin bump probe against the bundled kit
+
 ## 2026-09-19
 
 * Added npm 11 to 12 pin bump probe against the bundled kit
