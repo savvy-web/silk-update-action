@@ -701,6 +701,34 @@ describe("PackageManagerUpgrade", () => {
 		}
 	});
 
+	it("refuses, before writing anything, a resolved version the devEngines range cannot be re-anchored on", async () => {
+		// Build metadata is valid semver, so the resolver can pick it, but it is
+		// not a pinnable version: `withVersionResult` refuses it. The refusal must
+		// land before any edit, so packageManager is not bumped alone either.
+		const raw = `${JSON.stringify(
+			{
+				name: "root",
+				packageManager: "pnpm@11.12.0",
+				devEngines: { packageManager: { name: "pnpm", version: "^11.12.0" } },
+			},
+			null,
+			2,
+		)}\n`;
+		writeFileSync(join(root, "package.json"), raw);
+		const buildMetadataRegistry = seededRegistry({
+			pnpm: { version: "11.14.0+build.1", versions: ["11.12.0", "11.14.0+build.1"], integrity: FAKE_INTEGRITY },
+		});
+
+		const result = await runEither((s) => s.upgrade("auto", "pnpm", root), buildMetadataRegistry);
+
+		expect(result._tag).toBe("Failure");
+		if (result._tag === "Failure") {
+			expect(result.failure._tag).toBe("FileSystemError");
+			expect(String((result.failure as { reason: string }).reason)).toContain("devEngines.packageManager.version");
+		}
+		expect(readFileSync(join(root, "package.json"), "utf-8")).toBe(raw);
+	});
+
 	it("reads no reference from a devEngines range that is not a single operator over a version", async () => {
 		// `>=11 <12` is a valid devEngines range, but it names no version to anchor
 		// `^<reference>` on and no operator to re-emit — so, as before, it is not

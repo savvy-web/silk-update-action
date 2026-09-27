@@ -107,7 +107,7 @@ export class ReleaseAge extends Context.Service<
 				// strictest-wins, off the same single read it uses for the catalog set.
 				//
 				// **The fail-open posture stays ours.** The kit fails *typed* with
-				// `CatalogAssemblyFailure`, which is the right contract for a library —
+				// `CatalogAssemblyError`, which is the right contract for a library —
 				// but this action deliberately degrades to "no gate" instead, because
 				// pnpm re-enforces the gate at install and the worst case of missing
 				// data is exactly the pre-gate behavior. Aborting a dependency-update
@@ -117,7 +117,11 @@ export class ReleaseAge extends Context.Service<
 					Effect.catch((error) =>
 						Effect.gen(function* () {
 							yield* Effect.logWarning(
-								`Release-age gate discovery failed (${error._tag}); proceeding with no gate. ` +
+								// `message`, not `_tag`: the kit's `CatalogAssemblyError.message`
+								// carries its cause (which version was declared, what is
+								// installed, the module a pnpmfile could not import), and
+								// the tag alone names none of it.
+								`Release-age gate discovery failed (${error.message}); proceeding with no gate. ` +
 									"pnpm still enforces minimumReleaseAge at install.",
 							);
 							return ReleaseAgeGate.combine();

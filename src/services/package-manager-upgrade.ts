@@ -62,7 +62,7 @@ import { readFileSync } from "node:fs";
 import type { IntegrityHashBrand, NpmRegistryShape } from "@effected/npm";
 import { CorepackIntegrityHash, NpmRegistry, PackageManagerPin } from "@effected/npm";
 import type { PackageJsonFileShape } from "@effected/package-json";
-import { DevEngine, PackageJsonFile, PackageManagerRange } from "@effected/package-json";
+import { PackageJsonFile, PackageManagerRange } from "@effected/package-json";
 import { Context, Effect, Layer, Option, Result } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
@@ -220,16 +220,16 @@ const skip = (
 	normalized,
 });
 
-/** A `packageManager` field read for `pm`: its version and whether it carries a suffix. */
+/** A `packageManager` field read for `pm`: the parsed pin and its version. */
 interface PackageManagerFieldRead {
+	readonly pin: PackageManagerPin;
 	readonly version: string;
-	readonly hasIntegrity: boolean;
 }
 
-/** A `devEngines.packageManager` entry read for `pm`: its leading operator, version and suffix. */
-interface DevEnginesFieldRead extends PackageManagerFieldRead {
-	/** The leading range operator the repo wrote (`^`, `~`), or `""` for an exact version. */
-	readonly operator: string;
+/** A `devEngines.packageManager` entry read for `pm`: the parsed range and the version it anchors on. */
+interface DevEnginesFieldRead {
+	readonly range: PackageManagerRange;
+	readonly version: string;
 }
 
 /**
@@ -248,37 +248,31 @@ const readPackageManagerField = (raw: string, pm: SupportedPm): PackageManagerFi
 	// The pin grammar admits all four kit-supported names, so the check is here
 	// rather than implied by parsing.
 	if (parsed.success.name !== pm) return null;
-	return { version: parsed.success.version.toString(), hasIntegrity: parsed.success.integrity !== undefined };
+	return { pin: parsed.success, version: parsed.success.version.toString() };
 };
 
 /**
  * Read `devEngines.packageManager` through `@effected/package-json`'s
  * `PackageManagerRange.fromDevEngineResult`, which owns the
- * `<range>[+<integrity>]` grammar and hands back `range` — the value with its
- * operator kept and any integrity dropped.
+ * `<range>[+<integrity>]` grammar.
  *
- * The one thing the kit model does not answer is "which single version does
- * this range anchor on, under which operator" — it carries the range
- * verbatim. So the reference is taken only from a range that is a lone `^` or
- * `~` over an exact version (or an exact version alone): that version anchors
- * the synthesized `^<reference>` target, and the operator is re-emitted over
- * the resolved version on write, as `pnpm self-update` does. Any other range
- * (`>=11 <12`) names no single version, is not a reference, and is left alone.
+ * The reference is `baseVersion`, which the kit answers only for a single
+ * exact, caret or tilde comparator over a pinnable version: that version
+ * anchors the synthesized `^<reference>` target, and `withVersionResult`
+ * re-emits the same operator over the resolved version on write, as
+ * `pnpm self-update` does. Any other range (`>=11 <12`, `11.x`, `=11.12.0`)
+ * names no single version, is not a reference, and is left alone.
  */
 const readDevEnginesField = (
-	entry: { readonly name?: unknown; readonly version?: unknown; readonly onFail?: unknown },
+	entry: { readonly name?: unknown; readonly version?: unknown },
 	pm: SupportedPm,
 ): DevEnginesFieldRead | null => {
 	if (entry.name !== pm || typeof entry.version !== "string") return null;
-	const parsed = PackageManagerRange.fromDevEngineResult(new DevEngine({ name: pm, version: entry.version.trim() }));
+	const parsed = PackageManagerRange.fromDevEngineResult({ name: pm, version: entry.version.trim() });
 	if (Result.isFailure(parsed)) return null;
-
-	const range = parsed.success.range;
-	const operator = range.startsWith("^") || range.startsWith("~") ? range[0] : "";
-	const version = PackageManagerPin.parseResult(`${pm}@${range.slice(operator.length)}`);
-	if (Result.isFailure(version)) return null;
-
-	return { version: version.success.version.toString(), hasIntegrity: parsed.success.hasIntegrity, operator };
+	const version = parsed.success.baseVersion;
+	if (Option.isNone(version)) return null;
+	return { range: parsed.success, version: version.value };
 };
 
 /**
@@ -438,20 +432,37 @@ const upgradePackageManagerImpl = (
 			// moved here, only reformatted. No suffix anywhere means no write at all.
 			const normalized: PackageManagerField[] = [];
 			const edits: Array<{ readonly path: ReadonlyArray<string>; readonly value: string }> = [];
-			if (pmField?.hasIntegrity) {
+			if (pmField !== null && pmField.pin.integrity !== undefined) {
 				normalized.push("packageManager");
-				edits.push({ path: ["packageManager"], value: `${pm}@${pmField.version}` });
+				edits.push({ path: ["packageManager"], value: pmField.pin.bare });
 			}
-			if (deField?.hasIntegrity) {
+			if (deField?.range.hasIntegrity) {
 				normalized.push("devEngines");
-				edits.push({
-					path: ["devEngines", "packageManager", "version"],
-					value: `${deField.operator}${deField.version}`,
-				});
+				// `range` is the verbatim range with the integrity dropped.
+				edits.push({ path: ["devEngines", "packageManager", "version"], value: deField.range.range });
 			}
 			if (edits.length > 0) yield* writeFields(edits);
 
 			return skip(pm, reference, referenceSource, targetRange, "already-current", reason, normalized);
+		}
+
+		// Re-anchor the devEngines range on the resolved version BEFORE any write,
+		// so a refusal leaves the manifest untouched rather than half-edited. The
+		// range already reported a single comparator (that is how it became the
+		// reference), so the only way this fails is a resolved version that is not
+		// pinnable — a registry version carrying build metadata.
+		let devEnginesValue: string | null = null;
+		if (deField !== null) {
+			const reanchored = deField.range.withVersionResult(resolved);
+			if (Result.isFailure(reanchored)) {
+				return yield* Effect.fail(
+					fsWriteError(
+						packageJsonPath,
+						`cannot write ${pm} ${resolved} into devEngines.packageManager.version: ${reanchored.failure.message}`,
+					),
+				);
+			}
+			devEnginesValue = reanchored.success.range;
 		}
 
 		// Fetched for activation only; never written.
@@ -462,7 +473,7 @@ const upgradePackageManagerImpl = (
 		// auto returns early on a null reference) when NO field for `pm` exists at
 		// all, creating it.
 		const hasPackageManager = pmVersion !== null;
-		const hasDevEngines = deField !== null;
+		const hasDevEngines = devEnginesValue !== null;
 		const shouldWritePackageManager = hasPackageManager || (!hasPackageManager && !hasDevEngines);
 
 		const edits: Array<{ readonly path: ReadonlyArray<string>; readonly value: string }> = [];
@@ -476,8 +487,8 @@ const upgradePackageManagerImpl = (
 		}
 
 		let devEnginesUpdated = false;
-		if (deField !== null) {
-			edits.push({ path: ["devEngines", "packageManager", "version"], value: `${deField.operator}${resolved}` });
+		if (devEnginesValue !== null) {
+			edits.push({ path: ["devEngines", "packageManager", "version"], value: devEnginesValue });
 			devEnginesUpdated = true;
 		}
 

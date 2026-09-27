@@ -68,7 +68,7 @@ export const resolveLatestInRange = (
 /**
  * Derive the upgrade range for a config dependency from its current version.
  *
- * Config dependencies in `pnpm-workspace.yaml` are hash-pinned exact versions
+ * Config dependencies in `pnpm-workspace.yaml` are pinned exact versions
  * with no declared range, so we synthesize a conservative one from the current
  * version's major:
  *
