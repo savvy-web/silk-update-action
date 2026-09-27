@@ -23,8 +23,8 @@ sources:
     resource: "https://github.com/spencerbeggs/effected/issues/776"
 generated:
   by: okfit/claude-code
-  at: 2026-09-19T02:17:51Z
-  body_sha256: a693703a33772404b90f6264d832235cb53fa7d9babdc6da6c28d6322537552a
+  at: 2026-09-27T05:00:59Z
+  body_sha256: 37da2c1295bbde04fa531e9c78ab8949efe52a919ef1d9c6bcb32455a87517a5
 ---
 
 # npm 11 to 12 pin bump probe against the bundled kit
@@ -84,7 +84,7 @@ generated:
   matrix (`node-npm-12` fixture) rather than in a pin-bump PR.
 
 [^activate-step]: `src/steps/activate-package-manager.ts` calls `installer.install(parsed, { allowAmbient: false })` and fails typed on any installer error.
-[^upgrade-service]: `src/services/package-manager-upgrade.ts` writes `<pm>@<version>+<hash>` into `packageManager` and `<version>+<hash>` into `devEngines.packageManager.version` for corepack-managed managers (npm, pnpm).
+[^upgrade-service]: `src/services/package-manager-upgrade.ts` wrote `<pm>@<version>+<hash>` into `packageManager` and `<version>+<hash>` into `devEngines.packageManager.version` for npm and pnpm at the time of this probe. Since issue #494 it writes both bare and strips an existing suffix, so the `+sha512` rows below record what npm 12 accepted then, not what the action writes now.
 [^install-step]: `src/steps/install.ts` removes `package-lock.json` via `node:fs` and runs `npm install` with the activated bin dir ahead on `PATH`.
 [^program-test]: `__test__/unit/program.inner.test.ts`, "innerProgram — package-manager activation", the two npm 11 → 12 cases.
 [^issue-449]: <https://github.com/savvy-web/silk-update-action/issues/449>

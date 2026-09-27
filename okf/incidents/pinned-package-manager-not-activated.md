@@ -11,8 +11,8 @@ tags:
   - deps
 generated:
   by: okfit/claude-code
-  at: 2026-09-17T21:20:52Z
-  body_sha256: 7c9aec905d2e9589377897a6fef51a6afd6379ad271465bd95db30f390ae0a78
+  at: 2026-09-27T05:00:59Z
+  body_sha256: 22cd8d5e5614acedefe2276e150f9892d117011398686bbb418bc978b94c759b
 sources:
   - id: activate-step
     resource: ../../src/steps/activate-package-manager.ts
@@ -81,14 +81,17 @@ lifecycle script replaces with a native binary (fixed in
 ## Guard
 
 `steps/activate-package-manager` now runs whenever the upgrade step wrote a
-pin: it provisions that exact `<pm>@<version>+<hash>` spec through
-`PackageManagerInstaller` with `allowAmbient: false`, publishes the bin
+pin: it provisions that exact `<pm>@<version>` spec through
+`PackageManagerInstaller` with `allowAmbient: false` — and, for pnpm and npm,
+the registry integrity in corepack form as the installer's `integrity`
+option, carried in memory from the upgrade outcome since the manifest stopped
+holding a hash (issue #494) — publishes the bin
 directory with `addPath` for later workflow steps, and returns it so the
 install and custom-command steps prepend it to their children's `PATH`
 through `ChildEnv.prependPath`. A pin that cannot be provisioned fails the
 job rather than falling back to the old manager.[^activate-step] The
 program-level suite asserts that an applied upgrade calls the installer with
-the hashed pin and that the two install commands and the shelled `run`
+the bare pin plus that `integrity` option and that the two install commands and the shelled `run`
 command all carry a `PATH` leading with the provisioned directory, with a
 no-upgrade control proving those spawns carry no env at all
 otherwise.[^program-test] The end-to-end re-run against the same consumer

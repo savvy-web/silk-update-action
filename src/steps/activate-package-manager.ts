@@ -22,7 +22,7 @@
 
 import type { ActionOutputError, PackageManagerInstallerError } from "@effected/github-actions";
 import { ActionOutputs, PackageManagerInstaller } from "@effected/github-actions";
-import type { InvalidPackageManagerPinError } from "@effected/npm";
+import type { IntegrityHashBrand, InvalidPackageManagerPinError } from "@effected/npm";
 import { PackageManagerPin } from "@effected/npm";
 import { Data, Effect, Option } from "effect";
 
@@ -43,12 +43,18 @@ export class PackageManagerActivationError extends Data.TaggedError("PackageMana
  * for LATER workflow steps and never touches this process's `PATH`, which is why
  * the directory is also returned: the install step has to prepend it itself.
  *
- * `pin` is the exact spec the manifest now carries, hash included, so the
- * tarball the installer downloads is verified against the same integrity the
- * consumer's own corepack/pnpm will check.
+ * `pin` is the bare spec the manifest now carries. The manifest no longer
+ * holds an integrity (issue #494 — the lockfile does), so the digest the
+ * download is verified against arrives separately as `integrity`: the upgrade's
+ * registry `dist.integrity` in corepack form, held in memory. It is passed as
+ * the installer's `integrity` option rather than spliced back onto the pin, so
+ * the pin stays exactly what the manifest says. `null` installs unverified;
+ * the installer logs that itself, which is the degrade this step accepts
+ * rather than refusing an upgrade over a registry that published no integrity.
  */
 export const activatePackageManagerStep = (
 	pin: string,
+	integrity: IntegrityHashBrand | null,
 ): Effect.Effect<Option.Option<string>, PackageManagerActivationError, PackageManagerInstaller | ActionOutputs> =>
 	Effect.gen(function* () {
 		yield* Effect.logInfo(`Step: package manager activation — provisioning ${pin} for the install`);
@@ -57,7 +63,10 @@ export const activatePackageManagerStep = (
 		const outputs = yield* ActionOutputs;
 
 		const parsed = yield* PackageManagerPin.parse(pin);
-		const installed = yield* installer.install(parsed, { allowAmbient: false });
+		const installed = yield* installer.install(parsed, {
+			allowAmbient: false,
+			...(integrity !== null ? { integrity } : {}),
+		});
 
 		if (installed.source !== "tool-cache") {
 			yield* Effect.logWarning(`  ${pin} answered from an ambient install; later steps keep the inherited PATH`);

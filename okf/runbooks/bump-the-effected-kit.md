@@ -9,8 +9,8 @@ tags:
 resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: b7f493951ddf11eefc881ccf2194ff30b168f8ab3664befad7f507ff5d671305
+  at: 2026-09-27T08:37:13Z
+  body_sha256: c3eadd66227deefc58be8a6829590eb2f642e98a5e0757828edbfe7b714a424a
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
@@ -25,9 +25,10 @@ sources:
 Every `@effected/*` entry in `package.json` reads `"catalog:effected"`
 rather than a direct range,[^package-json] so a kit bump is not a
 `package.json` edit. The ranges live inside the `catalogs` export of
-`@effected/pnpm-plugin-effect`, a pnpm config dependency pinned by exact
-version and integrity hash in `pnpm-workspace.yaml`'s `configDependencies`
-block.[^pnpm-workspace] See
+`@effected/pnpm-plugin-effect`, a pnpm config dependency pinned by bare
+exact version in `pnpm-workspace.yaml`'s `configDependencies` block, with
+its integrity recorded in the `pnpm-lock.yaml` config-dependency
+preamble rather than inline.[^pnpm-workspace] See
 [kit ranges come from a config dependency](../gotchas/kit-ranges-come-from-a-config-dependency.md)
 for why that makes the registry listing and the plugin's own published
 catalog both insufficient checks on their own.
@@ -40,10 +41,14 @@ move onto it.
 
 1. Bump the `@effected/pnpm-plugin-effect` entry in `pnpm-workspace.yaml`'s
    `configDependencies` block (`pnpm-workspace.yaml:4-6`)[^pnpm-workspace]
-   to the new release's **version and integrity hash together** — a version
-   bump with a stale hash fails install verification rather than silently
-   resolving the old plugin.
-2. `pnpm install`.
+   with `pnpm add --config @effected/pnpm-plugin-effect@<version>`. pnpm
+   writes the bare version and records the integrity in the lockfile's
+   config-dependency preamble; do not hand-add a `+sha512-` suffix (see
+   [write pins bare](../decisions/write-pins-bare.md)).
+2. `pnpm clean --lockfile && pnpm install`. Dropping the lockfile is
+   load-bearing: the lockfile's body pins the previously resolved
+   `@effected/*` versions independently of the plugin pin, so a plain
+   `pnpm install` after the bump can keep the old versions.
 3. Verify the resolved versions from the installed tree, never from the
    registry or the plugin's own published catalog: for example
    `node -p "require('./node_modules/@effected/npm/package.json').version"`.

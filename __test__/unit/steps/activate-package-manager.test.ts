@@ -5,6 +5,8 @@ import {
 	PackageManagerInstaller,
 	PackageManagerInstallerError,
 } from "@effected/github-actions";
+import type { IntegrityHashBrand } from "@effected/npm";
+import { CorepackIntegrityHash } from "@effected/npm";
 import { Effect, Exit, Layer, Option, References } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { activatePackageManagerStep } from "../../../src/steps/activate-package-manager.js";
@@ -43,9 +45,9 @@ const harness = (install?: (...args: ReadonlyArray<unknown>) => Effect.Effect<un
 				}),
 		}),
 	);
-	const run = (pin: string) =>
+	const run = (pin: string, integrity: IntegrityHashBrand | null = null) =>
 		Effect.runPromiseExit(
-			activatePackageManagerStep(pin).pipe(
+			activatePackageManagerStep(pin, integrity).pipe(
 				Effect.provide(layer),
 				Effect.provideService(References.MinimumLogLevel, "None"),
 			),
@@ -53,7 +55,42 @@ const harness = (install?: (...args: ReadonlyArray<unknown>) => Effect.Effect<un
 	return { run, installSpy, paths };
 };
 
+// A real corepack-form sha512: the installer option is the branded type, so the
+// test hands it exactly what the upgrade outcome carries.
+const INTEGRITY = Effect.runSync(
+	CorepackIntegrityHash.fromSri(
+		"sha512-Iv0lXkpG6NXcNu/khNeaNfpcI8KMnyOnmiB+BbwCw1t0csCZPzLf7EJ4zCuvD/yg1oyHquMXzBQHAzyGq+CnZw==",
+	),
+);
+
 describe("activatePackageManagerStep", () => {
+	it("hands the installer the bare pin plus the integrity as an option, so the download is still verified", async () => {
+		const { run, installSpy } = harness();
+
+		const exit = await run("pnpm@12.4.2", INTEGRITY);
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		const [pin, options] = installSpy.mock.calls[0] as [
+			{ name: string; version: { toString(): string }; integrity: string | undefined },
+			unknown,
+		];
+		expect(String(pin.version)).toBe("12.4.2");
+		// The manifest no longer carries the hash; the option does.
+		expect(pin.integrity).toBeUndefined();
+		expect(options).toStrictEqual({ allowAmbient: false, integrity: INTEGRITY });
+	});
+
+	it("installs without an integrity option when none could be derived — the installer warns", async () => {
+		// The control for the case above: no `integrity` key at all, not an
+		// explicit `undefined` that a strict comparison would also catch.
+		const { run, installSpy } = harness();
+
+		const exit = await run("pnpm@12.4.2", null);
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		expect(installSpy.mock.calls[0]?.[1]).toStrictEqual({ allowAmbient: false });
+	});
+
 	it("provisions the pin without an ambient short-circuit, publishes the bin dir, and returns it", async () => {
 		const { run, installSpy, paths } = harness();
 

@@ -693,7 +693,8 @@ describe("innerProgram — package-manager activation", () => {
 				targetRange: "^12.0.0",
 				from: "11.27.0",
 				to: "12.4.2",
-				pin: "pnpm@12.4.2+sha512.abc",
+				pin: "pnpm@12.4.2",
+				integrity: "sha512.abc",
 				packageManagerUpdated: true,
 				devEnginesUpdated: true,
 				added: false,
@@ -717,7 +718,8 @@ describe("innerProgram — package-manager activation", () => {
 
 		expect(Exit.isSuccess(exit)).toBe(true);
 
-		// The installer received the hashed pin the manifest now carries.
+		// The installer received the bare pin the manifest now carries, with the
+		// upgrade's in-memory integrity as the option it verifies against.
 		expect(harness.spies.installPackageManager).toHaveBeenCalledTimes(1);
 		const [pin, installOptions] = harness.spies.installPackageManager.mock.calls[0] as [
 			{ name: string; version: { toString(): string }; integrity: unknown },
@@ -725,7 +727,8 @@ describe("innerProgram — package-manager activation", () => {
 		];
 		expect(pin.name).toBe("pnpm");
 		expect(String(pin.version)).toBe("12.4.2");
-		expect(installOptions).toEqual({ allowAmbient: false });
+		expect(pin.integrity).toBeUndefined();
+		expect(installOptions).toStrictEqual({ allowAmbient: false, integrity: "sha512.abc" });
 
 		// Every spawn that could run the manager leads with the provisioned
 		// directory: the two install commands and the shelled custom command.
@@ -747,7 +750,7 @@ describe("innerProgram — package-manager activation", () => {
 		}
 		// And later workflow steps get it through GITHUB_PATH.
 		expect(harness.addedPaths).toEqual(["/toolcache/pnpm/12.4.2/x64/.bin"]);
-		expect(findLine("Info", "Step: package manager activation", "pnpm@12.4.2+sha512.abc")).toBeDefined();
+		expect(findLine("Info", "Step: package manager activation", "pnpm@12.4.2")).toBeDefined();
 	});
 
 	it("does NOT provision anything, and leaves the inherited PATH alone, when the pin did not move", async () => {
@@ -806,7 +809,8 @@ describe("innerProgram — package-manager activation", () => {
 				targetRange: "^12.0.0",
 				from: "11.19.1",
 				to: "12.0.2",
-				pin: "npm@12.0.2+sha512.abc",
+				pin: "npm@12.0.2",
+				integrity: "sha512.abc",
 				packageManagerUpdated: true,
 				devEnginesUpdated: true,
 				added: false,
@@ -834,7 +838,7 @@ describe("innerProgram — package-manager activation", () => {
 		expect(pin.name).toBe("npm");
 		expect(String(pin.version)).toBe("12.0.2");
 		// The runner's ambient npm is the stale 11 — it must never answer here.
-		expect(installOptions).toEqual({ allowAmbient: false });
+		expect(installOptions).toStrictEqual({ allowAmbient: false, integrity: "sha512.abc" });
 
 		const installs = harness.spies.execLines.filter((call) => [call.command, ...call.args].join(" ") === "npm install");
 		expect(installs).toHaveLength(1);
@@ -1040,6 +1044,7 @@ describe("innerProgram — workspace root threading", () => {
 				targetRange: null,
 				kind: "no-reference" as const,
 				reason: "no reference version found",
+				normalized: [],
 			}),
 		);
 

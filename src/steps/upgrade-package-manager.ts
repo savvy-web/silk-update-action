@@ -10,6 +10,13 @@
  * `never` — truthfully. A package-manager bump is not worth aborting a run whose
  * dependency updates are otherwise fine.
  *
+ * **A normalization is logged, not reported as an update.** When the manager is
+ * already current but a field still carried an inline `+<integrity>` suffix,
+ * the service strips it (issue #494). That is a format change with no version
+ * movement, so it adds no `updates` entry and no `pin` — the working tree
+ * change is picked up by change detection like any other file edit — and gets
+ * one INFO line naming the fields.
+ *
  * **The `unsatisfiable` outcome is the one non-benign skip and logs at warning.**
  * It means nothing in *this* manager's release list satisfies the configured
  * range, which is overwhelmingly a range typed for a different manager (a pnpm
@@ -19,6 +26,7 @@
  * @module steps/upgrade-package-manager
  */
 
+import type { IntegrityHashBrand } from "@effected/npm";
 import { Effect } from "effect";
 import type { DependencyUpdateResult } from "../schema/domain.js";
 import type { SupportedPm } from "../services/package-manager.js";
@@ -37,12 +45,24 @@ export interface UpgradePackageManagerResult {
 	readonly updates: ReadonlyArray<DependencyUpdateResult>;
 	readonly skipReason: string | null;
 	/**
-	 * The `<pm>@<version>[+<hash>]` spec the manifest now pins, or `null` when
-	 * nothing was written. Non-null means the manager on `PATH` is the OLD one
-	 * and `steps/activate-package-manager` must run before anything spawns it.
+	 * The bare `<pm>@<version>` spec the manifest now pins, or `null` when no
+	 * version moved. Non-null means the manager on `PATH` is the OLD one and
+	 * `steps/activate-package-manager` must run before anything spawns it.
 	 */
 	readonly pin: string | null;
+	/**
+	 * The corepack-form integrity activation verifies `pin`'s download against,
+	 * carried in memory from the upgrade outcome. `null` whenever `pin` is, and
+	 * whenever none could be derived.
+	 */
+	readonly integrity: IntegrityHashBrand | null;
 }
+
+/** How a normalized field is named in the log. */
+const FIELD_LABEL = {
+	packageManager: "packageManager",
+	devEngines: "devEngines.packageManager.version",
+} as const;
 
 /** Render the reference/range prefix both the applied and skipped branches log. */
 const describeReference = (outcome: PackageManagerUpgradeOutcome): string => {
@@ -72,7 +92,7 @@ export const upgradePackageManagerStep = (
 		if (mode === "false") {
 			const skipReason = "disabled (upgrade-package-manager: false)";
 			yield* Effect.logInfo(`Step: package manager — SKIPPED: ${skipReason}`);
-			return { updates: [], skipReason, pin: null };
+			return { updates: [], skipReason, pin: null, integrity: null };
 		}
 
 		yield* Effect.logInfo(`Step: package manager — upgrade-package-manager "${mode}" applies to ${pm}`);
@@ -90,6 +110,7 @@ export const upgradePackageManagerStep = (
 						targetRange: null,
 						kind: "error",
 						reason: `read/write error: ${error.reason}`,
+						normalized: [],
 					};
 					return fallback;
 				}),
@@ -105,6 +126,7 @@ export const upgradePackageManagerStep = (
 				updates: [{ dependency: pm, from: outcome.from, to: outcome.to, type: "packageManager", package: null }],
 				skipReason: null,
 				pin: outcome.pin,
+				integrity: outcome.integrity,
 			};
 		}
 
@@ -116,10 +138,15 @@ export const upgradePackageManagerStep = (
 					`workspace uses ${outcome.pm}, so check that the upgrade-package-manager range is a ` +
 					`${outcome.pm} range`,
 			);
-			return { updates: [], skipReason: outcome.reason, pin: null };
+			return { updates: [], skipReason: outcome.reason, pin: null, integrity: null };
 		}
 
 		yield* Effect.logInfo(`  ${reference} → no upgrade`);
 		yield* Effect.logInfo(`  SKIPPED: ${outcome.reason}`);
-		return { updates: [], skipReason: outcome.reason, pin: null };
+		if (outcome.normalized.length > 0) {
+			yield* Effect.logInfo(
+				`  normalized: stripped the inline integrity from ${outcome.normalized.map((f) => FIELD_LABEL[f]).join(", ")} (the lockfile records integrity)`,
+			);
+		}
+		return { updates: [], skipReason: outcome.reason, pin: null, integrity: null };
 	});

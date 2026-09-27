@@ -1,13 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ReleaseAgeGate } from "@effected/npm";
+import { NpmRegistry, ReleaseAgeGate } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Effect, Layer, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ConfigDeps } from "../../../src/services/config-deps.js";
 import { ReleaseAge } from "../../../src/services/release-age.js";
-import { parseConfigEntry } from "../../../src/utils/deps.js";
 import { seededRegistry } from "../../utils/fixtures.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -28,35 +27,6 @@ const runWithService = <A, E>(
 		}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
 	);
 };
-
-// ══════════════════════════════════════════════════════════════════════════════
-// parseConfigEntry
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe("parseConfigEntry", () => {
-	it("parses version with hash", () => {
-		const result = parseConfigEntry("0.6.3+sha512-abc==");
-		expect(result).toEqual({ version: "0.6.3", hash: "sha512-abc==" });
-	});
-
-	it("parses version without hash", () => {
-		const result = parseConfigEntry("0.6.3");
-		expect(result).toEqual({ version: "0.6.3", hash: null });
-	});
-
-	it("handles hash containing + chars (base64)", () => {
-		const result = parseConfigEntry("0.6.3+sha512-ab+cd/ef==");
-		expect(result).toEqual({ version: "0.6.3", hash: "sha512-ab+cd/ef==" });
-	});
-
-	it("returns null for empty string", () => {
-		expect(parseConfigEntry("")).toBeNull();
-	});
-
-	it("returns null for whitespace-only string", () => {
-		expect(parseConfigEntry("   ")).toBeNull();
-	});
-});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ConfigDeps service (Effect integration tests)
@@ -126,7 +96,7 @@ describe("ConfigDeps.updateConfigDeps", () => {
 
 		// Verify YAML was updated
 		const yaml = readWorkspaceYaml();
-		expect(yaml.configDependencies["@savvy-web/silk"]).toBe("0.7.0+sha512-newHash==");
+		expect(yaml.configDependencies["@savvy-web/silk"]).toBe("0.7.0");
 	});
 
 	it("holds back a resolution the release-age gate filters out", async () => {
@@ -145,17 +115,79 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		);
 
 		expect(result).toHaveLength(0);
-		expect(readWorkspaceYaml().configDependencies.typescript).toBe("1.0.0+sha512-oldHash==");
+		// Held back at 1.0.0 — which is then the up-to-date version, so the old
+		// inline integrity is stripped (a normalization, not an update).
+		expect(readWorkspaceYaml().configDependencies.typescript).toBe("1.0.0");
 	});
 
-	it("skips dep when already on latest version", async () => {
+	it("strips the inline integrity from an up-to-date dep without reporting an update", async () => {
 		writeWorkspaceYaml(`configDependencies:\n  typescript: "5.4.0+sha512-existingHash=="\n`);
 
 		const result = await runWithService((s) => s.updateConfigDeps(["typescript"], tempDir), {
 			typescript: { version: "5.4.0", integrity: "sha512-existingHash==" },
 		});
 
+		// Not an update — the version did not move — but the file converges on
+		// the bare form pnpm 11+ itself writes.
 		expect(result).toHaveLength(0);
+		expect(readWorkspaceYaml().configDependencies.typescript).toBe("5.4.0");
+	});
+
+	it("leaves an up-to-date, already-bare file byte-identical", async () => {
+		// The control for the normalization above: nothing to strip, no write —
+		// not even the re-sort/re-stringify a write would bring.
+		const raw = `configDependencies:\n  zeta: "1.0.0"\n  typescript: "5.4.0"\npackages:\n  - "pkgs/*"\n`;
+		writeWorkspaceYaml(raw);
+
+		const result = await runWithService((s) => s.updateConfigDeps(["typescript"], tempDir), {
+			typescript: { version: "5.4.0" },
+		});
+
+		expect(result).toHaveLength(0);
+		expect(readFileSync(join(tempDir, "pnpm-workspace.yaml"), "utf-8")).toBe(raw);
+	});
+
+	it("warns and skips an entry that is not a <version>[+<integrity>] spec", async () => {
+		// A range is not a config-dependency spec; the posture is warn-and-skip,
+		// never a failed run and never a rewrite.
+		writeWorkspaceYaml(`configDependencies:\n  typescript: "^5.3.3"\n`);
+
+		const result = await runWithService((s) => s.updateConfigDeps(["typescript"], tempDir), {
+			typescript: { version: "5.4.0" },
+		});
+
+		expect(result).toHaveLength(0);
+		expect(readWorkspaceYaml().configDependencies.typescript).toBe("^5.3.3");
+	});
+
+	it("never queries a version's integrity — only the version list", async () => {
+		writeWorkspaceYaml(`configDependencies:\n  typescript: "5.3.3+sha512-oldHash=="\n`);
+
+		let versionQueries = 0;
+		const counting = Layer.effect(
+			NpmRegistry,
+			Effect.gen(function* () {
+				const base = yield* NpmRegistry;
+				return {
+					...base,
+					version: (pkg: string, version: string, target?: Parameters<typeof base.version>[2]) => {
+						versionQueries++;
+						return base.version(pkg, version, target);
+					},
+				};
+			}),
+		).pipe(Layer.provide(seededRegistry({ typescript: { version: "5.4.0", versions: ["5.3.3", "5.4.0"] } })));
+
+		const layer = ConfigDeps.layer.pipe(Layer.provide(Layer.merge(counting, ReleaseAge.layerNoop)));
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				return yield* (yield* ConfigDeps).updateConfigDeps(["typescript"], tempDir);
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
+		);
+
+		expect(result).toHaveLength(1);
+		expect(versionQueries).toBe(0);
+		expect(readWorkspaceYaml().configDependencies.typescript).toBe("5.4.0");
 	});
 
 	it("updates multiple deps", async () => {
@@ -205,7 +237,7 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		const yaml = readWorkspaceYaml();
 		expect(yaml.packages).toBeDefined();
 		expect(yaml.onlyBuiltDependencies).toBeDefined();
-		expect(yaml.configDependencies.typescript).toBe("5.4.0+sha512-tsHash==");
+		expect(yaml.configDependencies.typescript).toBe("5.4.0");
 	});
 
 	it("reports clean versions in from/to (strips hash)", async () => {
@@ -222,18 +254,19 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		expect(result[0].to).toBe("0.7.0");
 	});
 
-	it("returns empty array when registry returns no integrity", async () => {
+	it("updates even when the registry publishes no integrity — none is written", async () => {
 		writeWorkspaceYaml(`configDependencies:\n  typescript: "5.3.3"\n`);
 
 		const result = await runWithService((s) => s.updateConfigDeps(["typescript"], tempDir), {
 			typescript: { version: "5.4.0" }, // no integrity
 		});
 
-		// queryConfigVersion returns null when integrity is missing
-		expect(result).toHaveLength(0);
+		// The lockfile refresh records integrity; this write never needed it.
+		expect(result).toHaveLength(1);
+		expect(readWorkspaceYaml().configDependencies.typescript).toBe("5.4.0");
 	});
 
-	it("skips dep when parseConfigEntry returns null (empty value)", async () => {
+	it("skips dep when the entry is empty", async () => {
 		writeWorkspaceYaml(`configDependencies:\n  typescript: ""\n`);
 
 		const result = await runWithService((s) => s.updateConfigDeps(["typescript"], tempDir));
@@ -257,7 +290,7 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		expect(result[0]).toMatchObject({ from: "1.14.5", to: "1.20.0", type: "config" });
 
 		const yaml = readWorkspaceYaml();
-		expect(yaml.configDependencies["@savvy-web/silk"]).toBe("1.20.0+sha512-resolvedHash==");
+		expect(yaml.configDependencies["@savvy-web/silk"]).toBe("1.20.0");
 	});
 
 	it("advances a sub-1.0.0 config dep across 0.x minors when no stable major exists", async () => {
@@ -275,7 +308,7 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		expect(result[0]).toMatchObject({ from: "0.14.5", to: "0.20.0", type: "config" });
 
 		const yaml = readWorkspaceYaml();
-		expect(yaml.configDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("0.20.0+sha512-resolvedHash==");
+		expect(yaml.configDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("0.20.0");
 	});
 
 	it("adopts the latest 1.x for a sub-1.0.0 config dep but never crosses into 2.x", async () => {
@@ -295,7 +328,7 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		expect(result[0]).toMatchObject({ from: "0.14.5", to: "1.5.0", type: "config" });
 
 		const yaml = readWorkspaceYaml();
-		expect(yaml.configDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("1.5.0+sha512-resolvedHash==");
+		expect(yaml.configDependencies["@savvy-web/pnpm-plugin-silk"]).toBe("1.5.0");
 	});
 
 	it("handles config dep without hash suffix", async () => {
@@ -309,8 +342,8 @@ describe("ConfigDeps.updateConfigDeps", () => {
 		expect(result[0].from).toBe("5.3.3");
 		expect(result[0].to).toBe("5.4.0");
 
-		// YAML entry should have the full integrity hash
+		// Bare, as pnpm 11+ writes it — never a version+integrity pair.
 		const yaml = readWorkspaceYaml();
-		expect(yaml.configDependencies.typescript).toBe("5.4.0+sha512-tsHash==");
+		expect(yaml.configDependencies.typescript).toBe("5.4.0");
 	});
 });

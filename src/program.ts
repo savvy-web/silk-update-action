@@ -252,7 +252,9 @@ export const innerProgram = (
 					// see the new one gets this directory prepended. `None` when nothing
 					// changed — the inherited manager is then the pinned one already.
 					const pmBinDir =
-						pmOutcome.pin === null ? Option.none<string>() : yield* activatePackageManagerStep(pmOutcome.pin);
+						pmOutcome.pin === null
+							? Option.none<string>()
+							: yield* activatePackageManagerStep(pmOutcome.pin, pmOutcome.integrity);
 
 					// ── runtimes ─────────────────────────────────────────────────────
 					const runtimeUpdates = (yield* upgradeRuntimesStep(inputs.runtime, detected.root)).updates;

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
-import { DEFAULT_REGISTRY, NpmRegistry, RegistryReadError } from "@effected/npm";
+import { CorepackIntegrityHash, DEFAULT_REGISTRY, NpmRegistry, RegistryReadError } from "@effected/npm";
 import { PackageJsonFile } from "@effected/package-json";
 import { Effect, Layer, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +14,13 @@ import { seededRegistry } from "../../utils/fixtures.js";
 // wrong-length cases are exercised deliberately at the bottom of this file.
 const FAKE_INTEGRITY =
 	"sha512-Iv0lXkpG6NXcNu/khNeaNfpcI8KMnyOnmiB+BbwCw1t0csCZPzLf7EJ4zCuvD/yg1oyHquMXzBQHAzyGq+CnZw==";
+
+// The corepack form of FAKE_INTEGRITY — what the outcome carries in memory for
+// activation, and what must never reach the manifest.
+const FAKE_COREPACK = Effect.runSync(CorepackIntegrityHash.fromSri(FAKE_INTEGRITY));
+
+// A well-formed corepack-form suffix as older runs of this action wrote it.
+const OLD_SUFFIX = `+sha512.${"ab".repeat(64)}`;
 
 let root: string;
 
@@ -94,9 +101,12 @@ describe("PackageManagerUpgrade", () => {
 		expect(pkg.packageManager).toBe("bun@1.3.16");
 		expect(pkg.devEngines.packageManager.version).toBe("1.3.16");
 		expect(pkg.packageManager).not.toContain("+sha512");
+		// bun's installer verifies a platform zip, not the npm tarball, so the
+		// registry integrity would be the wrong artifact's: none is carried.
+		if (result.applied) expect(result.integrity).toBeNull();
 	});
 
-	it("writes pnpm hash-pinned, as before", async () => {
+	it("writes pnpm as a bare version and carries the corepack integrity in memory only", async () => {
 		writePkg({
 			name: "root",
 			packageManager: "pnpm@11.12.0",
@@ -109,9 +119,108 @@ describe("PackageManagerUpgrade", () => {
 		expect(result.applied).toBe(true);
 		if (result.applied) {
 			expect(result.to).toBe("11.13.0");
+			expect(result.pin).toBe("pnpm@11.13.0");
+			// The registry integrity survives, converted, for activation to verify
+			// the download against — but only on the outcome, never on disk.
+			expect(result.integrity).toBe(FAKE_COREPACK);
 		}
-		expect(pkg.packageManager).toMatch(/^pnpm@11\.13\.0\+sha512\.[0-9a-f]+$/);
-		expect(pkg.devEngines.packageManager.version).toMatch(/^11\.13\.0\+sha512\.[0-9a-f]+$/);
+		expect(pkg.packageManager).toBe("pnpm@11.13.0");
+		expect(pkg.devEngines.packageManager.version).toBe("11.13.0");
+		expect(readFileSync(join(root, "package.json"), "utf-8")).not.toContain("sha512");
+	});
+
+	it("keeps a devEngines range operator, rewriting only the version under it", async () => {
+		// `pnpm self-update` writes `^12.6.0` back as `^<new>`; the action matches.
+		writePkg({
+			name: "root",
+			devEngines: { packageManager: { name: "pnpm", version: "^11.12.0", onFail: "ignore" } },
+		});
+
+		const result = await run((s) => s.upgrade("auto", "pnpm", root));
+
+		expect(result.applied).toBe(true);
+		if (result.applied) {
+			expect(result.pin).toBe("pnpm@11.13.0");
+		}
+		expect(readPkg().devEngines.packageManager).toEqual({ name: "pnpm", version: "^11.13.0", onFail: "ignore" });
+	});
+
+	it("keeps a tilde operator and drops an integrity tail from a ranged devEngines entry", async () => {
+		writePkg({
+			name: "root",
+			devEngines: { packageManager: { name: "pnpm", version: `~11.12.0${OLD_SUFFIX}` } },
+		});
+
+		const result = await run((s) => s.upgrade("^11", "pnpm", root));
+
+		expect(result.applied).toBe(true);
+		expect(readPkg().devEngines.packageManager.version).toBe("~11.13.0");
+	});
+
+	it("strips an old integrity suffix from both fields on the already-current path", async () => {
+		writePkg({
+			name: "root",
+			packageManager: `pnpm@11.13.0${OLD_SUFFIX}`,
+			devEngines: { packageManager: { name: "pnpm", version: `^11.13.0${OLD_SUFFIX}` } },
+		});
+
+		const result = await run((s) => s.upgrade("auto", "pnpm", root));
+		const pkg = readPkg();
+
+		expect(result.applied).toBe(false);
+		if (!result.applied) {
+			// Still already-current: a normalization is not an upgrade.
+			expect(result.kind).toBe("already-current");
+			expect(result.normalized).toEqual(["packageManager", "devEngines"]);
+		}
+		expect(pkg.packageManager).toBe("pnpm@11.13.0");
+		expect(pkg.devEngines.packageManager.version).toBe("^11.13.0");
+	});
+
+	it("normalizes each field against its own version, never moving either", async () => {
+		// Reference is devEngines (11.13.0, current); packageManager lags at
+		// 11.12.0. Normalization strips the tail and leaves the version alone.
+		writePkg({
+			name: "root",
+			packageManager: `pnpm@11.12.0${OLD_SUFFIX}`,
+			devEngines: { packageManager: { name: "pnpm", version: "11.13.0" } },
+		});
+
+		const result = await run((s) => s.upgrade("auto", "pnpm", root));
+
+		expect(result.applied).toBe(false);
+		if (!result.applied) {
+			expect(result.kind).toBe("already-current");
+			expect(result.normalized).toEqual(["packageManager"]);
+		}
+		expect(readPkg().packageManager).toBe("pnpm@11.12.0");
+	});
+
+	it("leaves an already-current, already-bare manifest byte-identical", async () => {
+		// The control for the two cases above: nothing to strip means no write.
+		const raw = `{\n    "name": "root",\n    "packageManager": "pnpm@11.13.0"\n}`;
+		writeFileSync(join(root, "package.json"), raw);
+
+		const result = await run((s) => s.upgrade("auto", "pnpm", root));
+
+		expect(result.applied).toBe(false);
+		if (!result.applied) {
+			expect(result.kind).toBe("already-current");
+			expect(result.normalized).toEqual([]);
+		}
+		expect(readFileSync(join(root, "package.json"), "utf-8")).toBe(raw);
+	});
+
+	it("strips an npm packageManager suffix on the already-current path too", async () => {
+		writePkg({ name: "root", packageManager: `npm@10.9.0${OLD_SUFFIX}` });
+
+		const result = await run((s) => s.upgrade("auto", "npm", root));
+
+		expect(result.applied).toBe(false);
+		if (!result.applied) {
+			expect(result.normalized).toEqual(["packageManager"]);
+		}
+		expect(readPkg().packageManager).toBe("npm@10.9.0");
 	});
 
 	it("reads the reference from devEngines in preference to packageManager", async () => {
@@ -170,7 +279,7 @@ describe("PackageManagerUpgrade", () => {
 	// non-corepack-managed pms.
 	// ──────────────────────────────────────────────────────────────────────
 
-	it("upgrades npm hash-pinned, same as pnpm (corepack-managed)", async () => {
+	it("upgrades npm as a bare version, same as pnpm", async () => {
 		writePkg({
 			name: "root",
 			packageManager: "npm@10.8.0",
@@ -183,9 +292,11 @@ describe("PackageManagerUpgrade", () => {
 		expect(result.applied).toBe(true);
 		if (result.applied) {
 			expect(result.to).toBe("10.9.0");
+			expect(result.pin).toBe("npm@10.9.0");
+			expect(result.integrity).toBe(FAKE_COREPACK);
 		}
-		expect(pkg.packageManager).toMatch(/^npm@10\.9\.0\+sha512\.[0-9a-f]+$/);
-		expect(pkg.devEngines.packageManager.version).toMatch(/^10\.9\.0\+sha512\.[0-9a-f]+$/);
+		expect(pkg.packageManager).toBe("npm@10.9.0");
+		expect(pkg.devEngines.packageManager.version).toBe("10.9.0");
 	});
 
 	it("ignores a packageManager field naming a different package manager and skips when no reference remains", async () => {
@@ -212,7 +323,7 @@ describe("PackageManagerUpgrade", () => {
 		}
 	});
 
-	it("updates devEngines only (no packageManager field) writing pinned form", async () => {
+	it("updates devEngines only (no packageManager field) writing the bare form", async () => {
 		writePkg({
 			name: "root",
 			devEngines: { packageManager: { name: "pnpm", version: "11.12.0" } },
@@ -231,6 +342,7 @@ describe("PackageManagerUpgrade", () => {
 
 		const pkg = readPkg();
 		expect(pkg.packageManager).toBeUndefined();
+		expect(pkg.devEngines.packageManager.version).toBe("11.13.0");
 	});
 
 	it("adds a packageManager field (added: true) when none exists and an explicit range is given", async () => {
@@ -247,7 +359,7 @@ describe("PackageManagerUpgrade", () => {
 		}
 
 		const pkg = readPkg();
-		expect(pkg.packageManager).toMatch(/^pnpm@11\.13\.0\+sha512\.[0-9a-f]+$/);
+		expect(pkg.packageManager).toBe("pnpm@11.13.0");
 	});
 
 	it("adds a bare bun field (added: true, no hash) when none exists and an explicit range is given", async () => {
@@ -364,6 +476,7 @@ describe("PackageManagerUpgrade", () => {
 		expect(result.applied).toBe(true);
 		if (result.applied) {
 			expect(result.to).toBe("11.13.0");
+			expect(result.integrity).toBeNull();
 		}
 		expect(pkg.packageManager).toBe("pnpm@11.13.0");
 	});
@@ -389,6 +502,7 @@ describe("PackageManagerUpgrade", () => {
 		expect(result.applied).toBe(true);
 		if (result.applied) {
 			expect(result.to).toBe("11.13.0");
+			expect(result.integrity).toBeNull();
 		}
 		expect(pkg.packageManager).toBe("pnpm@11.13.0");
 	});
@@ -420,7 +534,7 @@ describe("PackageManagerUpgrade", () => {
 		expect(versionQueries).toBe(0);
 	});
 
-	it("parses an existing hash-pinned packageManager reference", async () => {
+	it("parses an existing hash-pinned packageManager reference and writes the bump bare", async () => {
 		writePkg({ name: "root", packageManager: "pnpm@11.12.0+sha512.deadbeef" });
 
 		const result = await run((s) => s.upgrade("true", "pnpm", root));
@@ -430,6 +544,7 @@ describe("PackageManagerUpgrade", () => {
 			expect(result.from).toBe("11.12.0");
 			expect(result.to).toBe("11.13.0");
 		}
+		expect(readPkg().packageManager).toBe("pnpm@11.13.0");
 	});
 
 	it("parses an existing caret-prefixed devEngines reference", async () => {
@@ -495,7 +610,7 @@ describe("PackageManagerUpgrade", () => {
 	// have passed against the old helpers by writing something wrong rather than
 	// by failing, which is why they assert on the file's contents.
 
-	it("writes bare version rather than a bogus pin when the registry integrity is malformed", async () => {
+	it("carries no integrity rather than a bogus one when the registry integrity is malformed", async () => {
 		writePkg({ name: "root", packageManager: "pnpm@11.12.0" });
 
 		// Valid base64, valid `sha512-` prefix, but a 4-byte digest. The deleted
@@ -512,11 +627,14 @@ describe("PackageManagerUpgrade", () => {
 		const pkg = readPkg();
 
 		expect(result.applied).toBe(true);
+		// Activation would otherwise hand the installer a digest that fails
+		// verification against the real tarball.
+		if (result.applied) expect(result.integrity).toBeNull();
 		expect(pkg.packageManager).toBe("pnpm@11.13.0");
 		expect(pkg.packageManager).not.toContain("+");
 	});
 
-	it("writes bare version when the registry reports a non-sha512 integrity", async () => {
+	it("carries no integrity when the registry reports a non-sha512 integrity", async () => {
 		writePkg({ name: "root", packageManager: "pnpm@11.12.0" });
 
 		// corepack pins accept nothing weaker than sha512, so converting a sha256
@@ -534,6 +652,7 @@ describe("PackageManagerUpgrade", () => {
 		const result = await runWith((s) => s.upgrade("true", "pnpm", root), sha256Registry);
 
 		expect(result.applied).toBe(true);
+		if (result.applied) expect(result.integrity).toBeNull();
 		expect(readPkg().packageManager).toBe("pnpm@11.13.0");
 	});
 
@@ -580,5 +699,46 @@ describe("PackageManagerUpgrade", () => {
 			expect(result.from).toBe("11.12.0");
 			expect(result.to).toBe("11.13.0");
 		}
+	});
+
+	it("refuses, before writing anything, a resolved version the devEngines range cannot be re-anchored on", async () => {
+		// Build metadata is valid semver, so the resolver can pick it, but it is
+		// not a pinnable version: `withVersionResult` refuses it. The refusal must
+		// land before any edit, so packageManager is not bumped alone either.
+		const raw = `${JSON.stringify(
+			{
+				name: "root",
+				packageManager: "pnpm@11.12.0",
+				devEngines: { packageManager: { name: "pnpm", version: "^11.12.0" } },
+			},
+			null,
+			2,
+		)}\n`;
+		writeFileSync(join(root, "package.json"), raw);
+		const buildMetadataRegistry = seededRegistry({
+			pnpm: { version: "11.14.0+build.1", versions: ["11.12.0", "11.14.0+build.1"], integrity: FAKE_INTEGRITY },
+		});
+
+		const result = await runEither((s) => s.upgrade("auto", "pnpm", root), buildMetadataRegistry);
+
+		expect(result._tag).toBe("Failure");
+		if (result._tag === "Failure") {
+			expect(result.failure._tag).toBe("FileSystemError");
+			expect(String((result.failure as { reason: string }).reason)).toContain("devEngines.packageManager.version");
+		}
+		expect(readFileSync(join(root, "package.json"), "utf-8")).toBe(raw);
+	});
+
+	it("reads no reference from a devEngines range that is not a single operator over a version", async () => {
+		// `>=11 <12` is a valid devEngines range, but it names no version to anchor
+		// `^<reference>` on and no operator to re-emit — so, as before, it is not
+		// a reference and the field is left exactly as written.
+		writePkg({ name: "root", devEngines: { packageManager: { name: "pnpm", version: ">=11 <12" } } });
+
+		const result = await run((s) => s.upgrade("auto", "pnpm", root));
+
+		expect(result.applied).toBe(false);
+		if (!result.applied) expect(result.kind).toBe("no-reference");
+		expect(readPkg().devEngines.packageManager.version).toBe(">=11 <12");
 	});
 });

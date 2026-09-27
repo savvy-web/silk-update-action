@@ -6,18 +6,29 @@
  * this service queries npm directly for latest versions and edits
  * `pnpm-workspace.yaml` in place.
  *
+ * Entries are written **bare** (`0.11.1`), the form `pnpm add --config` writes
+ * on pnpm 11+ (savvy-web/silk-update-action#494). The inline
+ * `<version>+<integrity>` form is deprecated upstream (pnpm/pnpm#11644,
+ * pnpm/pnpm#12293) and pnpm drops it on its own next write; config-dependency
+ * integrity lives in the lockfile, which the install step refreshes. So no
+ * registry integrity is fetched here, and an entry that still carries the
+ * inline form is rewritten bare whenever it is touched — including when it is
+ * already up to date, which is a normalization and is not reported as an
+ * update. Entries are parsed with `@effected/workspaces`' `ConfigDependencySpec`;
+ * one that does not parse is warned about and skipped, never rewritten.
+ *
  * @module services/config-deps
  */
 
 import { existsSync, writeFileSync } from "node:fs";
-import type { NpmRegistryShape, PublishedVersion } from "@effected/npm";
+import type { NpmRegistryShape } from "@effected/npm";
 import { NpmRegistry } from "@effected/npm";
+import { ConfigDependencySpec } from "@effected/workspaces";
 import { Yaml } from "@effected/yaml";
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schema/domain.js";
-import { parseConfigEntry } from "../utils/deps.js";
 import { configDepUpgradeRange, resolveLatestSatisfying } from "../utils/semver.js";
 import { ReleaseAge } from "./release-age.js";
 import { STRINGIFY_OPTIONS, readWorkspaceYaml, sortContent } from "./workspace-yaml.js";
@@ -64,35 +75,6 @@ export class ConfigDeps extends Context.Service<
  */
 const queryVersions = (packageName: string, registry: NpmRegistryShape): Effect.Effect<ReadonlyArray<string>> =>
 	registry.versions(packageName).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)));
-
-/**
- * Query npm for the integrity hash of a specific package version.
- *
- * Returns the `sha512-...` integrity string, or `null` when the registry query
- * fails, the version is unpublished, or it has no published integrity.
- */
-const queryIntegrity = (
-	packageName: string,
-	version: string,
-	registry: NpmRegistryShape,
-): Effect.Effect<string | null> =>
-	Effect.gen(function* () {
-		const info = yield* registry.version(packageName, version).pipe(
-			Effect.catch((error) =>
-				Effect.gen(function* () {
-					yield* Effect.logWarning(
-						`queryIntegrity: npm registry query failed for ${packageName}@${version}: ${JSON.stringify({ pkg: error.package, kind: error.kind, registry: error.registry })}`,
-					);
-					return Option.none<PublishedVersion>();
-				}),
-			),
-		);
-		if (Option.isNone(info) || info.value.integrity === undefined) {
-			yield* Effect.logWarning(`queryIntegrity: no integrity for ${packageName}@${version}`);
-			return null;
-		}
-		return info.value.integrity;
-	});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Implementation
@@ -147,12 +129,15 @@ const updateConfigDepsImpl = (
 
 			// Parse current entry to extract version
 			yield* Effect.logDebug(`Parsing config entry for ${dep}: ${String(currentEntry).slice(0, 80)}`);
-			const parsed = parseConfigEntry(String(currentEntry));
-			if (!parsed) {
-				yield* Effect.logWarning(`Could not parse config dependency entry for ${dep}: ${currentEntry}`);
+			const spec = ConfigDependencySpec.parseResult(String(currentEntry));
+			if (Result.isFailure(spec)) {
+				yield* Effect.logWarning(
+					`Could not parse config dependency entry for ${dep}: ${currentEntry} (${spec.failure.message})`,
+				);
 				continue;
 			}
-			yield* Effect.logDebug(`Parsed ${dep}: version=${parsed.version}, hasHash=${!!parsed.hash}`);
+			const parsed = { version: spec.success.version.toString(), hasIntegrity: spec.success.hasIntegrity };
+			yield* Effect.logDebug(`Parsed ${dep}: version=${parsed.version}, hasIntegrity=${parsed.hasIntegrity}`);
 
 			// Derive a conservative upgrade range from the current version's
 			// major: stay within the major for >=1.0.0, allow advancing across
@@ -184,19 +169,18 @@ const updateConfigDepsImpl = (
 			// Compare versions
 			if (parsed.version === resolved) {
 				yield* Effect.logInfo(`${dep} is already up-to-date at ${parsed.version}`);
+				// Converge on the bare form even with no version movement. Not an
+				// update: nothing is pushed to `results`.
+				if (parsed.hasIntegrity) {
+					content.configDependencies[dep] = spec.success.bare;
+					changed = true;
+					yield* Effect.logInfo(`  normalized ${dep}: stripped the inline integrity (the lockfile records it)`);
+				}
 				continue;
 			}
 
-			// Fetch the integrity hash for the resolved version specifically.
-			const integrity = yield* queryIntegrity(dep, resolved, registry);
-			if (!integrity) {
-				yield* Effect.logWarning(`Could not resolve integrity for ${dep}@${resolved}, skipping`);
-				continue;
-			}
-
-			// Construct new entry: version+integrity
-			const newEntry = `${resolved}+${integrity}`;
-			content.configDependencies[dep] = newEntry;
+			// Bare, as pnpm 11+ writes it — the lockfile refresh records integrity.
+			content.configDependencies[dep] = resolved;
 			changed = true;
 
 			results.push({

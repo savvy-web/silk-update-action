@@ -68,9 +68,10 @@ inputs:
     description: |
       Upgrade the package manager detected for this workspace (pnpm, bun or
       npm) in the packageManager and devEngines.packageManager fields.
-      corepack-managed managers (pnpm, npm) are written as a hash-pinned
-      version (e.g. pnpm@11.0.0+sha512.<hex>); bun is written as a bare version,
-      because corepack does not manage bun.
+      Every manager is written as a bare version, the format pnpm itself
+      writes (e.g. packageManager: pnpm@11.0.0; a devEngines range operator
+      such as ^ is kept). Any existing +<integrity> suffix is stripped; the
+      lockfile records integrity.
       Values: false (skip — the default, matching the upgrade-runtime-*
       inputs), true/auto (latest within the current major, favoring the
       devEngines version), or a semver range (e.g. ^11) to move to and add
