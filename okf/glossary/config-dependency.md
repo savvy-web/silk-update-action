@@ -7,8 +7,8 @@ tags:
   - deps
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: 9c9b10e47e3a1dd7063a8e7f80710dc4b960ba33b6b645eaf956e8c6b8b4b7f4
+  at: 2026-09-27T05:00:59Z
+  body_sha256: 6726b8103e8066b3c7ca8e9ab699eda0672c92b77b7aaccaa5a82df85b89f175
 sources:
   - id: config-deps-service
     resource: ../../src/services/config-deps.ts
@@ -21,7 +21,9 @@ sources:
 # config dependency
 
 **pnpm's own sense:** an entry in `pnpm-workspace.yaml`'s `configDependencies`
-block — a package loaded and hash-pinned *before* the workspace resolves at
+block — a package pinned to an exact version (its integrity recorded in the
+lockfile; the inline `<version>+<integrity>` form is deprecated, and this
+action writes the bare form) and loaded *before* the workspace resolves at
 all, ahead of every ordinary dependency, able to inject catalogs, hooks
 (`updateConfig`, `updateLock`, ...) and `peerDependencyRules` into the
 resolution this action then reads back.[^pnpm-workspace]

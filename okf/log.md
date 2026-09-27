@@ -3,6 +3,10 @@
 ## 2026-09-19
 
 * Added npm 11 to 12 pin bump probe against the bundled kit
+* Updated Test a dev-branch build end to end against a real consumer
+* Updated The first check-peers dogfood run died on an unmerged WorkspaceCatalogs
+* Updated savvy-web/systems
+* Updated spencerbeggs/pnpm-module-template
 
 ## 2026-09-17
 

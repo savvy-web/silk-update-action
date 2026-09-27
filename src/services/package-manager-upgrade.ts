@@ -14,24 +14,36 @@
  * `devEngines.packageManager` entry that names a *different* package manager
  * than the one being upgraded is not a reference for this run and is ignored.
  *
- * pnpm and npm are corepack-managed: corepack reads the `packageManager`
- * field and verifies its `+sha512.<hex>` hash, so the resolved version is
- * written directly into both fields as a pinned `version+sha512.<hex>`
- * string (derived from the npm registry integrity) — no `corepack use` is
- * invoked. Writing the fields does NOT activate the new version: the runtime
- * action put a version-pinned shim directory on `PATH` (there is no corepack
- * on the runner any more), so `pnpm` keeps answering as the OLD version until
- * `steps/activate-package-manager` provisions the resolved `pin` and the
- * install runs with its bin directory ahead on `PATH`. Relying on pnpm's own
- * `manage-package-manager-versions` self-switch is not enough — in a
- * workspace whose `devEngines.packageManager` carries `onFail: ignore`, a
- * pnpm 11 `install` ran and wrote the lockfile as 11 after the pin said 12
- * (savvy-web/pnpm-module-template#196). bun is NOT corepack-managed — it is
- * installed by its own toolchain and never consults `packageManager` — so it
- * is written as a bare `bun@<version>` with no hash suffix, and the integrity
- * fetch is skipped entirely (a wasted registry round-trip otherwise). No
- * range operator is written for corepack-managed pms because a hash-pinned
- * value is inherently exact.
+ * **Every manager is written bare, in the format pnpm itself writes**
+ * (savvy-web/silk-update-action#494): `packageManager` becomes
+ * `<pm>@<version>`, and `devEngines.packageManager.version` becomes the bare
+ * version with any range operator the repo wrote kept (`^12.6.0` →
+ * `^12.7.0`, as `pnpm self-update` does). No `+<integrity>` suffix is ever
+ * written. pnpm does not verify a `devEngines` hash and drops both suffixes on
+ * its own next write; corepack, the one tool that verified the `packageManager`
+ * hash, is no longer on the runners; and pnpm's canonical checksum store is the
+ * lockfile (`packageManagerDependencies`), which the install step refreshes.
+ * An existing suffix is stripped whenever this service touches a field —
+ * including on the `already-current` path, where nothing else is written — so
+ * repos converge on one format instead of churning against a local
+ * `pnpm self-update`. That strip is reported as `normalized` on the skipped
+ * outcome, never as an upgrade.
+ *
+ * **The registry integrity is still fetched, for activation only.** Writing the
+ * fields does NOT activate the new version: the runtime action put a
+ * version-pinned shim directory on `PATH`, so `pnpm` keeps answering as the OLD
+ * version until `steps/activate-package-manager` provisions the resolved `pin`
+ * and the install runs with its bin directory ahead on `PATH`. For pnpm and
+ * npm, whose installer verifies the npm registry tarball, the registry's
+ * `dist.integrity` is converted to the corepack form and carried on the applied
+ * outcome as `integrity` — in memory, never on disk — so that download is
+ * still verified. Relying on pnpm's own `manage-package-manager-versions`
+ * self-switch is not enough — in a workspace whose `devEngines.packageManager`
+ * carries `onFail: ignore`, a pnpm 11 `install` ran and wrote the lockfile as 11
+ * after the pin said 12 (savvy-web/pnpm-module-template#196). bun's installer
+ * verifies a per-platform zip from GitHub releases, not the npm tarball, so the
+ * registry integrity would describe the wrong artifact: for bun it is never
+ * fetched.
  *
  * `upgrade()` always resolves to an outcome (never `null`) so a caller can
  * report *why* nothing happened — "disabled", "no reference", "nothing
@@ -47,10 +59,10 @@
  */
 
 import { readFileSync } from "node:fs";
-import type { NpmRegistryShape } from "@effected/npm";
+import type { IntegrityHashBrand, NpmRegistryShape } from "@effected/npm";
 import { CorepackIntegrityHash, NpmRegistry, PackageManagerPin } from "@effected/npm";
 import type { PackageJsonFileShape } from "@effected/package-json";
-import { PackageJsonFile } from "@effected/package-json";
+import { DevEngine, PackageJsonFile, PackageManagerRange } from "@effected/package-json";
 import { Context, Effect, Layer, Option, Result } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
@@ -62,11 +74,15 @@ import type { SupportedPm } from "./package-manager.js";
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Package managers corepack manages. Corepack reads the `packageManager`
- * field and verifies the `+sha512.<hex>` hash; bun is installed by its own
- * toolchain and never consults it, so a hash there is noise.
+ * Managers whose installer verifies the npm registry tarball, so the registry's
+ * `dist.integrity` is the right digest to hand activation. bun's installer
+ * verifies a platform zip from GitHub releases instead; the npm `bun` package's
+ * integrity would describe a different artifact.
  */
-const COREPACK_MANAGED: ReadonlySet<SupportedPm> = new Set(["pnpm", "npm"]);
+const REGISTRY_TARBALL_VERIFIED: ReadonlySet<SupportedPm> = new Set(["pnpm", "npm"]);
+
+/** A manifest field this service reads and writes. */
+export type PackageManagerField = "packageManager" | "devEngines";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -104,12 +120,19 @@ export interface PackageManagerUpgradeApplied {
 	readonly from: string | null;
 	readonly to: string;
 	/**
-	 * The exact spec written to `packageManager`, `<pm>@<version>[+<hash>]` —
-	 * what `steps/activate-package-manager` hands the installer, hash included,
-	 * so the provisioned tarball is verified against the same integrity the
-	 * manifest now pins.
+	 * The bare spec `<pm>@<version>` — what `packageManager` now carries (when it
+	 * was written) and what `steps/activate-package-manager` hands the installer.
 	 */
 	readonly pin: string;
+	/**
+	 * The resolved version's registry integrity in corepack form
+	 * (`sha512.<hex>`), for activation to verify the download against. Held in
+	 * memory only — it is never written to the manifest. `null` for bun (whose
+	 * installer verifies a different artifact) and whenever the registry
+	 * integrity is absent, unreadable or not convertible; activation then
+	 * installs unverified and the installer warns.
+	 */
+	readonly integrity: IntegrityHashBrand | null;
 	readonly packageManagerUpdated: boolean;
 	readonly devEnginesUpdated: boolean;
 	readonly added: boolean;
@@ -125,6 +148,12 @@ export interface PackageManagerUpgradeSkipped {
 	/** Machine-readable cause. Callers dispatch on this, never on `reason`. */
 	readonly kind: PackageManagerSkipKind;
 	readonly reason: string;
+	/**
+	 * The fields whose inline `+<integrity>` suffix was stripped even though no
+	 * version moved — a format normalization, not an upgrade. Only the
+	 * `already-current` path writes one; every other skip reports `[]`.
+	 */
+	readonly normalized: ReadonlyArray<PackageManagerField>;
 }
 
 export type PackageManagerUpgradeOutcome = PackageManagerUpgradeApplied | PackageManagerUpgradeSkipped;
@@ -179,53 +208,107 @@ const skip = (
 	targetRange: string | null,
 	kind: PackageManagerSkipKind,
 	reason: string,
-): PackageManagerUpgradeSkipped => ({ applied: false, pm, reference, referenceSource, targetRange, kind, reason });
+	normalized: ReadonlyArray<PackageManagerField> = [],
+): PackageManagerUpgradeSkipped => ({
+	applied: false,
+	pm,
+	reference,
+	referenceSource,
+	targetRange,
+	kind,
+	reason,
+	normalized,
+});
+
+/** A `packageManager` field read for `pm`: its version and whether it carries a suffix. */
+interface PackageManagerFieldRead {
+	readonly version: string;
+	readonly hasIntegrity: boolean;
+}
+
+/** A `devEngines.packageManager` entry read for `pm`: its leading operator, version and suffix. */
+interface DevEnginesFieldRead extends PackageManagerFieldRead {
+	/** The leading range operator the repo wrote (`^`, `~`), or `""` for an exact version. */
+	readonly operator: string;
+}
 
 /**
- * The exact version a package-manager reference names, or `null` when the
- * field is absent, unparseable, or names a *different* manager than the one
- * being upgraded (e.g. `packageManager: "npm@10.0.0"` while upgrading bun) —
- * all of which mean the same thing here: no reference for this run.
+ * Read `packageManager` as `@effected/npm`'s `PackageManagerPin`, or `null` when
+ * absent, not an exact pin, or naming a *different* manager than `pm` — all of
+ * which mean the same thing here: no reference for this run.
  *
- * `bare` is how the two fields differ. `packageManager` carries the whole
- * corepack pin (`` `${pm}@<version>[+<integrity>]` ``); `devEngines.packageManager.version`
- * carries only the version tail, so the manager name is prepended to give the
- * one grammar the whole pin it parses.
- *
- * **The grammar is `@effected/npm`'s `PackageManagerPin`, not a local regex.**
- * The predecessor tested `/^\d+\.\d+\.\d+/` against the tail — a *prefix* match
- * — and returned the whole trailing string, so `pnpm@11.12.0garbage` became a
- * reference and the synthesized `^11.12.0garbage` range then reported
- * `unsatisfiable`, which is this service's diagnosis for a range typed for a
- * *different* package manager. A malformed integrity tail was likewise split off
- * and discarded in silence. It also returned `hasCaret` and `hasSha` alongside
- * the version, neither of which had a reader anywhere: the same
- * declared-never-consumed shape that deleted four error classes and the pnpm
- * version helpers.
- *
- * **A leading range operator is still stripped, deliberately, and only for
- * `devEngines`.** A range is illegal in a corepack pin — the pin grammar
- * rejects it, and so does corepack — but `devEngines.packageManager.version` is
- * specified to accept one, and repos write `^11.0.0` there. Handing that
- * straight to the pin grammar would report "no reference" and silently stop
- * upgrading a manager the repo plainly declares. The operator is dropped rather
- * than resolved because the reference is only ever used as the anchor a target
- * range is synthesized from.
+ * The strict pin grammar, not the range-tolerant one: this field is written
+ * exact, and a range here has never been a reference. The predecessor of the
+ * pin grammar was a prefix regex that made `pnpm@11.12.0garbage` a reference;
+ * the grammar rejects it.
  */
-const referenceVersion = (raw: string, pm: SupportedPm, bare = false): string | null => {
-	const trimmed = raw.trim();
-	if (trimmed === "") return null;
-
-	const spec = bare ? `${pm}@${trimmed.replace(/^[\^~]/, "")}` : trimmed;
-	const parsed = PackageManagerPin.parseResult(spec);
+const readPackageManagerField = (raw: string, pm: SupportedPm): PackageManagerFieldRead | null => {
+	const parsed = PackageManagerPin.parseResult(raw.trim());
 	if (Result.isFailure(parsed)) return null;
-	// A pin naming another manager is not this run's reference. The pin grammar
-	// admits all four kit-supported names, so the check is here rather than
-	// implied by parsing.
+	// The pin grammar admits all four kit-supported names, so the check is here
+	// rather than implied by parsing.
 	if (parsed.success.name !== pm) return null;
-
-	return parsed.success.version.toString();
+	return { version: parsed.success.version.toString(), hasIntegrity: parsed.success.integrity !== undefined };
 };
+
+/**
+ * Read `devEngines.packageManager` through `@effected/package-json`'s
+ * `PackageManagerRange.fromDevEngineResult`, which owns the
+ * `<range>[+<integrity>]` grammar and hands back `range` — the value with its
+ * operator kept and any integrity dropped.
+ *
+ * The one thing the kit model does not answer is "which single version does
+ * this range anchor on, under which operator" — it carries the range
+ * verbatim. So the reference is taken only from a range that is a lone `^` or
+ * `~` over an exact version (or an exact version alone): that version anchors
+ * the synthesized `^<reference>` target, and the operator is re-emitted over
+ * the resolved version on write, as `pnpm self-update` does. Any other range
+ * (`>=11 <12`) names no single version, is not a reference, and is left alone.
+ */
+const readDevEnginesField = (
+	entry: { readonly name?: unknown; readonly version?: unknown; readonly onFail?: unknown },
+	pm: SupportedPm,
+): DevEnginesFieldRead | null => {
+	if (entry.name !== pm || typeof entry.version !== "string") return null;
+	const parsed = PackageManagerRange.fromDevEngineResult(new DevEngine({ name: pm, version: entry.version.trim() }));
+	if (Result.isFailure(parsed)) return null;
+
+	const range = parsed.success.range;
+	const operator = range.startsWith("^") || range.startsWith("~") ? range[0] : "";
+	const version = PackageManagerPin.parseResult(`${pm}@${range.slice(operator.length)}`);
+	if (Result.isFailure(version)) return null;
+
+	return { version: version.success.version.toString(), hasIntegrity: parsed.success.hasIntegrity, operator };
+};
+
+/**
+ * The registry integrity for `pm@version` in corepack form, or `null` when there
+ * is none to carry — bun (a different artifact), a failed or empty registry
+ * read, or an SRI string `CorepackIntegrityHash.fromSri` refuses (wrong length,
+ * weaker than sha512). `fromSri` is stricter than the converter this module
+ * once hand-rolled, which minted a well-formed-looking digest from a
+ * wrong-length one; handing that to the installer would fail verification
+ * against the real tarball.
+ */
+const activationIntegrity = (
+	registry: NpmRegistryShape,
+	pm: SupportedPm,
+	version: string,
+): Effect.Effect<IntegrityHashBrand | null> =>
+	Effect.gen(function* () {
+		if (!REGISTRY_TARBALL_VERIFIED.has(pm)) return null;
+		const sri = yield* registry.version(pm, version).pipe(
+			Effect.map((info) => (Option.isSome(info) ? (info.value.integrity ?? "") : "")),
+			Effect.catch(() => Effect.succeed("")),
+		);
+		const hash = yield* CorepackIntegrityHash.fromSri(sri).pipe(Effect.catch(() => Effect.succeed(null)));
+		if (hash === null) {
+			yield* Effect.logWarning(
+				`Could not derive an integrity for ${pm}@${version}; activation will install it without verification`,
+			);
+		}
+		return hash;
+	});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Implementation
@@ -239,10 +322,10 @@ const referenceVersion = (raw: string, pm: SupportedPm, bare = false): string | 
  * semver range string (may cross majors; adds a packageManager field when no
  * field for `pm` exists).
  *
- * The resolved version is written directly into `packageManager` and
- * `devEngines.packageManager.version`. `corepack use` is NOT invoked — for
- * corepack-managed pms, the subsequent `pnpm install` (or npm equivalent)
- * activates the new version via corepack reading the updated fields.
+ * The resolved version is written bare into `packageManager` and
+ * `devEngines.packageManager.version` (operator kept on the latter). Nothing
+ * here activates it — `steps/activate-package-manager` does, from the outcome's
+ * `pin` and `integrity`.
  */
 const upgradePackageManagerImpl = (
 	registry: NpmRegistryShape,
@@ -276,14 +359,29 @@ const upgradePackageManagerImpl = (
 
 		// Detect package-manager version fields, ignoring any that name a
 		// different package manager than `pm`.
-		const packageManagerRaw = typeof packageJson.packageManager === "string" ? packageJson.packageManager : null;
-		const pmVersion = packageManagerRaw ? referenceVersion(packageManagerRaw, pm) : null;
+		const pmField =
+			typeof packageJson.packageManager === "string" ? readPackageManagerField(packageJson.packageManager, pm) : null;
+		const pmVersion = pmField?.version ?? null;
 
-		const devEngines = packageJson.devEngines as { packageManager?: { name?: string; version?: string } } | undefined;
-		const devEnginesPm = devEngines?.packageManager;
-		const devEnginesVersionRaw =
-			devEnginesPm?.name === pm && typeof devEnginesPm.version === "string" ? devEnginesPm.version : null;
-		const deVersion = devEnginesVersionRaw ? referenceVersion(devEnginesVersionRaw, pm, true) : null;
+		const devEnginesPm = (packageJson.devEngines as { packageManager?: unknown } | undefined)?.packageManager;
+		const deField =
+			devEnginesPm !== null && typeof devEnginesPm === "object" && !Array.isArray(devEnginesPm)
+				? readDevEnginesField(devEnginesPm as { name?: unknown; version?: unknown }, pm)
+				: null;
+		const deVersion = deField?.version ?? null;
+
+		// Surgical field edits applied through `PackageJsonFile.modify`, which
+		// rewrites only the edited spans and leaves key order, indentation and
+		// line endings exactly as the consumer had them. This manifest is committed
+		// to someone else's repository, so a whole-file re-serialize would make the
+		// diff unreviewable.
+		const writeFields = (edits: ReadonlyArray<{ readonly path: ReadonlyArray<string>; readonly value: string }>) =>
+			packageJsonFile
+				.modify(
+					packageJsonPath,
+					edits.map((e) => ({ path: [...e.path], value: e.value })),
+				)
+				.pipe(Effect.mapError((e) => fsWriteError(packageJsonPath, e)));
 
 		// Reference version favors devEngines, then packageManager.
 		const reference = deVersion ?? pmVersion ?? null;
@@ -334,52 +432,40 @@ const upgradePackageManagerImpl = (
 		if (reference !== null && resolved === reference) {
 			const reason = `${pm} ${reference} already satisfies "${targetRange}"`;
 			yield* Effect.logInfo(`${pm} ${reference} is already the latest for "${targetRange}"`);
-			return skip(pm, reference, referenceSource, targetRange, "already-current", reason);
-		}
 
-		// Derive the corepack-canonical packageManager hash from the npm registry
-		// integrity for the resolved version — corepack-managed pms only. bun is
-		// not corepack-managed and never reads this field, so a hash there is
-		// noise and the integrity fetch would be a wasted registry round-trip.
-		const isCorepackManaged = COREPACK_MANAGED.has(pm);
-		let hash: string | null = null;
-		if (isCorepackManaged) {
-			const integrity = yield* registry.version(pm, resolved).pipe(
-				Effect.map((info) => (Option.isSome(info) ? (info.value.integrity ?? "") : "")),
-				Effect.catch(() => Effect.succeed("")),
-			);
-			// `CorepackIntegrityHash.fromSri`, not a local converter. The SRI →
-			// corepack conversion this module used to hand-roll is the kit's now
-			// (issue #290; effected#281 cites this repo as the consumer evidence),
-			// and the kit is STRICTER in the direction that matters: the local
-			// version base64-decoded whatever followed `sha512-` and emitted the
-			// hex, so non-canonical base64 or a wrong-length digest became a pin
-			// that looked well-formed and that corepack rejects at install time, in
-			// the consumer's repository, after this action has reported success.
-			// Those now fail typed here and degrade to the bare-version write that
-			// an absent integrity already took.
-			hash = yield* CorepackIntegrityHash.fromSri(integrity).pipe(Effect.catch(() => Effect.succeed(null)));
-			if (hash === null) {
-				yield* Effect.logWarning(`Could not derive integrity hash for ${pm}@${resolved}; writing version without hash`);
+			// Normalize without upgrading: strip an inline integrity from each field
+			// against that field's OWN version — a lagging `packageManager` is not
+			// moved here, only reformatted. No suffix anywhere means no write at all.
+			const normalized: PackageManagerField[] = [];
+			const edits: Array<{ readonly path: ReadonlyArray<string>; readonly value: string }> = [];
+			if (pmField?.hasIntegrity) {
+				normalized.push("packageManager");
+				edits.push({ path: ["packageManager"], value: `${pm}@${pmField.version}` });
 			}
-		}
-		const pinnedSuffix = isCorepackManaged && hash !== null ? `+${hash}` : "";
-		const packageManagerSpec = `${pm}@${resolved}${pinnedSuffix}`;
-		const devEnginesSpec = `${resolved}${pinnedSuffix}`;
+			if (deField?.hasIntegrity) {
+				normalized.push("devEngines");
+				edits.push({
+					path: ["devEngines", "packageManager", "version"],
+					value: `${deField.operator}${deField.version}`,
+				});
+			}
+			if (edits.length > 0) yield* writeFields(edits);
 
-		// Write fields directly. Write packageManager when one exists for `pm`, or
-		// (range mode only — auto returns early on a null reference) when NO
-		// field for `pm` exists at all, creating it.
+			return skip(pm, reference, referenceSource, targetRange, "already-current", reason, normalized);
+		}
+
+		// Fetched for activation only; never written.
+		const integrity = yield* activationIntegrity(registry, pm, resolved);
+		const packageManagerSpec = `${pm}@${resolved}`;
+
+		// Write packageManager when one exists for `pm`, or (range mode only —
+		// auto returns early on a null reference) when NO field for `pm` exists at
+		// all, creating it.
 		const hasPackageManager = pmVersion !== null;
-		const hasDevEngines = deVersion !== null;
+		const hasDevEngines = deField !== null;
 		const shouldWritePackageManager = hasPackageManager || (!hasPackageManager && !hasDevEngines);
 
-		// Collected as surgical field edits rather than applied to the parsed tree:
-		// the write goes through `PackageJsonFile.modify`, which rewrites only the
-		// edited spans and leaves key order, indentation and line endings exactly as
-		// the consumer had them. This manifest is committed to someone else's
-		// repository, so a whole-file re-serialize would make the diff unreviewable.
-		const edits: Array<{ readonly path: ReadonlyArray<string | number>; readonly value: unknown }> = [];
+		const edits: Array<{ readonly path: ReadonlyArray<string>; readonly value: string }> = [];
 
 		let packageManagerUpdated = false;
 		let added = false;
@@ -390,17 +476,12 @@ const upgradePackageManagerImpl = (
 		}
 
 		let devEnginesUpdated = false;
-		if (hasDevEngines) {
-			edits.push({ path: ["devEngines", "packageManager", "version"], value: devEnginesSpec });
+		if (deField !== null) {
+			edits.push({ path: ["devEngines", "packageManager", "version"], value: `${deField.operator}${resolved}` });
 			devEnginesUpdated = true;
 		}
 
-		yield* packageJsonFile
-			.modify(
-				packageJsonPath,
-				edits.map((e) => ({ path: [...e.path], value: e.value })),
-			)
-			.pipe(Effect.mapError((e) => fsWriteError(packageJsonPath, e)));
+		yield* writeFields(edits);
 
 		yield* Effect.logInfo(`Updated ${pm}: ${reference ?? "added"} -> ${resolved}`);
 		return {
@@ -412,6 +493,7 @@ const upgradePackageManagerImpl = (
 			from: reference,
 			to: resolved,
 			pin: packageManagerSpec,
+			integrity,
 			packageManagerUpdated,
 			devEnginesUpdated,
 			added,

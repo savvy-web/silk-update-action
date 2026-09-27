@@ -73,7 +73,7 @@ Values are validated as they are read. An input whose value cannot be parsed —
 | `dependencies` | No | `""` | Workspace dependencies to update across `dependencies`, `devDependencies`, and `optionalDependencies` (one per line, supports globs) |
 | `peer-lock` | No | `""` | Peer ranges that sync on every version bump (one per line) |
 | `peer-minor` | No | `""` | Peer ranges that sync on minor+ bumps only (one per line) |
-| `upgrade-package-manager` | No | `false` | Upgrade the detected package manager (pnpm, bun or npm) — hash-pinned for the corepack-managed ones (pnpm, npm), bare for bun: `false`, `true`/`auto`, or a semver range (e.g. `^11`) for the detected manager |
+| `upgrade-package-manager` | No | `false` | Upgrade the detected package manager (pnpm, bun or npm), written as a bare version with no integrity suffix: `false`, `true`/`auto`, or a semver range (e.g. `^11`) for the detected manager |
 | `upgrade-runtime-node` | No | `false` | Upgrade the Node.js entry in `devEngines.runtime` (never adds a missing entry; always writes an exact version): `false`, `auto`, or a semver range (e.g. `^22`) |
 | `upgrade-runtime-deno` | No | `false` | Upgrade the Deno entry in `devEngines.runtime` (never adds a missing entry; always writes an exact version): `false`, `auto`, or a semver range (e.g. `^2`) |
 | `upgrade-runtime-bun` | No | `false` | Upgrade the Bun entry in `devEngines.runtime` (never adds a missing entry; always writes an exact version): `false`, `auto`, or a semver range (e.g. `^1`) |

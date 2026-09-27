@@ -74,8 +74,8 @@ The main phase reads the token the pre phase provisioned and runs the dependency
 - Applies to the package manager detected for the workspace — pnpm, bun or npm — not to pnpm specifically
 - Detects the current version from `devEngines.packageManager` in `package.json`, falling back to the `packageManager` field
 - Checks for the latest available version of that manager within range. An explicit range typed for a different manager satisfies nothing and is skipped with a warning naming the mismatch
-- Updates the `packageManager` and `devEngines` fields when a newer version is available, hash-pinned for the corepack-managed managers (pnpm, npm) and bare for bun
-- Records the version change for the PR summary and commit message; it does not create a changeset, but it does trigger the lockfile regeneration step, whose install performs the corepack switch to the new version
+- Updates the `packageManager` and `devEngines` fields when a newer version is available, written as a bare version (a `devEngines` range operator is kept), and strips any existing `+<integrity>` suffix even when the version is already current
+- Records the version change for the PR summary and commit message; it does not create a changeset, but it does trigger the lockfile regeneration step, whose install runs under the newly provisioned version
 
 ### Upgrade runtimes
 
@@ -124,7 +124,7 @@ The main phase reads the token the pre phase provisioned and runs the dependency
   - **npm** — `package-lock.json` is unlinked through Node rather than a shelled `rm` (which does not exist on a Windows runner), then `npm install` re-resolves. npm has no clean-and-resolve mode of its own: `npm ci` requires the lockfile to already be correct
 - The lockfile is regenerated rather than repaired because the action mutates all three inputs to resolution — the package manager version, its config, and the declared ranges — and a repair-only install never re-runs resolution under the changed inputs, so it can commit an inconsistent lockfile
 - Advancing transitive versions within their declared ranges is expected, so a larger lockfile diff is intentional rather than noise
-- When a corepack-managed package manager (pnpm, npm) was upgraded, this install also performs the corepack switch to the new version
+- When the package manager was upgraded, this install runs under the new version, which the activation step provisioned (verifying the pnpm or npm tarball against the registry integrity) and put ahead on `PATH`
 
 ### Format pnpm-workspace.yaml
 

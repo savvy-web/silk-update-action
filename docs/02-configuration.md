@@ -180,18 +180,33 @@ The upgrade is opt-in, matching the `upgrade-runtime-*` inputs: leaving this inp
 
 The current version is read from either field as a package-manager pin. A `devEngines.packageManager.version` carrying a range (`^11.0.0`) is accepted and still anchors an `auto` upgrade, because the reference is only ever the anchor a target range is synthesized from. A value that is not a parseable pin — a truncated version, a trailing typo — is reported as no reference found, rather than being read as a version that then satisfies nothing.
 
-pnpm and npm are managed by corepack, so their resolved version is written
-hash-pinned (`pnpm@11.0.0+sha512.<hex>`). corepack does not manage bun, so bun is
-written as a bare version.
+The resolved version is written bare, in the format pnpm itself writes:
+`packageManager` becomes `pnpm@11.0.0`, and `devEngines.packageManager.version`
+becomes the bare version with any range operator you wrote kept (`^11.0.0`
+becomes `^11.1.0`, as `pnpm self-update` does). The same applies to npm and bun.
 
-The hash comes from the registry's integrity metadata and is checked before it is written. When the registry supplies no integrity, or one that does not decode to a well-formed SHA-512 digest, the action writes the bare version with a warning instead of a pin that corepack would reject at install time in your repository.
+No `+<integrity>` suffix is written. pnpm does not verify a `devEngines` hash
+and drops both suffixes on its own next write, and corepack is no longer on the
+runners; the lockfile is where pnpm records package-manager integrity, and the
+lockfile regeneration step refreshes it. An existing suffix is stripped whenever
+the action touches these fields, including when the manager is already current,
+so the field converges on one format. That normalization is logged, not
+reported as an upgrade, and it can produce a pull request with no dependency
+updates the first time it runs against a repository that still carries a
+suffix.
+
+The registry's integrity for the new version is still used: before the install
+runs, the action provisions the new pnpm or npm version and verifies the
+downloaded tarball against it. When the registry supplies no integrity, or one
+that does not decode to a well-formed SHA-512 digest, the download is installed
+unverified with a warning.
 
 An explicit range is resolved against the **detected** package manager's release
 list. A range typed for a different manager (a pnpm-shaped `^11` in a bun repo)
 satisfies nothing and is skipped with a warning naming the mismatch.
 
-A package-manager bump also triggers the lockfile regeneration step, whose install
-performs the corepack switch to the new version (pnpm, npm).
+A package-manager bump also triggers the lockfile regeneration step, which runs
+under the newly provisioned version.
 
 ```yaml
 upgrade-package-manager: auto # Latest within the current major

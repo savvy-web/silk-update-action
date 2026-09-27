@@ -1,3 +1,4 @@
+import type { IntegrityHashBrand } from "@effected/npm";
 import { Effect, Layer, Logger, References } from "effect";
 import { describe, expect, it } from "vitest";
 import { FileSystemError } from "../../../src/errors/errors.js";
@@ -68,6 +69,7 @@ const skipped = (kind: "disabled" | "no-reference" | "unsatisfiable" | "already-
 		targetRange: "^11.0.0",
 		kind,
 		reason,
+		normalized: [],
 	}) as PackageManagerUpgradeOutcome;
 
 describe("upgradePackageManagerStep", () => {
@@ -104,7 +106,8 @@ describe("upgradePackageManagerStep", () => {
 			targetRange: "^11.0.0",
 			from: "11.0.0",
 			to: "11.20.0",
-			pin: "pnpm@11.20.0+sha512.abc",
+			pin: "pnpm@11.20.0",
+			integrity: "sha512.abc" as IntegrityHashBrand,
 			packageManagerUpdated: true,
 			devEnginesUpdated: true,
 			added: false,
@@ -114,15 +117,42 @@ describe("upgradePackageManagerStep", () => {
 			{ dependency: "pnpm", from: "11.0.0", to: "11.20.0", type: "packageManager", package: null },
 		]);
 		expect(result.skipReason).toBeNull();
-		// The pin is what the activation step hands the installer: the hashed
-		// spec the manifest now carries, not the bare version.
-		expect(result.pin).toBe("pnpm@11.20.0+sha512.abc");
+		// The pin is the bare spec the manifest now carries; the integrity rides
+		// beside it, in memory, for the activation step to verify against.
+		expect(result.pin).toBe("pnpm@11.20.0");
+		expect(result.integrity).toBe("sha512.abc");
 	});
 
 	it("reports no pin when nothing was written", async () => {
 		const { result } = await runStep("auto", skipped("already-current", "up to date"));
 
 		expect(result.pin).toBeNull();
+		expect(result.integrity).toBeNull();
+	});
+
+	it("logs a normalization at INFO without turning it into an update or a pin", async () => {
+		const { result, logs } = await runStep("auto", {
+			...skipped("already-current", "pnpm 11.0.0 already satisfies"),
+			normalized: ["packageManager", "devEngines"],
+		} as PackageManagerUpgradeOutcome);
+
+		expect(result.updates).toEqual([]);
+		expect(result.pin).toBeNull();
+		expect(logs.some((l) => l.level === "Warn")).toBe(false);
+		expect(
+			logs.some(
+				(l) =>
+					l.message.includes("normalized") &&
+					l.message.includes("packageManager") &&
+					l.message.includes("devEngines.packageManager.version"),
+			),
+		).toBe(true);
+	});
+
+	it("logs no normalization line when nothing was stripped", async () => {
+		const { logs } = await runStep("auto", skipped("already-current", "up to date"));
+
+		expect(logs.some((l) => l.message.includes("normalized"))).toBe(false);
 	});
 
 	it("WARNS on unsatisfiable — the acceptance signal", async () => {

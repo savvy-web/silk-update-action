@@ -102,8 +102,8 @@ This also catches workflows written against an earlier version, where `upgrade-p
 **Solutions**:
 
 - Check that the field names the manager the run detected; the "Run context" block at the top of the log states which one that is
-- Fix a malformed `packageManager` pin so it reads `<manager>@<version>` with an optional `+sha512.<hex>` tail
-- A range in `devEngines.packageManager.version` such as `^11.0.0` is fine and anchors the upgrade; a range in `packageManager` is not, because corepack rejects one there
+- Fix a malformed `packageManager` pin so it reads `<manager>@<version>`; an old `+sha512.<hex>` tail is still read, and the action strips it
+- A range in `devEngines.packageManager.version` such as `^11.0.0` is fine and anchors the upgrade; a range in `packageManager` is not, because the action reads that field as an exact pin
 - Pass an explicit semver range instead of `auto` to upgrade a workspace that declares no reference at all
 
 ### Changes exist but action reports none
