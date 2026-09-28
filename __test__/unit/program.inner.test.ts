@@ -45,6 +45,7 @@ import {
 import { PackageJsonFile } from "@effected/package-json";
 import type { WorkspacePackage } from "@effected/workspaces";
 import {
+	CatalogSet,
 	NoPeerDependencyRules,
 	PackageManagerDetector,
 	WorkspaceCatalogs,
@@ -316,6 +317,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
 	// rather than by an `unverified` short-circuit.
 	const catalogs = WorkspaceCatalogs.layerTest({
 		peerDependencyRules: () => Effect.succeed(NoPeerDependencyRules),
+		set: () => Effect.succeed(CatalogSet.empty()),
 	});
 
 	const layer = Layer.mergeAll(

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { DEFAULT_REGISTRY, NpmRegistry, PackageTarball, RegistryReadError } from "@effected/npm";
 import { Effect, Layer, References } from "effect";
-import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fetchModuleCatalogs } from "../../src/services/module-catalogs.js";
 import { seededRegistry } from "../utils/fixtures.js";

@@ -8,8 +8,8 @@ tags:
   - ci
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: 5018ee1c2ca60eeae6eb59719d722ff1a609b8ebea4b69685f465a53557b3630
+  at: 2026-09-28T21:24:50Z
+  body_sha256: 156782d5a69e7a84822da0fd5145a49cf24267831bf7d0760fcce654f35510ce
 sources:
   - id: peers-util
     resource: ../../src/utils/peers.ts
@@ -21,6 +21,16 @@ sources:
     resource: ../../src/schema/inputs.ts
   - id: pnpm-lock
     resource: ../../pnpm-lock.yaml
+  - id: peer-check-test
+    resource: ../../__test__/unit/steps/peer-check.test.ts
+  - id: workspaces-types
+    resource: npm:@effected/workspaces
+    title: PeerCheckOptions and UnverifiedReason declarations (index.d.ts)
+  - id: effected-peer-wave
+    resource: "https://github.com/spencerbeggs/effected/pull/811"
+    title: effected peer-wave round-2 handoff
+    author: effected/claude-code
+    last_modified: 2026-09-27T00:00:00Z
 ---
 
 # The peer-dependency auto-merge gate fails closed
@@ -82,6 +92,42 @@ that had never enabled it — a decision reported as taken that was never
 available to take. Peers are still reported in that case; only the gate
 itself is inapplicable.
 
+The step supplies `PeerCheck.run` with three keys, not one:
+`peerDependencyRules` (from `WorkspaceCatalogs.peerDependencyRules()`),
+`catalogs` (from `WorkspaceCatalogs.set()`, read after the same `refresh()`),
+and `workspacePackages` (from `WorkspaceDiscovery.listPackages()`, read after
+`discovery.refresh()`).[^peer-check-step] All three follow the kit's
+presence-is-the-assertion rule: from `@effected/workspaces` 0.29 on, a
+`link:` target the caller did not supply in `workspacePackages` keeps the
+report's `unresolvedEdge` marker, and a joined member's `catalog:` peer range
+with no `catalogs` to resolve it yields `peerRangeUnresolved`.[^workspaces-types]
+Each lookup that fails is **omitted** from the options, never replaced with an
+empty stand-in — an empty member list or empty catalog set would assert "I
+looked, there is nothing to join", which is the same unfounded claim an empty
+rule set would make. The omission lands on the fail-closed path because the
+kit then marks the report. `discovery.refresh()` comes first because
+`WorkspaceDiscovery` memoizes per layer and is primed before this run
+rewrites manifests, so an unrefreshed list would join the after-install
+lockfile against before-install manifests — the stale-snapshot mechanism
+`DepsRegen` hit with the same service. Three unit tests pin this: a
+discovery double whose `listPackages()` fails still withholds with
+`unresolvedEdge`; a double whose `listPackages()` fails until `refresh()` has
+run still reaches `proven-clean` (so dropping or reordering the refresh turns
+it red); and a failed `catalogs.set()` still yields a verdict rather than
+failing the run.[^peer-check-test]
+
+Two `UnverifiedReason`s arrived with that kit line and reach the gate
+verbatim through `report.unverified`: `peerRangeUnresolved` (a joined
+member's `catalog:` or other protocol peer range could not be turned into a
+range) and `peerVersionUnresolved` (a peer's non-workspace provider resolves
+to a protocol-specifier version — a `file:` directory or tarball, a git or
+remote-tarball URL).[^workspaces-types] The kit marks the second rather than
+judging it because pnpm 11 and pnpm 12 write byte-identical lockfiles for a
+`file:` provider and disagree on the verdict.[^effected-peer-wave]
+`decidePeerGate` needed no change for either: it withholds on any non-empty
+`unverified`, whatever the reason names, and the step's log line prints the
+reasons after `unverified:`.[^peers-util]
+
 The step calls `catalogs.refresh()` before reading `peerDependencyRules()`,
 so the after-install lockfile is judged under the after-install plugins'
 rules rather than a memoized pre-install assembly — see
@@ -106,6 +152,16 @@ for why that ordering is load-bearing on its own.
   rejected because it silently gates repositories that never enabled
   auto-merge, spawning the hook-replay subprocess for a check that could
   never have anything to withhold.
+- **Pass only `peerDependencyRules`.** This was the step's shape before the
+  `@effected/workspaces` 0.29/0.30 bump, and on that kit it withholds
+  auto-merge from every pnpm monorepo with internal dependencies on every
+  run: every `link:` edge to a member stays `unresolvedEdge`. Observed twice
+  on the new kit — the `publishDirectory` `link:` drift canary in
+  `__test__/unit/steps/peer-check.test.ts` went red with rules only, and a
+  probe over savvy-web/systems' real tree returned
+  `unverified: ["unresolvedEdge"]` with rules only against `[]` with all
+  three keys. A kit that recorded member peers in the lockfile itself would
+  reopen this; pnpm records none for workspace projects today.
 - **Read `peerDependencyRules` from `pnpm-workspace.yaml` only.** Rejected on
   measurement, not on suspicion: this repository declares no rules in that
   file and its effective rules are all injected by config-dependency
@@ -121,7 +177,9 @@ for why that ordering is load-bearing on its own.
   gate's effect.
 - A kit-side lockfile-parsing regression that turns a legitimate shape into
   `unresolvedEdge` (npm-alias dependencies, `publishDirectory` `link:` edges)
-  withholds auto-merge from a repository with zero real peer problems. See
+  withholds auto-merge from a repository with zero real peer problems, and so
+  does a kit bump that adds a new option key this step does not yet pass —
+  the `workspacePackages` case above. See
   [the peer-check coverage limitation](../limitations/peer-check-coverage.md)
   and the incident this produced live.
 - `peerDependencyRules` never appearing in a lockfile is a standing property
@@ -139,6 +197,10 @@ that genuinely needs to fail the whole job (rather than withhold auto-merge)
 would need its own check-run path, which does not exist today.
 
 [^peers-util]: `src/utils/peers.ts`
+[^peer-check-step]: `src/steps/peer-check.ts`
+[^peer-check-test]: `__test__/unit/steps/peer-check.test.ts`
+[^workspaces-types]: `npm:@effected/workspaces` (`PeerCheckOptions` and `UnverifiedReason` in `index.d.ts`; installed `0.30.1`)
+[^effected-peer-wave]: <https://github.com/spencerbeggs/effected/pull/811>
 [^peers-test]: `__test__/unit/utilities/peers.test.ts`
 [^inputs-schema]: `src/schema/inputs.ts`
 [^pnpm-lock]: `pnpm-lock.yaml` (`grep -c peerDependencyRules pnpm-lock.yaml` → `0`)

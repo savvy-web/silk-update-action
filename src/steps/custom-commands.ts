@@ -16,8 +16,8 @@
 
 import { Run } from "@effected/commands";
 import { Effect, Option } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
-import { ChildProcess } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
+import { ChildProcess } from "effect/process";
 import { spawnOptions } from "./install.js";
 
 /**

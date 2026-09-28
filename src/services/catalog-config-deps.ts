@@ -30,8 +30,8 @@ import type { PackageTarball } from "@effected/npm";
 import { NpmRegistry } from "@effected/npm";
 import { LockfileReader } from "@effected/workspaces";
 import { Context, Effect, Layer, Option } from "effect";
-import type { HttpClient } from "effect/unstable/http";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { HttpClient } from "effect/http";
+import type { ChildProcessSpawner } from "effect/process";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { CatalogDelta, DependencyUpdateResult } from "../schema/domain.js";

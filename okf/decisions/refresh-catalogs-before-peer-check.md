@@ -7,8 +7,8 @@ tags:
   - deps
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: ed52773d3d639f7b13630adbca856aaf455161fa00a47f0a3a8ce6a52b935f8a
+  at: 2026-09-28T21:24:50Z
+  body_sha256: 77a804ca23da491c19c8cbd0b51659da954e7e3f1bc42d5fb33ccc9f96d5ab37
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -72,9 +72,18 @@ always-succeeding double would pass against either ordering and prove
 nothing — the double has to model the staleness being fixed, not just supply
 a plausible value.
 
-`@effected/workspaces` is pinned at `^0.18.0` in this repository's
-`package.json`, which is required for `refresh()` to exist as a
-method.[^package-json]
+`refresh()` exists on `WorkspaceCatalogs` from `@effected/workspaces`
+0.18.0; this repository's `package.json` declares the dependency as
+`catalog:effected`, so the range comes from the catalog, not from
+`package.json` itself.[^package-json]
+
+The same step now also reads `catalogs.set()` after that refresh, and
+refreshes a second memoized service — `WorkspaceDiscovery` — before listing
+workspace members for the `link:` join, for the same reason: discovery is
+primed before this run rewrites manifests.[^peer-check-step] That second
+refresh is a workspace re-read, not a hook replay; see
+[the peer gate fails closed](peer-gate-fails-closed.md) for why the members
+and catalogs are passed at all.
 
 ## Alternatives rejected
 
@@ -104,9 +113,9 @@ method.[^package-json]
   the refresh. This is the accepted cost of the fix, not an oversight.
 - A disabled `check-peers` run short-circuits before resolving
   `WorkspaceCatalogs` at all, so this cost is confined to runs that opted in.
-- The refresh is a hard dependency on `@effected/workspaces@^0.18.0` for the
-  method to exist; a downgrade below the version that introduced `refresh()`
-  would need this ordering rewritten or dropped.
+- The refresh is a hard dependency on `@effected/workspaces` 0.18.0 or later
+  for the method to exist; a downgrade below the version that introduced
+  `refresh()` would need this ordering rewritten or dropped.
 
 ## What would change the answer
 

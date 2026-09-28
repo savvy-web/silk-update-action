@@ -11,9 +11,15 @@
 
 import { readFileSync } from "node:fs";
 import { Lockfile } from "@effected/lockfiles";
-import { NoPeerDependencyRules, WorkspaceCatalogs } from "@effected/workspaces";
-import type { Layer } from "effect";
-import { Effect, References } from "effect";
+import {
+	CatalogSet,
+	NoPeerDependencyRules,
+	PublishConfig,
+	WorkspaceCatalogs,
+	WorkspaceDiscovery,
+	WorkspacePackage,
+} from "@effected/workspaces";
+import { Effect, Layer, References } from "effect";
 import { describe, expect, it } from "vitest";
 import { peerCheckStep } from "../../../src/steps/peer-check.js";
 
@@ -43,21 +49,50 @@ const publishDirLockfile = parseFixture("pnpm-lock.publish-dir-link.yaml");
 /** A catalogs double that answers with rules; unstubbed members die naming themselves. */
 const withRules = WorkspaceCatalogs.layerTest({
 	peerDependencyRules: () => Effect.succeed(NoPeerDependencyRules),
+	set: () => Effect.succeed(CatalogSet.empty()),
 });
 
 /** The degradation path: the rules lookup itself fails. */
 const rulesFail = WorkspaceCatalogs.layerTest({
 	peerDependencyRules: () => Effect.fail({ _tag: "CatalogAssemblyError", source: "hooks" } as never),
+	set: () => Effect.fail({ _tag: "CatalogAssemblyError", source: "hooks" } as never),
+});
+
+const member = (relativePath: string, fields: Partial<ConstructorParameters<typeof WorkspacePackage>[0]> = {}) =>
+	new WorkspacePackage({
+		name: relativePath === "" ? "root" : relativePath.replace("packages/", ""),
+		path: relativePath === "" ? "/ws" : `/ws/${relativePath}`,
+		packageJsonPath: relativePath === "" ? "/ws/package.json" : `/ws/${relativePath}/package.json`,
+		relativePath,
+		workspaceRoot: "/ws",
+		...fields,
+	});
+
+/** The publish-dir fixture's members, as discovery reports them. */
+const publishDirMembers = [
+	member(""),
+	member("packages/app", { dependencies: { react: "workspace:*", "react-dom": "18.2.0" } }),
+	member("packages/react", {
+		version: "18.2.0",
+		publishConfig: new PublishConfig({ directory: "dist/pkg" }),
+	}),
+];
+
+/** A discovery double for repos with no linked members. */
+const noMembers = WorkspaceDiscovery.layerTest({
+	refresh: () => Effect.void,
+	listPackages: () => Effect.succeed([]),
 });
 
 const run = (
 	mode: Parameters<typeof peerCheckStep>[0],
 	lf: typeof lockfile | null,
 	layer: Layer.Layer<WorkspaceCatalogs>,
+	discovery: Layer.Layer<WorkspaceDiscovery> = noMembers,
 ) =>
 	Effect.runPromise(
 		peerCheckStep(mode, lf, "/ws", true).pipe(
-			Effect.provide(layer),
+			Effect.provide(Layer.merge(layer, discovery)),
 			Effect.provideService(References.MinimumLogLevel, "None"),
 		),
 	);
@@ -127,7 +162,11 @@ describe("peerCheckStep", () => {
 	});
 
 	it("does not withhold on a publishDirectory link: peer edge (kit drift canary)", async () => {
-		const result = await run("no-auto-merge", publishDirLockfile, withRules);
+		const discovery = WorkspaceDiscovery.layerTest({
+			refresh: () => Effect.void,
+			listPackages: () => Effect.succeed(publishDirMembers),
+		});
+		const result = await run("no-auto-merge", publishDirLockfile, withRules, discovery);
 		expect(result.unverifiedReasons).not.toContain("unresolvedEdge");
 		expect(result.decision.withhold).toBe(false);
 		expect(result.decision.reason).toBe("proven-clean");
@@ -152,9 +191,56 @@ describe("peerCheckStep", () => {
 				state.refreshed
 					? Effect.succeed(NoPeerDependencyRules)
 					: Effect.fail({ _tag: "CatalogAssemblyError", source: "stale-memo" } as never),
+			set: () => Effect.succeed(CatalogSet.empty()),
 		});
 		const result = await run("no-auto-merge", aliasLockfile, staleUntilRefreshed);
 		expect(state.refreshed).toBe(true);
+		expect(result.decision.reason).toBe("proven-clean");
+	});
+
+	// A link: target is only judged once it is joined to its workspace member.
+	// Without the members, @effected/workspaces >= 0.29 fails closed on every
+	// link -- which, left unpassed, withheld auto-merge from every pnpm monorepo
+	// with internal dependencies. A lookup that fails must keep that posture
+	// and must not fail the run.
+	it("fails closed when workspace discovery errors", async () => {
+		const discoveryFails = WorkspaceDiscovery.layerTest({
+			refresh: () => Effect.void,
+			listPackages: () => Effect.fail({ _tag: "WorkspaceRootNotFoundError" } as never),
+		});
+		const result = await run("no-auto-merge", publishDirLockfile, withRules, discoveryFails);
+		expect(result.decision.withhold).toBe(true);
+		expect(result.unverifiedReasons).toContain("unresolvedEdge");
+	});
+
+	// Discovery is memoized per layer and was primed before the run rewrote the
+	// manifests (the DepsRegen stale-cache mechanism). The join must read the
+	// AFTER manifests, so the double only answers once refresh() has run.
+	it("refreshes workspace discovery before listing members", async () => {
+		const state = { refreshed: false };
+		const staleUntilRefreshed = WorkspaceDiscovery.layerTest({
+			refresh: () =>
+				Effect.sync(() => {
+					state.refreshed = true;
+				}),
+			listPackages: () =>
+				state.refreshed
+					? Effect.succeed(publishDirMembers)
+					: Effect.fail({ _tag: "WorkspaceRootNotFoundError" } as never),
+		});
+		const result = await run("no-auto-merge", publishDirLockfile, withRules, staleUntilRefreshed);
+		expect(state.refreshed).toBe(true);
+		expect(result.decision.reason).toBe("proven-clean");
+	});
+
+	// The catalogs lookup degrades like the rules lookup: omitted, never an
+	// empty stand-in, and never a failed run.
+	it("still produces a verdict when the catalogs lookup errors", async () => {
+		const setFails = WorkspaceCatalogs.layerTest({
+			peerDependencyRules: () => Effect.succeed(NoPeerDependencyRules),
+			set: () => Effect.fail({ _tag: "CatalogAssemblyError", source: "hooks" } as never),
+		});
+		const result = await run("no-auto-merge", aliasLockfile, setFails);
 		expect(result.decision.reason).toBe("proven-clean");
 	});
 });
