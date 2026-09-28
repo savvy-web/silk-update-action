@@ -10,8 +10,8 @@ tags:
 resource: ../../src/steps/peer-check.ts
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: 66df656d0cbe27b516491bbeda6115a4d468d09cbc3dea85ab1a8d58dfd58d5b
+  at: 2026-09-28T21:24:50Z
+  body_sha256: d004427363adf4108f236113e622a63e62b56be8134d3a9ddfb29fb517c47cd1
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -47,9 +47,10 @@ dependency somewhere in the graph, and that the fix is to go looking for one.
 that is `proven-clean`, but both can produce **zero** required rows, and only
 the reason field says which happened.[^peer-check-step] An `unverified`
 report means the gate could not prove the graph clean — an unsupported
-lockfile format, an unresolved importer, or peer-suppression rules that could
-not be looked up — and it withholds auto-merge on principle, not because it
-found anything wrong. That is deliberate (see
+lockfile format, an unresolved importer, peer-suppression rules, workspace
+members or catalogs that could not be looked up, or a peer whose range or
+provider version is a protocol specifier the kit will not judge — and it
+withholds auto-merge on principle, not because it found anything wrong. That is deliberate (see
 [the peer gate fails closed](../decisions/peer-gate-fails-closed.md)), but it
 means "withheld" carries no information about whether a real peer problem
 exists until you read `unverifiedReasons`, which exists specifically because a
@@ -65,8 +66,15 @@ satisfied peer is recorded as a `link:` specifier — both landed in
 `0.6.1`, which flipped the peer-check step to `unverified` with reason
 `unresolvedEdge` and withheld auto-merge from a repository with zero real peer
 issues (observed in spencerbeggs/type-registry-effect#122[^type-registry-issue]).
-The fix shipped upstream at `@effected/lockfiles@0.6.2`; this repository
-currently installs `0.9.0`.[^lockfiles-package] See
+The fix shipped upstream at `@effected/lockfiles@0.6.2`; re-derive what this
+repository installs with the `node -p` command below rather than trusting a
+number written here.[^lockfiles-package] The same outward signal returned
+with `@effected/workspaces` 0.29, from a different mechanism: the kit began
+failing closed with `unresolvedEdge` on every `link:` target the caller did
+not join to a workspace member, so a step passing only `peerDependencyRules`
+withheld on every pnpm monorepo with internal dependencies. The step now
+supplies `workspacePackages` and `catalogs` as well; see
+[the peer gate fails closed](../decisions/peer-gate-fails-closed.md). See
 [peer check abstained on a clean repo](../incidents/peer-check-abstained-on-clean-repo.md)
 for the incident record.
 
@@ -75,13 +83,23 @@ for the incident record.
 - Read `unverifiedReasons` on the step's result, not just the withheld/passed
   verdict — `decision.reason === "unverified"` on its own tells you nothing
   about whether a peer problem exists.[^peer-check-step]
+- Match the reason to its cause before looking for a peer problem:
+  `peerRulesNotApplied` means the rules lookup failed, `unresolvedEdge` with
+  a "Workspace packages could not be listed" warning means the discovery
+  lookup failed, `peerRangeUnresolved` means a linked member's `catalog:`
+  peer range found no catalog (check for a "Workspace catalogs could not be
+  resolved" warning), and `peerVersionUnresolved` means some peer is
+  provided by `file:`, git, or a remote tarball — expected, and permanent,
+  while a `file:` override is live.[^peer-check-step]
 - Two drift canaries pin both fixture shapes as `proven-clean`
   (`__test__/unit/steps/peer-check.test.ts`, over
   `fixtures/pnpm-lock.alias.yaml` and
   `fixtures/pnpm-lock.publish-dir-link.yaml`), so a future
   `@effected/lockfiles` regression that reintroduces either
   `unresolvedEdges` shape fails this suite rather than silently withholding
-  auto-merge in a consumer's repository again.[^peer-check-test]
+  auto-merge in a consumer's repository again. The `publishDirectory` canary
+  only passes with discovery supplying the linked member, so it also goes
+  red if the step stops passing `workspacePackages`.[^peer-check-test]
 - Before assuming a real peer problem, check `node -p
   "require('./node_modules/@effected/lockfiles/package.json').version"`
   against the fixed release — an `unverified` report on a lockfile shape this

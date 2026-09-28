@@ -23,11 +23,20 @@
  * supplying `NoPeerDependencyRules` is an assertion ("I looked, there are
  * none"), not a default.
  *
+ * **The same holds for the workspace join.** A `link:` edge to a workspace
+ * member is judged only once `workspacePackages` joins it to that member's
+ * manifest; without them every such edge is `unresolvedEdge`, which withheld
+ * auto-merge from every pnpm monorepo with internal dependencies. `catalogs`
+ * resolves a member's `catalog:` peer ranges, else `peerRangeUnresolved`. Each
+ * lookup that fails omits its key -- PeerCheck then marks the report -- rather
+ * than supplying an empty stand-in that would assert there is nothing to join.
+ *
  * @module steps/peer-check
  */
 
 import type { Lockfile as LockfileModel } from "@effected/lockfiles";
-import { PeerCheck, WorkspaceCatalogs } from "@effected/workspaces";
+import type { PeerCheckOptions } from "@effected/workspaces";
+import { PeerCheck, WorkspaceCatalogs, WorkspaceDiscovery } from "@effected/workspaces";
 import { Effect } from "effect";
 import type { PeerIssue } from "../schema/domain.js";
 import type { CheckPeersMode } from "../schema/inputs.js";
@@ -73,7 +82,7 @@ export const peerCheckStep = (
 	lockfile: LockfileModel | null,
 	workspaceRoot: string,
 	autoMergeEnabled: boolean,
-): Effect.Effect<PeerCheckStepResult, never, WorkspaceCatalogs> =>
+): Effect.Effect<PeerCheckStepResult, never, WorkspaceCatalogs | WorkspaceDiscovery> =>
 	Effect.gen(function* () {
 		if (mode === "false") {
 			yield* Effect.logInfo("Step: peer check — SKIPPED: check-peers is false");
@@ -120,7 +129,39 @@ export const peerCheckStep = (
 				),
 			);
 
-		const report = rules === null ? PeerCheck.run(lockfile) : PeerCheck.run(lockfile, { peerDependencyRules: rules });
+		const catalogSet = yield* catalogs
+			.set()
+			.pipe(
+				Effect.catch((error) =>
+					Effect.logWarning(
+						`Workspace catalogs could not be resolved (${String(error)}); ` +
+							"catalog: peer ranges on workspace members will be reported as unresolved.",
+					).pipe(Effect.as(null)),
+				),
+			);
+
+		// Discovery is memoized for the layer's lifetime and was primed before
+		// this run rewrote the manifests, so refresh before joining link: edges
+		// against members -- the same stale-snapshot trap DepsRegen fell into.
+		const discovery = yield* WorkspaceDiscovery;
+		yield* discovery.refresh();
+		const members = yield* discovery
+			.listPackages()
+			.pipe(
+				Effect.catch((error) =>
+					Effect.logWarning(
+						`Workspace packages could not be listed (${String(error)}); ` +
+							"workspace link: edges cannot be verified and the report will not be treated as clean.",
+					).pipe(Effect.as(null)),
+				),
+			);
+
+		const options: PeerCheckOptions = {
+			...(rules === null ? {} : { peerDependencyRules: rules }),
+			...(catalogSet === null ? {} : { catalogs: catalogSet }),
+			...(members === null ? {} : { workspacePackages: members }),
+		};
+		const report = PeerCheck.run(lockfile, options);
 
 		const issues: ReadonlyArray<PeerIssue> = report.unsatisfied.map((u) => ({
 			importer: u.importer,

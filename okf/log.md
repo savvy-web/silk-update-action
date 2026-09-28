@@ -6,6 +6,8 @@
 * Added Write package-manager and config-dependency pins bare; the lockfile holds integrity
 * Updated config dependency
 * Updated npm 11 to 12 pin bump probe against the bundled kit
+* Updated Bump the @effected kit
+* Updated This repository's @effected ranges come from a config dependency, not package.json
 
 ## 2026-09-19
 
