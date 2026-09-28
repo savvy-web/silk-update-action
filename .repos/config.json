@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.0-rc.117",
+			"ref": "effect@4.0.0-rc.118",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the version of `effect` this repo installs — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effected/vitest reference implementation. Re-pin whenever the effect catalog moves, in the same commit as the bump. This purpose deliberately does NOT name the version: an inline version literal is a second source of truth that goes stale silently while `ref` is updated, which is exactly what happened at the beta.107 pin. Verify by comparing packages/effect/package.json at the pinned commit against node_modules, never by reading the tag name.",
 			"sparse": [
 				"packages/effect",

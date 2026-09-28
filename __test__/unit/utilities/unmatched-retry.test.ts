@@ -12,7 +12,7 @@
 
 import { CommandFailedError, CommandOutput } from "@effected/commands";
 import { PlatformError } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 import { describe, expect, it } from "vitest";
 import { isUnmatchedVersion, unmatchedDelayMinutes, unmatchedWaitSeconds } from "../../../src/utils/unmatched-retry.js";
 

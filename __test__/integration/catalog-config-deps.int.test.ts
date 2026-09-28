@@ -17,7 +17,7 @@ import { NodeServices } from "@effect/platform-node";
 import { PackageTarball } from "@effected/npm";
 import { LockfileReadError, LockfileReader } from "@effected/workspaces";
 import { Effect, Exit, Layer, Option, References } from "effect";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CatalogConfigDeps } from "../../src/services/catalog-config-deps.js";
 import { seededRegistry } from "../utils/fixtures.js";

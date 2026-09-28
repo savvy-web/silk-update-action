@@ -20,8 +20,8 @@ import type { CommandFailedError, CommandOutputError } from "@effected/commands"
 import { Run } from "@effected/commands";
 import { ChildEnv } from "@effected/github-actions";
 import { Effect, Option, Schedule } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
-import { ChildProcess } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
+import { ChildProcess } from "effect/process";
 import { INSTALL_LABEL } from "../format.js";
 import type { SupportedPm } from "../services/package-manager.js";
 import { isUnmatchedVersion, unmatchedDelayMinutes, unmatchedSchedule } from "../utils/unmatched-retry.js";

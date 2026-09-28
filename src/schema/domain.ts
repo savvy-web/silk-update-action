@@ -182,7 +182,7 @@ export type ChangesetFile = typeof ChangesetFile.Type;
  */
 export const PullRequestResult = Schema.Struct({
 	number: Schema.Int.check(Schema.isGreaterThan(0)),
-	url: Schema.String.check(Schema.isStartsWith("https://")),
+	url: Schema.String.check(Schema.isStartingWith("https://")),
 	created: Schema.Boolean,
 	nodeId: Schema.String,
 }).annotate({
