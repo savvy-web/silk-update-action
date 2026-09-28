@@ -1,5 +1,41 @@
 # silk-update-action
 
+## 4.14.2
+
+### Bug Fixes
+
+- The `check-peers` gate now works on pnpm monorepos with internal dependencies. With `@effected/workspaces` 0.29 and later, every `link:` dependency on a workspace package was reported as unverified, which would have withheld auto-merge on every run. The peer check now passes the workspace's packages and catalogs to the check, so linked packages' peer dependencies, including `catalog:` ranges, are verified the way `pnpm peers check` verifies them.
+- A peer satisfied by a `file:`, git or tarball dependency now withholds auto-merge, reported as `peerVersionUnresolved`, instead of being counted as satisfied. pnpm 11 and 12 disagree on whether such a peer is satisfied, so the gate no longer calls it clean.
+- If the workspace packages or catalogs cannot be read, the check still withholds auto-merge rather than treating the report as clean. [#500][#500]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effect/platform-node | dependency | updated | 4.0.0-rc.117 | 4.0.0-rc.118 |
+| @effected/commands | dependency | updated | ^0.9.0 | ^0.10.0 |
+| @effected/git | dependency | updated | ^0.17.0 | ^0.18.1 |
+| @effected/github | dependency | updated | ^0.13.0 | ^0.14.0 |
+| @effected/github-actions | dependency | updated | ^0.17.0 | ^0.18.1 |
+| @effected/lockfiles | dependency | updated | ^0.12.0 | ^0.14.0 |
+| @effected/npm | dependency | updated | ^0.17.0 | ^0.19.0 |
+| @effected/package-json | dependency | updated | ^0.18.0 | ^0.19.1 |
+| @effected/runtimes | dependency | updated | ^0.8.1 | ^0.9.0 |
+| @effected/schemastore | dependency | updated | ^0.15.2 | ^0.16.0 |
+| @effected/semver | dependency | updated | ^0.9.0 | ^0.10.1 |
+| @effected/workspaces | dependency | updated | ^0.28.0 | ^0.30.1 |
+| @effected/yaml | dependency | updated | ^0.17.0 | ^0.18.0 |
+| @savvy-web/silk-effects | dependency | updated | ^9.1.3 | ^9.2.2 |
+| effect | dependency | updated | 4.0.0-rc.117 | 4.0.0-rc.118 |
+
+[#500][#500]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#500]: https://github.com/savvy-web/silk-update-action/pull/500
+
 ## 4.14.1
 
 ### Dependencies
