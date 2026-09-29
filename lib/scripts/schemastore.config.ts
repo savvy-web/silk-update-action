@@ -31,6 +31,10 @@ import { RunResultDocument } from "../../src/schema/domain.js";
 import { OutputSchemaIdentity } from "../../src/schema/hosted.js";
 
 export default defineConfig({
+	// The config's identity: the base name of its catalog slice
+	// (`<catalogDir>/<name>.json`). No entry declares a `catalog` block, so no
+	// slice or merged `catalog.json` is written.
+	name: "silk-update-action",
 	// Relative paths resolve against this file's directory, not the repo root.
 	outputDir: "../../schemas",
 	schemas: {

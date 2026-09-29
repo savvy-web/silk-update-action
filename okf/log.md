@@ -1,5 +1,16 @@
 # Log
 
+## 2026-09-29
+
+* Updated Rebuild the result output's JSON Schema after editing RunResultDocument
+
+## 2026-09-28
+
+* Updated An abstained peer report reads exactly like a repo with real peer problems
+* Updated Refresh WorkspaceCatalogs before reading peer-suppression rules
+* Updated The peer gate covers less than "no peer problems" implies
+* Updated The peer-dependency auto-merge gate fails closed
+
 ## 2026-09-27
 
 * Updated A pnpm 11 to 12 upgrade committed a lockfile pnpm 12 refuses

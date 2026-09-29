@@ -8,8 +8,8 @@ tags:
 resource: ../../lib/scripts/schemastore.config.ts
 generated:
   by: okfit/claude-code
-  at: 2026-09-15T18:43:07Z
-  body_sha256: 05a8c7188c94a400809de968ec37f9c1f41dae7d1314b8687a4d6a077d7e5f54
+  at: 2026-09-29T02:56:11Z
+  body_sha256: 823b0219a80bda68a7e81d00863df5c335af1b33474082f6c8f18620daa9cb9d
 sources:
   - id: schemastore-config
     resource: ../../lib/scripts/schemastore.config.ts
@@ -32,6 +32,13 @@ path or version: it receives `OutputSchemaIdentity` from
 document carries (`SCHEMA_URL`) is that same identity's `$id`.[^hosted]
 `defineConfig` rejects an entry keyed differently from its identity's `name`,
 so the two cannot disagree.
+
+The config itself also carries a top-level `name` (`"silk-update-action"`),
+which `@effected/schemastore` 0.17.0 made required: it is the base name of
+the config's catalog slice, `<catalogDir>/<name>.json`, and a config without
+one fails to load at exit `2`. No entry here declares a `catalog` block, so
+no slice and no merged `schemas/catalog.json` is written; `catalogPath` no
+longer exists (it became `catalogDir`).[^schemastore-config]
 
 The label (`SCHEMA_VERSION`, currently `5.0`) is the action's **next major**,
 not its current version. Nothing is published to SchemaStore, so the label
