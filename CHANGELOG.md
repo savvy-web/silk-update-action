@@ -1,5 +1,22 @@
 # silk-update-action
 
+## 4.14.12
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | ^0.16.0 | ^0.17.0 |
+| @effected/github-actions | dependency | updated | ^0.20.2 | ^0.20.3 |
+
+[#555][#555]
+
+### Thanks
+
+Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their contributions!
+
+[#555]: https://github.com/savvy-web/silk-update-action/pull/555
+
 ## 4.14.11
 
 ### Dependencies
