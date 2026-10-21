@@ -1,5 +1,25 @@
 # silk-update-action
 
+## 4.14.15
+
+### Bug Fixes
+
+- `upgrade-runtime-node` now resolves within Node lines that have entered maintenance-LTS. Previously the resolver only accepted current and active-LTS releases, so a repository declaring `^24.0.0` stopped receiving Node 24 patch upgrades the day Node 24 entered maintenance (2026-10-20); the run logged a warning and skipped the entry. Only end-of-life lines are now skipped. [#572][#572]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/runtimes | dependency | updated | ^0.13.0 | ^0.13.1 |
+
+[#572][#572]
+
+### Thanks
+
+Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their contributions!
+
+[#572]: https://github.com/savvy-web/silk-update-action/pull/572
+
 ## 4.14.14
 
 ### Dependencies
