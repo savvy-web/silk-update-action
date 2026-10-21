@@ -7,7 +7,7 @@ tags:
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-10-21T14:32:54Z
+  at: 2026-10-21T14:36:45Z
 sources:
   - id: runtime-upgrade-service
     resource: ../../src/services/runtime-upgrade.ts
@@ -17,7 +17,7 @@ sources:
     resource: ../../__test__/unit/services/runtime-upgrade.test.ts
 integrity:
   generated:
-    body: 3e1db2e79bf3deeb
+    body: 89f3b297bdfd5a95
 ---
 
 # Runtime upgrades only ever upgrade an existing entry, and always write a bare exact version
@@ -97,11 +97,12 @@ filesystem read/write around the manifest.[^runtime-upgrade-service]
 - `auto` is a no-op whenever the existing entry is already a static version
   (`isStaticVersion`) — there is no range in that case to resolve
   against.[^runtime-upgrade-service]
-- `NodeResolver.resolve` is called without `phases`, so it accepts only the
-  `current` and `active-lts` lifecycle phases, evaluated against today's date.
-  An entry whose major has moved to maintenance-LTS (Node 24 on 2026-10-20)
-  resolves to `NoMatchingVersionError`, which is logged as a warning and
-  skipped — `auto` stops patching that line rather than failing.[^runtime-upgrade-service]
+- `NodeResolver.resolve` is passed `phases: current, active-lts,
+  maintenance-lts` (`NODE_PHASES`). Its default omits maintenance-LTS, so a
+  major entering maintenance (Node 24 on 2026-10-20) would resolve to
+  `NoMatchingVersionError`, get logged as a warning and skipped — `auto` would
+  silently stop patching that line. Only an end-of-life major is now
+  skipped.[^runtime-upgrade-service]
 - The tests use mock resolvers with fixed versions, never the bundled
   offline cache: that cache and the phase window move with the Node release
   calendar, so a test asserting on them fails on a date rather than on a
