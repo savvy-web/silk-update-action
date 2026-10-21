@@ -10,12 +10,14 @@ resource: ../../.github/workflows/branch-sync.yml
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 7dac4b2780a54476e3e89f6b5bc3a3ac7eb665afcc191cf9a082b3c4908da0e9
 sources:
   - id: branch-sync
     resource: ../../.github/workflows/branch-sync.yml
   - id: release-workflow
     resource: ../../.github/workflows/release.yml
+integrity:
+  generated:
+    body: 7dac4b2780a54476
 ---
 
 # Follow dependency-update work from dev through to a published release

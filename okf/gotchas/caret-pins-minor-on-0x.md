@@ -10,10 +10,12 @@ resource: ../../package.json
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 2dc491a3faf69ef6ba0e98b982d3f669af3ef46e88df7511750376e15cc53f26
 sources:
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: 2dc491a3faf69ef6
 ---
 
 # A caret on a 0.x dependency pins the minor, and pnpm never revisits a satisfied range

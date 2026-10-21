@@ -12,7 +12,6 @@ justifies:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 78c530aea59158f851b97c19daa75211f16e8bc02da182c09fe3ae79763dfa31
 sources:
   - id: pnpm-lock
     resource: ../../pnpm-lock.yaml
@@ -20,6 +19,9 @@ sources:
     resource: ../../dist/main.js
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: 78c530aea59158f8
 ---
 
 # Kit single-copy probe

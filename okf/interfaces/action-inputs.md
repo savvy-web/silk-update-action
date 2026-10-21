@@ -11,12 +11,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-17T15:37:50Z
-  body_sha256: d2521c4c704b5cb56466dadf4ef6ddc8e7ca1aada51b7be26cfd0355c921d2db
 sources:
   - id: action-yml
     resource: ../../action.yml
   - id: inputs-ts
     resource: ../../src/schema/inputs.ts
+integrity:
+  generated:
+    body: d2521c4c704b5cb5
 ---
 
 # Action inputs

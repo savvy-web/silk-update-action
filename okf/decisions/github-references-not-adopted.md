@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 6a031e231c3f2833e5601b7939ba0da190f71cec0ad4a4e66c7cf3566d410c92
 sources:
   - id: report-service
     resource: ../../src/services/report.ts
@@ -17,6 +16,9 @@ sources:
     resource: "npm:@effected/github-references"
   - id: silk-release-worked-example
     resource: "https://github.com/savvy-web/silk-release-action"
+integrity:
+  generated:
+    body: 6a031e231c3f2833
 ---
 
 # Do not adopt @effected/github-references — there is no call site for it

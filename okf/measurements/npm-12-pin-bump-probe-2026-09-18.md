@@ -24,7 +24,9 @@ sources:
 generated:
   by: okfit/claude-code
   at: 2026-09-27T05:00:59Z
-  body_sha256: 37da2c1295bbde04fa531e9c78ab8949efe52a919ef1d9c6bcb32455a87517a5
+integrity:
+  generated:
+    body: 37da2c1295bbde04
 ---
 
 # npm 11 to 12 pin bump probe against the bundled kit

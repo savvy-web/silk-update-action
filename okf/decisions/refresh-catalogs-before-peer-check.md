@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-28T21:24:50Z
-  body_sha256: 77a804ca23da491c19c8cbd0b51659da954e7e3f1bc42d5fb33ccc9f96d5ab37
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -18,6 +17,9 @@ sources:
     resource: ../../src/layers/app.ts
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: 77a804ca23da491c
 ---
 
 # Refresh WorkspaceCatalogs before reading peer-suppression rules

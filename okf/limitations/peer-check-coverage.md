@@ -9,7 +9,6 @@ bounds: ../decisions/peer-gate-fails-closed.md
 generated:
   by: okfit/claude-code
   at: 2026-09-28T21:24:50Z
-  body_sha256: 20733ee216fef99cdd215f0eee9ca34e6566f5f9ce9501c4ac0b5cc3339d4dbc
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -27,6 +26,9 @@ sources:
     title: effected peer-wave round-2 handoff, "Intentionally not done"
     author: effected/claude-code
     last_modified: 2026-09-27T00:00:00Z
+integrity:
+  generated:
+    body: 20733ee216fef99c
 ---
 
 # The peer gate covers less than "no peer problems" implies

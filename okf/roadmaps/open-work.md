@@ -10,7 +10,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: fbdfd497c78677f6c531cef00697e133d68efffd90e25b4f1ab8a7bdb71a0a43
 sources:
   - id: pre-ts
     resource: ../../src/pre.ts
@@ -22,6 +21,9 @@ sources:
     resource: ../../src/steps/config-dependencies.ts
   - id: format-workspace-step
     resource: ../../src/steps/format-workspace.ts
+integrity:
+  generated:
+    body: fbdfd497c78677f6
 ---
 
 # Open work toward integration testing with a real GitHub App

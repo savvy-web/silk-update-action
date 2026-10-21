@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 36668c892bff250bacbcd7952460e89e9ede65daebe2f0ac056de6d57a35fe22
 sources:
   - id: app-test
     resource: ../../__test__/unit/layers/app.test.ts
@@ -19,6 +18,9 @@ sources:
     resource: ../../src/main.ts
   - id: action-run-type
     resource: ../../node_modules/@effected/github-actions/index.d.ts
+integrity:
+  generated:
+    body: 36668c892bff250b
 ---
 
 # Guard makeAppLayer's requirement channel at compile time, not by convention

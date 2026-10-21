@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: c719c94c4ee55bd64d9ea9dcc0f1be782eab424cf7e9eab6abd301faa6403616
 sources:
   - id: package-manager-service
     resource: ../../src/services/package-manager.ts
@@ -17,6 +16,9 @@ sources:
     resource: ../../src/steps/detect-package-manager.ts
   - id: config-deps-step
     resource: ../../src/steps/config-dependencies.ts
+integrity:
+  generated:
+    body: c719c94c4ee55bd6
 ---
 
 # Detect the package manager once, and dispatch every step on it

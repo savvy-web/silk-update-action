@@ -7,12 +7,14 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: e20987b9d7974b75e697b3862218962b187d1020c30d11a6d50b76a8331f6869
 sources:
   - id: runtime-upgrade-service
     resource: ../../src/services/runtime-upgrade.ts
   - id: silk-update-workflow
     resource: ../../.github/workflows/silk-update.yml
+integrity:
+  generated:
+    body: e20987b9d7974b75
 ---
 
 # savvy-web/silk-runtime-action

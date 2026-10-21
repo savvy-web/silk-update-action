@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: aeded23c20d139b1f47af95a595b6a4a56838efdaa0e74b7ec4e093e26882098
 sources:
   - id: program
     resource: ../../src/program.ts
@@ -21,6 +20,9 @@ sources:
     resource: ../../src/services/peer-sync.ts
   - id: package-manager-service
     resource: ../../src/services/package-manager.ts
+integrity:
+  generated:
+    body: aeded23c20d139b1
 ---
 
 # Require the workspace root as a parameter everywhere it is used

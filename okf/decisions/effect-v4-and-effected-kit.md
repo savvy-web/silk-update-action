@@ -6,7 +6,6 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 89c9514ced7aba3af7c11583ea1ce0bdb6358e96d3034e6f69b193bcd1f3348a
 sources:
   - id: package-json
     resource: ../../package.json
@@ -14,6 +13,9 @@ sources:
     resource: ../../src/layers/app.ts
   - id: services-branch
     resource: ../../src/services/branch.ts
+integrity:
+  generated:
+    body: 89c9514ced7aba3a
 ---
 
 # Build on Effect v4 and the @effected kit, not plain TypeScript or one all-in-one library

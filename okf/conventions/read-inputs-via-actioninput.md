@@ -10,12 +10,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: bab2dd3b78e8ccfbcb9b573b00e35feeeb16849a4a635ed83fd9c4122d399b2e
 sources:
   - id: inputs-ts
     resource: ../../src/schema/inputs.ts
   - id: inputs-test
     resource: ../../__test__/unit/schema/inputs.test.ts
+integrity:
+  generated:
+    body: bab2dd3b78e8ccfb
 ---
 
 # Read every input through ActionInput, never bare Config

@@ -9,12 +9,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: ede1d29b71fc6456a31a8eb60df35e128fe9d4f27563382a0510fdfcb61eea2f
 sources:
   - id: branch-sync-workflow
     resource: ../../.github/workflows/branch-sync.yml
   - id: action-config
     resource: ../../action.config.ts
+integrity:
+  generated:
+    body: ede1d29b71fc6456
 ---
 
 # dev (branch)

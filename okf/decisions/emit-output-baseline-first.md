@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-15T18:43:07Z
-  body_sha256: 0531aaff5fca4d5fe6741cb557fdd70ccfeef71ea9d8d5aa6abd8ba305f5e7b4
 sources:
   - id: outputs-schema
     resource: ../../src/schema/outputs.ts
@@ -17,6 +16,9 @@ sources:
     resource: ../../src/program.ts
   - id: program-inner-test
     resource: ../../__test__/unit/program.inner.test.ts
+integrity:
+  generated:
+    body: 0531aaff5fca4d5f
 ---
 
 # Publish the output baseline before any work runs

@@ -10,12 +10,14 @@ resource: ../../src/steps/install.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 2cff83cc304a41daa73ded2fc97f5cc8bbab9cd38549b53595c23ca7ef57ceb2
 sources:
   - id: install-step
     resource: ../../src/steps/install.ts
   - id: custom-commands-step
     resource: ../../src/steps/custom-commands.ts
+integrity:
+  generated:
+    body: 2cff83cc304a41da
 ---
 
 # Run.text trims its output, which corrupts a column-aligned format

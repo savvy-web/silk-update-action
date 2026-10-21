@@ -9,12 +9,14 @@ bounds: ../decisions/detect-package-manager-once.md
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: a8b0ad003a6651b16d7589ec02f752d384ea5bc365fa52890ce2a6d747b47ed9
 sources:
   - id: config-dependencies-step
     resource: ../../src/steps/config-dependencies.ts
   - id: regular-dependencies-step
     resource: ../../src/steps/regular-dependencies.ts
+integrity:
+  generated:
+    body: a8b0ad003a6651b1
 ---
 
 # npm has nothing to reproduce pnpm's config dependencies with

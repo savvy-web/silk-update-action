@@ -10,7 +10,6 @@ resource: ../../__test__/utils/action-doubles.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 52f02a74dbe0f7a9ad5f52e4085dcd0c300556de4f328866ce5b5cf558ffa283
 sources:
   - id: action-doubles
     resource: ../../__test__/utils/action-doubles.ts
@@ -20,6 +19,9 @@ sources:
     resource: ../../__test__/unit/program.inner.test.ts
   - id: peer-check-test
     resource: ../../__test__/unit/steps/peer-check.test.ts
+integrity:
+  generated:
+    body: 52f02a74dbe0f7a9
 ---
 
 # A test double stricter or richer than production hides the bug it should catch

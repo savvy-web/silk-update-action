@@ -9,7 +9,6 @@ bounds: ../decisions/release-age-fail-open.md
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 748224a9310c0828c76b0af8f6621867bf716a1ace207191c9b18f9924ec4444
 sources:
   - id: release-age-service
     resource: ../../src/services/release-age.ts
@@ -17,6 +16,9 @@ sources:
     resource: ../../__test__/integration/release-age.int.test.ts
   - id: effected-292
     resource: "https://github.com/spencerbeggs/effected/issues/292"
+integrity:
+  generated:
+    body: 748224a9310c0828
 ---
 
 # A pnpmfile hook that logs after its payload breaks the release-age replay

@@ -11,7 +11,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-15T18:43:07Z
-  body_sha256: 9edd06388ecfe358287df8a2d012469786ea19342cc130a3dd223212b116de90
 sources:
   - id: action-yml
     resource: ../../action.yml
@@ -23,6 +22,9 @@ sources:
     resource: ../../lib/scripts/schemastore.config.ts
   - id: hosted
     resource: ../../src/schema/hosted.ts
+integrity:
+  generated:
+    body: 9edd06388ecfe358
 ---
 
 # Action outputs

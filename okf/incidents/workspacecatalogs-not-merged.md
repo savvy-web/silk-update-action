@@ -11,7 +11,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-19T03:30:32Z
-  body_sha256: cefc9cd6cd481aca973b67a741d95b415daac72d2291f45404854f408e830c51
 sources:
   - id: app-layer
     resource: ../../src/layers/app.ts
@@ -21,6 +20,9 @@ sources:
     resource: ../../src/steps/peer-check.ts
   - id: program-inner-test
     resource: ../../__test__/unit/program.inner.test.ts
+integrity:
+  generated:
+    body: cefc9cd6cd481aca
 ---
 
 # The first check-peers dogfood run died on an unmerged WorkspaceCatalogs

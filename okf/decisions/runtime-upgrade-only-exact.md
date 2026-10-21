@@ -7,15 +7,17 @@ tags:
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
-  body_sha256: 64b053bf92ba606cf7e746cb7c7dc525d30d3591b04aa085d3d2ecf7a41ce445
+  at: 2026-10-21T14:36:45Z
 sources:
   - id: runtime-upgrade-service
     resource: ../../src/services/runtime-upgrade.ts
   - id: runtime-utils
     resource: ../../src/utils/runtime.ts
-  - id: runtime-upgrade-int-test
-    resource: ../../__test__/integration/runtime-upgrade.int.test.ts
+  - id: runtime-upgrade-unit-test
+    resource: ../../__test__/unit/services/runtime-upgrade.test.ts
+integrity:
+  generated:
+    body: 89f3b297bdfd5a95
 ---
 
 # Runtime upgrades only ever upgrade an existing entry, and always write a bare exact version
@@ -95,10 +97,17 @@ filesystem read/write around the manifest.[^runtime-upgrade-service]
 - `auto` is a no-op whenever the existing entry is already a static version
   (`isStaticVersion`) — there is no range in that case to resolve
   against.[^runtime-upgrade-service]
-- The bundled offline resolver cache only carries currently-maintained major
-  lines, which is why the integration suite pins its fixture to `^24.0.0`
-  (the lowest major present) rather than an EOL line — the cache itself, not
-  this decision, sets that floor.[^runtime-upgrade-int-test]
+- `NodeResolver.resolve` is passed `phases: current, active-lts,
+  maintenance-lts` (`NODE_PHASES`). Its default omits maintenance-LTS, so a
+  major entering maintenance (Node 24 on 2026-10-20) would resolve to
+  `NoMatchingVersionError`, get logged as a warning and skipped — `auto` would
+  silently stop patching that line. Only an end-of-life major is now
+  skipped.[^runtime-upgrade-service]
+- The tests use mock resolvers with fixed versions, never the bundled
+  offline cache: that cache and the phase window move with the Node release
+  calendar, so a test asserting on them fails on a date rather than on a
+  change. An offline-cache integration suite was removed for exactly
+  this.[^runtime-upgrade-unit-test]
 
 ## What would change the answer
 
@@ -110,4 +119,4 @@ be forced by a hard failure one step away.
 
 [^runtime-upgrade-service]: `src/services/runtime-upgrade.ts`
 [^runtime-utils]: `src/utils/runtime.ts`
-[^runtime-upgrade-int-test]: `__test__/integration/runtime-upgrade.int.test.ts`
+[^runtime-upgrade-unit-test]: `__test__/unit/services/runtime-upgrade.test.ts`

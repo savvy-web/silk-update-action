@@ -11,12 +11,14 @@ resource: ../../vitest.setup.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 72866b1833aafa4dd5ee7752aa2fa35d02ac2d071263082e136c50f743a535eb
 sources:
   - id: vitest-setup
     resource: ../../vitest.setup.ts
   - id: vitest-config
     resource: ../../vitest.config.ts
+integrity:
+  generated:
+    body: 72866b1833aafa4d
 ---
 
 # A fixture that forgets to seed its own state decodes the host workflow's persisted data and passes

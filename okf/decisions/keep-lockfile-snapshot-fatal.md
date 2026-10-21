@@ -9,12 +9,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 6bacf63a6ae3f1f3e72e0b5314e56486589381b72297066ffd7542eeaf71f261
 sources:
   - id: lockfile-snapshot-step
     resource: ../../src/steps/lockfile-snapshot.ts
   - id: lockfile-service
     resource: ../../src/services/lockfile.ts
+integrity:
+  generated:
+    body: 6bacf63a6ae3f1f3
 ---
 
 # Keep a lockfile-snapshot read failure fatal, for now

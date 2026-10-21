@@ -22,7 +22,9 @@ sources:
 generated:
   by: okfit/claude-code
   at: 2026-09-17T15:37:50Z
-  body_sha256: 3ecbeba71f2cfdc4f9faaea7abf432bdbfaf71a34a25bc635ed22722db7736e3
+integrity:
+  generated:
+    body: 3ecbeba71f2cfdc4
 ---
 
 ## What you see

@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 86c9939ae794379028979e776b9607dea3c256f7129b4b98667a8b19a0a68e84
 sources:
   - id: package-manager-upgrade
     resource: ../../src/services/package-manager-upgrade.ts
@@ -21,6 +20,9 @@ sources:
     resource: "https://github.com/spencerbeggs/effected/pull/366"
   - id: effected-issue-286
     resource: "https://github.com/spencerbeggs/effected/issues/286"
+integrity:
+  generated:
+    body: 86c9939ae7943790
 ---
 
 # Adopt @effected/package-json for surgical field edits only, never its decode path

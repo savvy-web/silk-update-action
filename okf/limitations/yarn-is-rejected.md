@@ -9,10 +9,12 @@ bounds: ../modules/silk-update-action.md
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 9abd1da0ecfaf391b13e6eac9905d1755cbe40cfe10e8c6e364544d1a6c45c2b
 sources:
   - id: package-manager-service
     resource: ../../src/services/package-manager.ts
+integrity:
+  generated:
+    body: 9abd1da0ecfaf391
 ---
 
 # Yarn is detected and then rejected, not supported

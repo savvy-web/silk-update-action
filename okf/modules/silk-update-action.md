@@ -10,7 +10,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: d4fbe4e490f8b85cef7320a610c915a7e3a2d0085512ec35291496a5db641e46
 sources:
   - id: action-yml
     resource: ../../action.yml
@@ -30,6 +29,9 @@ sources:
     resource: ../../src/schema/inputs.ts
   - id: schema-outputs
     resource: ../../src/schema/outputs.ts
+integrity:
+  generated:
+    body: d4fbe4e490f8b85c
 ---
 
 # silk-update-action (module)

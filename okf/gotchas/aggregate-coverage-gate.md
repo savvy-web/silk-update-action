@@ -10,7 +10,6 @@ resource: ../../vitest.config.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 5e26bbecadfda594a4b854093799429719ad251815c20b20b53bda200450048f
 sources:
   - id: vitest-config
     resource: ../../vitest.config.ts
@@ -18,6 +17,9 @@ sources:
     resource: ../../src/layers/app.ts
   - id: layer-guard-test
     resource: ../../__test__/unit/layers/app.test.ts
+integrity:
+  generated:
+    body: 5e26bbecadfda594
 ---
 
 # A green coverage run is not evidence a module is exercised

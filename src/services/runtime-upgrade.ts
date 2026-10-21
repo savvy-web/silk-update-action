@@ -31,7 +31,7 @@
 import { readFileSync } from "node:fs";
 import type { PackageJsonFileShape } from "@effected/package-json";
 import { PackageJsonFile } from "@effected/package-json";
-import type { ResolvedVersions } from "@effected/runtimes";
+import type { NodePhase, ResolvedVersions } from "@effected/runtimes";
 import { BunResolver, DenoResolver, NodeResolver } from "@effected/runtimes";
 import { Context, Effect, Layer } from "effect";
 
@@ -46,8 +46,20 @@ import { isStaticVersion, locateRuntimeEntry } from "../utils/runtime.js";
  * so assignable to it.
  */
 interface RuntimeResolver {
-	readonly resolve: (options?: { readonly range?: string }) => Effect.Effect<ResolvedVersions, unknown>;
+	readonly resolve: (options?: {
+		readonly range?: string;
+		readonly phases?: ReadonlyArray<NodePhase>;
+	}) => Effect.Effect<ResolvedVersions, unknown>;
 }
+
+/**
+ * Lifecycle phases a Node line is resolved within. The resolver's default
+ * (current + active-lts) drops a major the day it enters maintenance, which
+ * would silently stop patch upgrades for a repo still declaring that line —
+ * the declared range already selects the line, so every supported phase is
+ * accepted. Only `NodeResolver` takes `phases`; deno and bun are not passed it.
+ */
+const NODE_PHASES: ReadonlyArray<NodePhase> = ["current", "active-lts", "maintenance-lts"];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,7 +132,7 @@ const resolveLatest = (
 	runtime: RuntimeName,
 	semverRange: string,
 ): Effect.Effect<string | null, never> =>
-	resolver.resolve({ range: semverRange }).pipe(
+	resolver.resolve(runtime === "node" ? { range: semverRange, phases: NODE_PHASES } : { range: semverRange }).pipe(
 		// Note: r.source ("api"/"cache") is runtime-resolver's data-origin label on
 		// the snapshot, not a live-fetch indicator — the offline cache reports
 		// "api" without any network call — so it is deliberately not logged here.

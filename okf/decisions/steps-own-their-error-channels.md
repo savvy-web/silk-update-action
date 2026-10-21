@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: af1ca7f43bf6375fb5877c9cb12951173bced780fb0e9b92147c9054c3c8b3ef
 sources:
   - id: program
     resource: ../../src/program.ts
@@ -24,6 +23,9 @@ sources:
     resource: ../../src/steps/upgrade-runtimes.ts
   - id: upgrade-pm-step
     resource: ../../src/steps/upgrade-package-manager.ts
+integrity:
+  generated:
+    body: af1ca7f43bf6375f
 ---
 
 # Each orchestration step declares its own error channel

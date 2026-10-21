@@ -10,12 +10,14 @@ resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
   at: 2026-09-27T08:37:13Z
-  body_sha256: d342d9ec9a046ce2408239f851ee98f4651e62ac724ad9cc6d18e546bca710a6
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: d342d9ec9a046ce2
 ---
 
 # This repository's @effected ranges come from a config dependency, not package.json

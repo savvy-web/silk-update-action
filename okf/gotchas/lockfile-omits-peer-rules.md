@@ -10,7 +10,6 @@ resource: ../../pnpm-lock.yaml
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 112ba5daa3c48554ffcb0e26566c2d6c665e7bd07eb230e8ba1cee0e2cd925d2
 sources:
   - id: pnpm-lock
     resource: ../../pnpm-lock.yaml
@@ -18,6 +17,9 @@ sources:
     resource: ../../pnpm-workspace.yaml
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
+integrity:
+  generated:
+    body: 112ba5daa3c48554
 ---
 
 # A clean pnpm-lock.yaml is not evidence of the peer-suppression rules in effect
