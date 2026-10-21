@@ -11,7 +11,6 @@ resource: ../../src/steps/peer-check.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-28T21:24:50Z
-  body_sha256: d004427363adf4108f236113e622a63e62b56be8134d3a9ddfb29fb517c47cd1
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -25,6 +24,9 @@ sources:
     resource: npm:@effected/lockfiles
   - id: type-registry-issue
     resource: "https://github.com/spencerbeggs/type-registry-effect/issues/122"
+integrity:
+  generated:
+    body: d004427363adf410
 ---
 
 # An abstained peer report reads exactly like a repo with real peer problems

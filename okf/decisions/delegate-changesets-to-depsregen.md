@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 779844fd6b9c4986281638b9ef9eac309d32d1835a4432ba0b469eaa48160b6c
 sources:
   - id: changesets-service
     resource: ../../src/services/changesets.ts
@@ -16,6 +15,9 @@ sources:
     resource: ../../src/steps/changesets.ts
   - id: drift-canary
     resource: ../../__test__/integration/changeset-emission.int.test.ts
+integrity:
+  generated:
+    body: 779844fd6b9c4986
 ---
 
 # Delegate dependency changesets to silk-effects' DepsRegen

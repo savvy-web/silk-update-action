@@ -9,12 +9,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 1649b9a806879b7c0c6e91f453d263dc06a99e5a33b529e72f1928a9103e06c3
 sources:
   - id: format
     resource: ../../src/format.ts
   - id: report
     resource: ../../src/services/report.ts
+integrity:
+  generated:
+    body: 1649b9a806879b7c
 ---
 
 # Keep the run's log rendering and the PR's report rendering as two separate modules

@@ -10,7 +10,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 68671b05647c17cf5a8cdfbce8384633d26df371e477aeee508a0e24353414a8
 sources:
   - id: errors
     resource: ../../src/errors/errors.ts
@@ -20,6 +19,9 @@ sources:
     resource: ../../src/utils/pnpm.ts
   - id: lockfile-service
     resource: ../../src/services/lockfile.ts
+integrity:
+  generated:
+    body: 68671b05647c17cf
 ---
 
 # Demonstrate a failure path with a test, or leave it out of the signature

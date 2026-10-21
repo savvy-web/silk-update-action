@@ -7,10 +7,12 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-19T03:30:32Z
-  body_sha256: 8e97bf076077712756ea4034ede6d7b24249875729c921f87942336a899db690
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
+integrity:
+  generated:
+    body: 8e97bf0760777127
 ---
 
 # spencerbeggs/pnpm-module-template

@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: ee4079ce15e01b8c6cbb4e3ed09af2039dc60a047075d5ef106f20750b7a01dd
 sources:
   - id: branch-sync-workflow
     resource: ../../.github/workflows/branch-sync.yml
@@ -17,6 +16,9 @@ sources:
     resource: ../../.github/workflows/silk-update.yml
   - id: action-config
     resource: ../../action.config.ts
+integrity:
+  generated:
+    body: ee4079ce15e01b8c
 ---
 
 # Never rewrite the dev branch — commit, don't squash, rebase, or force-push

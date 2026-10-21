@@ -9,10 +9,12 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 94274ba5fb94d9d932e758d9f2a77d0bceae67cfcb299f3a13f97592f8f40591
 sources:
   - id: package-manager-upgrade
     resource: ../../src/services/package-manager-upgrade.ts
+integrity:
+  generated:
+    body: 94274ba5fb94d9d9
 ---
 
 # unsatisfiable (package-manager upgrade)

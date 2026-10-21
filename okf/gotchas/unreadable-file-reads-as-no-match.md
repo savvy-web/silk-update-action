@@ -11,10 +11,12 @@ resource: ../../src/services/lockfile.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 852dca100e07d72c10f7b854b4ce2cca651ec09083749779174e32c9264ab6a7
 sources:
   - id: lockfile-service
     resource: ../../src/services/lockfile.ts
+integrity:
+  generated:
+    body: 852dca100e07d72c
 ---
 
 # A search that cannot read a file returns nothing, indistinguishable from a real no-match

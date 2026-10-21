@@ -9,10 +9,12 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 0460a08ae7b097e4bf37c1629087ce87ff5a4289e25785a0ba2a3ec26af5534b
 sources:
   - id: app-layer-test
     resource: ../../__test__/unit/layers/app.test.ts
+integrity:
+  generated:
+    body: 0460a08ae7b097e4
 ---
 
 # State what would falsify a load-bearing claim, or say it is unverified

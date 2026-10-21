@@ -11,7 +11,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: f1abb5faef247d176f48aa4ec9cf867b0669960604c252c5f6f182d04499db94
 sources:
   - id: app-layer
     resource: ../../src/layers/app.ts
@@ -23,6 +22,9 @@ sources:
     resource: ../../src/services/runtime-upgrade.ts
   - id: main-ts
     resource: ../../src/main.ts
+integrity:
+  generated:
+    body: f1abb5faef247d17
 ---
 
 # v4.6.0: every consumer run died on an unprovided PackageJsonFile

@@ -9,12 +9,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-15T18:43:07Z
-  body_sha256: 72707fed3996d6cda4f495df6656dd243f7f9ca20760e12a384afbd8b4b4e8e9
 sources:
   - id: domain-schema
     resource: ../../src/schema/domain.ts
   - id: schemastore-config
     resource: ../../lib/scripts/schemastore.config.ts
+integrity:
+  generated:
+    body: 72707fed3996d6cd
 ---
 
 # Annotate every schema reused in more than one place with an explicit identifier

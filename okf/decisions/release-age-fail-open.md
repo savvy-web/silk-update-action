@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 2646783829a024d3945de0e180bddce9ef274b07ed4a8e77dd3fa694234af324
 sources:
   - id: release-age-service
     resource: ../../src/services/release-age.ts
@@ -19,6 +18,9 @@ sources:
     resource: ../../__test__/integration/release-age.int.test.ts
   - id: effected-292
     resource: "https://github.com/spencerbeggs/effected/issues/292"
+integrity:
+  generated:
+    body: 2646783829a024d3
 ---
 
 # Release-age gate discovery fails open

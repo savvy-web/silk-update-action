@@ -8,10 +8,12 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: e6b041d36c65173338e6ed4ee10442a6f5490b41f485c948f48ade8f72a0886d
 sources:
   - id: release-age-service
     resource: ../../src/services/release-age.ts
+integrity:
+  generated:
+    body: e6b041d36c651733
 ---
 
 # release-age gate

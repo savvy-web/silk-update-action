@@ -11,7 +11,6 @@ resource: ../../src/layers/app.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 983b45249df0026bc255ad4947f042620db1723028b4bedf1a993ff52323b1b9
 sources:
   - id: main-ts
     resource: ../../src/main.ts
@@ -21,6 +20,9 @@ sources:
     resource: ../../node_modules/@effected/github-actions/index.d.ts
   - id: layer-guard-test
     resource: ../../__test__/unit/layers/app.test.ts
+integrity:
+  generated:
+    body: 983b45249df0026b
 ---
 
 # An unprovided service in makeAppLayer is not a type error

@@ -6,12 +6,14 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: cd0d834551f9b1dd94489426558eedd62fec560ac36c40778144d4c7aed0f15a
 sources:
   - id: action-yml
     resource: ../action.yml
   - id: package-json
     resource: ../package.json
+integrity:
+  generated:
+    body: cd0d834551f9b1dd
 ---
 
 # silk-update-action

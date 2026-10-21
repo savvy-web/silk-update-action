@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 468d1a8bc02562baf660f6a0699abee877ca7b012ed1417284a64bdb534906bb
 sources:
   - id: domain-ts
     resource: ../../src/schema/domain.ts
@@ -17,6 +16,9 @@ sources:
     resource: ../../src/services/package-manager-upgrade.ts
   - id: catalogs-ts
     resource: ../../src/utils/catalogs.ts
+integrity:
+  generated:
+    body: 468d1a8bc02562ba
 ---
 
 # Domain schemas

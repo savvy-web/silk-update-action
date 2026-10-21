@@ -7,12 +7,14 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-19T03:30:32Z
-  body_sha256: 8e9b08be0c6f2681958a46b4b19866289e66f071f603f6ed6259f116fdad4a7c
 sources:
   - id: silk-update-workflow
     resource: ../../.github/workflows/silk-update.yml
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: 8e9b08be0c6f2681
 ---
 
 # savvy-web/systems

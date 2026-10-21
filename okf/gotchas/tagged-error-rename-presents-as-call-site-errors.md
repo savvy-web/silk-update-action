@@ -11,12 +11,14 @@ resource: ../../src/errors/errors.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 25db0f4ea9d9a0c42a9638b07f2ec103d09127089206e09e6282257fc0574823
 sources:
   - id: errors-ts
     resource: ../../src/errors/errors.ts
   - id: effect-package-json
     resource: ../../node_modules/effect/package.json
+integrity:
+  generated:
+    body: 25db0f4ea9d9a0c4
 ---
 
 # An Effect Schema base-class rename presents as dozens of unrelated call-site errors

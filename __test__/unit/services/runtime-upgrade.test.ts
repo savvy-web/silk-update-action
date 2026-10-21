@@ -229,4 +229,45 @@ describe("RuntimeUpgrade service", () => {
 
 		expect(readFileSync(join(dir, "package.json"), "utf-8")).toMatch(/^\t"/m);
 	});
+
+	it("preserves key order, indentation and every unrelated byte in an UNSORTED manifest", async () => {
+		// Only meaningful against a deliberately unsorted fixture: this repo's own
+		// package.json is sorted by lint-staged, so a reorder would be a no-op there.
+		// A writer that re-serializes the parsed object or sorts keys canonically
+		// rewrites regions the action never intended to touch, in a file it then
+		// commits to someone else's repository.
+		const dir = makeTempDir();
+		const original = [
+			"{",
+			'\t"dependencies": {',
+			'\t\t"zod": "^3.0.0"',
+			"\t},",
+			'\t"name": "unsorted-fixture",',
+			'\t"devEngines": {',
+			'\t\t"runtime": [',
+			"\t\t\t{",
+			'\t\t\t\t"name": "node",',
+			'\t\t\t\t"version": "^24.0.0",',
+			'\t\t\t\t"onFail": "ignore"',
+			"\t\t\t}",
+			"\t\t]",
+			"\t},",
+			'\t"version": "0.0.0",',
+			'\t"scripts": {',
+			'\t\t"build": "tsc"',
+			"\t}",
+			"}",
+			"",
+		].join("\n");
+		writeFileSync(join(dir, "package.json"), original);
+
+		const results = await run(dir, { ...FALSE_CFG, node: "auto" }, { node: "24.16.0" });
+		expect(results).toEqual([{ runtime: "node", from: "^24.0.0", to: "24.16.0" }]);
+
+		const after = readFileSync(join(dir, "package.json"), "utf-8");
+		// Asserted on the raw text: a JSON.parse comparison is order-blind.
+		expect(Object.keys(JSON.parse(after))).toEqual(["dependencies", "name", "devEngines", "version", "scripts"]);
+		// Byte-identical once the one version string is substituted back.
+		expect(after.replace("24.16.0", "^24.0.0")).toBe(original);
+	});
 });

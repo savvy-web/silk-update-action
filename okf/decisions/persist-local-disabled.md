@@ -9,10 +9,12 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: c9692a231b9beb822ecf104a45150291cc17a174483a0b3562472d485ae75ae6
 sources:
   - id: action-config
     resource: ../../action.config.ts
+integrity:
+  generated:
+    body: c9692a231b9beb82
 ---
 
 # Keep persistLocal disabled

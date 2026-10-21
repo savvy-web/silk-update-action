@@ -10,12 +10,14 @@ resource: ../../.github/workflows/silk-update.yml
 generated:
   by: okfit/claude-code
   at: 2026-09-19T03:30:32Z
-  body_sha256: 90e690a7c05bdcc62c0294a6f02e824016e052114729435f39fb18dcc25f0cdc
 sources:
   - id: silk-update-workflow
     resource: ../../.github/workflows/silk-update.yml
   - id: release-workflow
     resource: ../../.github/workflows/release.yml
+integrity:
+  generated:
+    body: 90e690a7c05bdcc6
 ---
 
 # Test a dev-branch build end to end against a real consumer

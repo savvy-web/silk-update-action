@@ -10,7 +10,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: fe1f6f26effdf39dc2b7770e6989b367e1334857eb0b51e02ba876b602fe8ff8
 sources:
   - id: report-service
     resource: ../../src/services/report.ts
@@ -20,6 +19,9 @@ sources:
     resource: ../../src/services/changesets.ts
   - id: app-layer
     resource: ../../src/layers/app.ts
+integrity:
+  generated:
+    body: fe1f6f26effdf39d
 ---
 
 # Declare a service's layer as a static field inside the class body

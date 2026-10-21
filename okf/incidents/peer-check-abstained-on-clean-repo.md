@@ -11,7 +11,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 64e9da28d98cfdaea4913a16f3141f8aacb3030fec7970f687e38c5e4bc2030d
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -25,6 +24,9 @@ sources:
     resource: "https://github.com/spencerbeggs/type-registry-effect/issues/122"
   - id: lockfiles-package
     resource: "npm:@effected/lockfiles"
+integrity:
+  generated:
+    body: 64e9da28d98cfdae
 ---
 
 # Two real pnpm lockfile shapes made peer-check abstain on a clean repo
