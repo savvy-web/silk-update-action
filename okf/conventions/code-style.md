@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: f01696f4d98162a76020fedc7c6c7514ef4d34e542513d1095b5c694c623e749
 sources:
   - id: biome-config
     resource: ../../biome.json
@@ -18,6 +17,9 @@ sources:
     resource: ../../lib/configs/commitlint.config.ts
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: f01696f4d98162a7
 ---
 
 # Code style — extensions, tabs, no barrels, conventional commits

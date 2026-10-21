@@ -9,12 +9,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 60e862747e2a208a9ba7221d5dc3c1df9f49e17cccd388c1efa1f78ee4c1dc8b
 sources:
   - id: errors-ts
     resource: ../../src/errors/errors.ts
   - id: errors-test
     resource: ../../__test__/unit/errors/errors.test.ts
+integrity:
+  generated:
+    body: 60e862747e2a208a
 ---
 
 # Action error union

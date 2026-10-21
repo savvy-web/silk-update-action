@@ -10,12 +10,14 @@ resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: bcd73598484dbab6c610f9b5315251bbe0a2ac9d969b173807197102365c0749
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: bcd73598484dbab6
 ---
 
 # Dogfood a fix to a first-party dependency before it publishes

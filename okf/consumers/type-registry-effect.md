@@ -7,12 +7,14 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 27d17f93c72787201de0a8b8886b84ad5963059e695f06013ba5404fbea00f8f
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: 27d17f93c7278720
 ---
 
 # spencerbeggs/type-registry-effect

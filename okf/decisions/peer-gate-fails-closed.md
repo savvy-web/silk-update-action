@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-28T21:24:50Z
-  body_sha256: 156782d5a69e7a84822da0fd5145a49cf24267831bf7d0760fcce654f35510ce
 sources:
   - id: peers-util
     resource: ../../src/utils/peers.ts
@@ -31,6 +30,9 @@ sources:
     title: effected peer-wave round-2 handoff
     author: effected/claude-code
     last_modified: 2026-09-27T00:00:00Z
+integrity:
+  generated:
+    body: 156782d5a69e7a84
 ---
 
 # The peer-dependency auto-merge gate fails closed

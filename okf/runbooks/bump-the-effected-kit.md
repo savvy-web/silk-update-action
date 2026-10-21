@@ -10,7 +10,6 @@ resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
   at: 2026-09-27T08:37:13Z
-  body_sha256: c3eadd66227deefc58be8a6829590eb2f642e98a5e0757828edbfe7b714a424a
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
@@ -18,6 +17,9 @@ sources:
     resource: ../../package.json
   - id: repos-config
     resource: ../../.repos/config.json
+integrity:
+  generated:
+    body: c3eadd66227deefc
 ---
 
 # Bump the @effected kit

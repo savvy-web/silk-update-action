@@ -6,7 +6,6 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 0fe5fba944a9a552c9410bdcd8a190053b3f56da22d619557e5367ded7377c8c
 sources:
   - id: services-report
     resource: ../../src/services/report.ts
@@ -14,6 +13,9 @@ sources:
     resource: ../../src/utils/commit-signoff.ts
   - id: services-branch
     resource: ../../src/services/branch.ts
+integrity:
+  generated:
+    body: 0fe5fba944a9a552
 ---
 
 # Commit via the Git Data API with no author, sign off separately from the token identity

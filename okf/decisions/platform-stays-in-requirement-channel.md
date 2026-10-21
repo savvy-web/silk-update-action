@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 6373f5ee53fab9d73bcb4d32357649192c4389015e204600edd0f19ffe009742
 sources:
   - id: layers-app
     resource: ../../src/layers/app.ts
@@ -17,6 +16,9 @@ sources:
     resource: ../../__test__/unit/layers/app.test.ts
   - id: package-json
     resource: ../../package.json
+integrity:
+  generated:
+    body: 6373f5ee53fab9d7
 ---
 
 # Leave platform services in makeAppLayer's requirement channel instead of building private copies

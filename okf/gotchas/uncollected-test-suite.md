@@ -10,12 +10,14 @@ resource: ../../__test__/unit/test-collection.test.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: c4cde9b5cc307357314646091ee17929d4b112584d624e19cd5997a08119c92e
 sources:
   - id: test-collection-test
     resource: ../../__test__/unit/test-collection.test.ts
   - id: vitest-config
     resource: ../../vitest.config.ts
+integrity:
+  generated:
+    body: c4cde9b5cc307357
 ---
 
 # An excluded test file is silently never collected — the suite shrinks and stays green

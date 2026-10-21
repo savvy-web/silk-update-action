@@ -6,12 +6,14 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 1145dcf2007bdb72e72c8169f33181db13ffc37c374b98054e6da0e23644e27e
 sources:
   - id: services-branch
     resource: ../../src/services/branch.ts
   - id: steps-branch
     resource: ../../src/steps/branch.ts
+integrity:
+  generated:
+    body: 1145dcf2007bdb72
 ---
 
 # Force-reset a dedicated branch every run rather than rebase

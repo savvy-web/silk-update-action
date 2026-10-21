@@ -229,4 +229,87 @@ describe("RuntimeUpgrade service", () => {
 
 		expect(readFileSync(join(dir, "package.json"), "utf-8")).toMatch(/^\t"/m);
 	});
+
+	it("asks the node resolver to accept maintenance-LTS lines, and passes no phases to deno or bun", async () => {
+		// The resolver's default phase window (current + active-lts) drops a major
+		// the day it enters maintenance, so a repo on ^24.0.0 would silently stop
+		// receiving 24.x patches. The declared range already selects the line.
+		const dir = makeTempDir();
+		writePackageJson(dir, {
+			devEngines: {
+				runtime: [
+					{ name: "node", version: "^24.0.0" },
+					{ name: "deno", version: "^2.0.0" },
+				],
+			},
+		});
+		const seen: Record<string, unknown> = {};
+		const recording = (name: string, latest: string) => ({
+			resolve: (options?: unknown) => {
+				seen[name] = options;
+				return Effect.succeed({ source: "cache" as const, versions: [latest], latest });
+			},
+		});
+		const layer = RuntimeUpgrade.layer.pipe(
+			Layer.provide(
+				Layer.mergeAll(
+					Layer.succeed(NodeResolver, recording("node", "24.16.0") as never),
+					Layer.succeed(DenoResolver, recording("deno", "2.1.0") as never),
+					Layer.succeed(BunResolver, recording("bun", "1.2.0") as never),
+					PackageJsonFile.layer.pipe(Layer.provide(NodeServices.layer)),
+				),
+			),
+		);
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const service = yield* RuntimeUpgrade;
+				return yield* service.upgrade({ node: "auto", deno: "auto", bun: "false" }, dir);
+			}).pipe(Effect.provide(layer), Effect.provideService(References.MinimumLogLevel, "None")),
+		);
+
+		expect(seen.node).toEqual({ range: "^24.0.0", phases: ["current", "active-lts", "maintenance-lts"] });
+		expect(seen.deno).toEqual({ range: "^2.0.0" });
+	});
+
+	it("preserves key order, indentation and every unrelated byte in an UNSORTED manifest", async () => {
+		// Only meaningful against a deliberately unsorted fixture: this repo's own
+		// package.json is sorted by lint-staged, so a reorder would be a no-op there.
+		// A writer that re-serializes the parsed object or sorts keys canonically
+		// rewrites regions the action never intended to touch, in a file it then
+		// commits to someone else's repository.
+		const dir = makeTempDir();
+		const original = [
+			"{",
+			'\t"dependencies": {',
+			'\t\t"zod": "^3.0.0"',
+			"\t},",
+			'\t"name": "unsorted-fixture",',
+			'\t"devEngines": {',
+			'\t\t"runtime": [',
+			"\t\t\t{",
+			'\t\t\t\t"name": "node",',
+			'\t\t\t\t"version": "^24.0.0",',
+			'\t\t\t\t"onFail": "ignore"',
+			"\t\t\t}",
+			"\t\t]",
+			"\t},",
+			'\t"version": "0.0.0",',
+			'\t"scripts": {',
+			'\t\t"build": "tsc"',
+			"\t}",
+			"}",
+			"",
+		].join("\n");
+		writeFileSync(join(dir, "package.json"), original);
+
+		const results = await run(dir, { ...FALSE_CFG, node: "auto" }, { node: "24.16.0" });
+		expect(results).toEqual([{ runtime: "node", from: "^24.0.0", to: "24.16.0" }]);
+
+		const after = readFileSync(join(dir, "package.json"), "utf-8");
+		// Asserted on the raw text: a JSON.parse comparison is order-blind.
+		expect(Object.keys(JSON.parse(after))).toEqual(["dependencies", "name", "devEngines", "version", "scripts"]);
+		// Byte-identical once the one version string is substituted back.
+		expect(after.replace("24.16.0", "^24.0.0")).toBe(original);
+	});
 });

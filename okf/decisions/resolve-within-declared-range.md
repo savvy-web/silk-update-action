@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: b9edf22e8c37b09bae637268795043f4b24cd5d65ab7653f914bbebe95f429fd
 sources:
   - id: config-deps
     resource: ../../src/services/config-deps.ts
@@ -16,6 +15,9 @@ sources:
     resource: ../../src/services/regular-deps.ts
   - id: semver-utils
     resource: ../../src/utils/semver.ts
+integrity:
+  generated:
+    body: b9edf22e8c37b09b
 ---
 
 # Resolve dependency updates within the declared range, never to npm's absolute latest

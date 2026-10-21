@@ -11,7 +11,6 @@ resource: ../../action.config.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: f9b9081d1d38767112841d76ede189eea3e42feceb0288670e27cb4c4391ef68
 sources:
   - id: action-config
     resource: ../../action.config.ts
@@ -19,6 +18,9 @@ sources:
     resource: ../../scripts/assert-native-dynamic-import.mjs
   - id: module-catalogs
     resource: ../../src/services/module-catalogs.ts
+integrity:
+  generated:
+    body: f9b9081d1d387671
 ---
 
 # A miscompiled computed dynamic import passes every check except the built bundle

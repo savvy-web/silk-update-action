@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: f4bd3d7702d6faf598f4ff4f0a37ecf8e51dccdf8024502ee9e144c337112204
 sources:
   - id: test-collection-test
     resource: ../../__test__/unit/test-collection.test.ts
@@ -19,6 +18,9 @@ sources:
     resource: ../../__test__/utils/action-doubles.ts
   - id: vitest-config
     resource: ../../vitest.config.ts
+integrity:
+  generated:
+    body: f4bd3d7702d6faf5
 ---
 
 # Mirror src/ under __test__/unit/ and keep helpers out of reserved directories

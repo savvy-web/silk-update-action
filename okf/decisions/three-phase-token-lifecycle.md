@@ -6,7 +6,6 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: cfdf07f835f97bd0ba6a42c337ad516392060dab2a8bfcbd5fe19cc48c868f2f
 sources:
   - id: pre-ts
     resource: ../../src/pre.ts
@@ -18,6 +17,9 @@ sources:
     resource: ../../src/state.ts
   - id: layers-app
     resource: ../../src/layers/app.ts
+integrity:
+  generated:
+    body: cfdf07f835f97bd0
 ---
 
 # Run as three phases around a GitHub App token, not a personal access token

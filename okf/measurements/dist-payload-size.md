@@ -11,7 +11,6 @@ justifies:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 9ac1b7a15ee17a08502dd09b8ddf254954ca1be99efc608dacf79353c1283987
 sources:
   - id: dist-main
     resource: ../../dist/main.js
@@ -21,6 +20,9 @@ sources:
     resource: ../../dist/post.js
   - id: action-yml
     resource: ../../action.yml
+integrity:
+  generated:
+    body: 9ac1b7a15ee17a08
 ---
 
 # Committed dist payload size

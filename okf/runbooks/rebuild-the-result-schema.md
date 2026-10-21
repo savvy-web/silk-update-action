@@ -9,7 +9,6 @@ resource: ../../lib/scripts/schemastore.config.ts
 generated:
   by: okfit/claude-code
   at: 2026-09-29T02:56:11Z
-  body_sha256: 823b0219a80bda68a7e81d00863df5c335af1b33474082f6c8f18620daa9cb9d
 sources:
   - id: schemastore-config
     resource: ../../lib/scripts/schemastore.config.ts
@@ -19,6 +18,9 @@ sources:
     resource: ../../package.json
   - id: turbo-json
     resource: ../../turbo.json
+integrity:
+  generated:
+    body: 823b0219a80bda68
 ---
 
 # Rebuild the result output's JSON Schema after editing RunResultDocument

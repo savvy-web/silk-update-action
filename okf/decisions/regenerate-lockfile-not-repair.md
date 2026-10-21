@@ -6,12 +6,14 @@ status: draft
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 9de37ee4c3c9e94d1b6f6e0b341863a681bc6744d657a105f3ee0565fd6f929c
 sources:
   - id: steps-install
     resource: ../../src/steps/install.ts
   - id: format
     resource: ../../src/format.ts
+integrity:
+  generated:
+    body: 9de37ee4c3c9e94d
 ---
 
 # Regenerate the lockfile from a clean slate rather than repair it in place

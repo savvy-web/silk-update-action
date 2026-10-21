@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 7f724017e17a17b3b97a08618a4fdf09bdd2f04e0e348854bdfc60c0c7567390
 sources:
   - id: action-config
     resource: ../../action.config.ts
@@ -18,6 +17,9 @@ sources:
     resource: ../../scripts/assert-native-dynamic-import.mjs
   - id: effected-242
     resource: "https://github.com/spencerbeggs/effected/issues/242"
+integrity:
+  generated:
+    body: 7f724017e17a17b3
 ---
 
 # A first-party computed dynamic import stays local, guarded by a build-time assertion

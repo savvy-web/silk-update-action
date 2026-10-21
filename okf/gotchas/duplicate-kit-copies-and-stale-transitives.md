@@ -11,7 +11,6 @@ resource: ../../pnpm-lock.yaml
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 48420bff4b885af2687357d8b2d9014d15b3d78426e7e7155f4c0f48746a5278
 sources:
   - id: pnpm-lock
     resource: ../../pnpm-lock.yaml
@@ -19,6 +18,9 @@ sources:
     resource: ../../package.json
   - id: dist-main
     resource: ../../dist/main.js
+integrity:
+  generated:
+    body: 48420bff4b885af2
 ---
 
 # A duplicate kit package and a type error are not necessarily cause and effect

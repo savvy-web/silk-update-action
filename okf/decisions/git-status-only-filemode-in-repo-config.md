@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: baba7e691299ec9a47a046e8337dd79cab872cc35a4b30975ba50b79d682f1b2
 sources:
   - id: configure-status
     resource: ../../src/steps/configure-status.ts
@@ -18,6 +17,9 @@ sources:
     resource: ../../src/services/branch.ts
   - id: effected-issue-279
     resource: "https://github.com/spencerbeggs/effected/issues/279"
+integrity:
+  generated:
+    body: baba7e691299ec9a
 ---
 
 # Adopt @effected/git for all local git operations; pin core.fileMode in repository config

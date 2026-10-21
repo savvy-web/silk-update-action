@@ -11,12 +11,14 @@ justifies:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 760ba9873e26cf82e2eb46b232da5a0c90362ef618cedc288c09259dc70b5a67
 sources:
   - id: vitest-config
     resource: ../../vitest.config.ts
   - id: test-collection-test
     resource: ../../__test__/unit/test-collection.test.ts
+integrity:
+  generated:
+    body: 760ba9873e26cf82
 ---
 
 # Test suite count and its accounting history

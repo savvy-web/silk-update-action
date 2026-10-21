@@ -9,12 +9,14 @@ bounds: ../decisions/catalog-base-routing.md
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 567a69b49441a1e1da7210b1a3d5f401abf20880385296e7da506090d5444d7f
 sources:
   - id: module-catalogs
     resource: ../../src/services/module-catalogs.ts
   - id: effected-282
     resource: "https://github.com/spencerbeggs/effected/pull/282"
+integrity:
+  generated:
+    body: 567a69b49441a1e1
 ---
 
 # No main/index.js fallback when a config dependency's exports map does not match

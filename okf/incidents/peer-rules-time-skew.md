@@ -11,7 +11,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 871736781a7e61a249d3cb47afee56fb285dd708ef2a1740df6c623c05e425fe
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
@@ -21,6 +20,9 @@ sources:
     resource: "https://github.com/spencerbeggs/pnpm-module-template/issues/84"
   - id: pnpm-module-template-85
     resource: "https://github.com/spencerbeggs/pnpm-module-template/issues/85"
+integrity:
+  generated:
+    body: 871736781a7e61a2
 ---
 
 # A memoized WorkspaceCatalogs assembly judged the after-install lockfile under pre-install rules

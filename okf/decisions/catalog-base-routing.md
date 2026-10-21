@@ -9,7 +9,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 67e485d6c2311429df1af5f9a7b327d196c8a8af367c1b42aa6ab73e5d8b62fc
 sources:
   - id: catalog-config-deps
     resource: ../../src/services/catalog-config-deps.ts
@@ -21,6 +20,9 @@ sources:
     resource: ../../__test__/integration/catalog-config-deps.int.test.ts
   - id: effected-282
     resource: "https://github.com/spencerbeggs/effected/pull/282"
+integrity:
+  generated:
+    body: 67e485d6c2311429
 ---
 
 # Route a bun catalog merge on WHY the base tarball could not be read, never collapse every failure to one outcome

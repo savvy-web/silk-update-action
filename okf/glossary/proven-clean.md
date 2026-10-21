@@ -8,10 +8,12 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 40cdd8e477328362cdb8222bc0070d3eaa8c9a550724956c3c49eb06206ceeda
 sources:
   - id: peers-util
     resource: ../../src/utils/peers.ts
+integrity:
+  generated:
+    body: 40cdd8e477328362
 ---
 
 # proven-clean

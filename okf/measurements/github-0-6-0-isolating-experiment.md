@@ -10,10 +10,12 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: c4df67dbd5e8f5403ca1f0ac7ce0c63469701e6274c8158a4a3a48c4a2201dcc
 sources:
   - id: pnpm-lock
     resource: ../../pnpm-lock.yaml
+integrity:
+  generated:
+    body: c4df67dbd5e8f540
 ---
 
 # Isolating experiment over a duplicated @effected/github pair

@@ -8,12 +8,14 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: fc765fc7f87f4f85419ae5c8346a9dc9d02021870d85aa3c3673c9295a48edea
 sources:
   - id: app-layer
     resource: ../../src/layers/app.ts
   - id: app-layer-test
     resource: ../../__test__/unit/layers/app.test.ts
+integrity:
+  generated:
+    body: fc765fc7f87f4f85
 ---
 
 # Adopting a service into a second consumer is a layer-wiring change

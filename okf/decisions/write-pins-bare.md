@@ -20,7 +20,9 @@ sources:
 generated:
   by: okfit/claude-code
   at: 2026-09-27T05:00:59Z
-  body_sha256: 5aa0607f58add6b02a65e510ff9ca6448fde59940cc6e4d5969d41edd20e51ed
+integrity:
+  generated:
+    body: 5aa0607f58add6b0
 ---
 
 # Write package-manager and config-dependency pins bare; the lockfile holds integrity

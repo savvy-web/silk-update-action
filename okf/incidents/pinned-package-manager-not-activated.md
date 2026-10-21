@@ -12,7 +12,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-27T05:00:59Z
-  body_sha256: 22cd8d5e5614acedefe2276e150f9892d117011398686bbb418bc978b94c759b
 sources:
   - id: activate-step
     resource: ../../src/steps/activate-package-manager.ts
@@ -26,6 +25,9 @@ sources:
     resource: "https://github.com/savvy-web/pnpm-module-template/actions/runs/35272832963/job/105376169449"
   - id: template-pr-198
     resource: "https://github.com/savvy-web/pnpm-module-template/pull/198"
+integrity:
+  generated:
+    body: 22cd8d5e5614aced
 ---
 
 # A pnpm 11 to 12 upgrade committed a lockfile pnpm 12 refuses

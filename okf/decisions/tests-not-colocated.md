@@ -8,7 +8,6 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: d81a3b436b340a3c3e42226987c2e20ad36dd7240cfef39ff972d2b670f0ecf8
 sources:
   - id: test-collection-test
     resource: ../../__test__/unit/test-collection.test.ts
@@ -16,6 +15,9 @@ sources:
     resource: ../../__test__/unit/doubles.test.ts
   - id: vitest-config
     resource: ../../vitest.config.ts
+integrity:
+  generated:
+    body: d81a3b436b340a3c
 ---
 
 # Keep every unit suite under __test__/unit, mirroring src, never co-located

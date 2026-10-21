@@ -8,10 +8,12 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
-  body_sha256: 46f4e7d70967ce521e45b711b0e10a07b9484fd90ca42febcf0f467680e0ba79
 sources:
   - id: catalogs-utils
     resource: ../../src/utils/catalogs.ts
+integrity:
+  generated:
+    body: 46f4e7d70967ce52
 ---
 
 # kept (catalog delta)
