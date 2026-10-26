@@ -1,5 +1,33 @@
 # silk-update-action
 
+## 4.14.19
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | ^0.15.1 | ^0.16.0 |
+| @effected/git | dependency | updated | ^0.25.0 | ^0.25.1 |
+| @effected/github | dependency | updated | ^0.24.0 | ^0.25.1 |
+| @effected/github-actions | dependency | updated | ^0.27.0 | ^0.28.1 |
+| @effected/lockfiles | dependency | updated | ^0.19.3 | ^0.19.5 |
+| @effected/npm | dependency | updated | ^0.26.1 | ^0.27.0 |
+| @effected/package-json | dependency | updated | ^0.25.1 | ^0.26.0 |
+| @effected/runtimes | dependency | updated | ^0.15.1 | ^0.15.2 |
+| @effected/schemastore | dependency | updated | ^0.26.1 | ^0.26.2 |
+| @effected/semver | dependency | updated | ^0.17.0 | ^0.18.0 |
+| @effected/workspaces | dependency | updated | ^0.38.0 | ^0.39.0 |
+| @effected/yaml | dependency | updated | ^0.25.0 | ^0.25.1 |
+| @savvy-web/silk-effects | dependency | updated | ^10.0.0 | ^10.1.0 |
+
+[#583][#583]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#583]: https://github.com/savvy-web/silk-update-action/pull/583
+
 ## 4.14.18
 
 ### Dependencies
@@ -1381,8 +1409,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/yaml | dependency | updated | ^0.10.0 | ^0.11.0 |  |
   | @savvy-web/silk-effects | dependency | updated | ^7.0.0 | ^7.0.1 | [#331][#331] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#331]: https://github.com/savvy-web/silk-update-action/pull/331
 
 ## 4.9.1
@@ -1425,8 +1451,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | @effected/workspaces | dependency | updated | ^0.17.0 | ^0.17.1 | [#321][#321] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#321]: https://github.com/savvy-web/silk-update-action/pull/321
 
 ## 4.8.6
@@ -1437,8 +1461,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | @savvy-web/silk-effects | dependency | updated | ^6.0.4 | ^6.0.5 | [#314][#314] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#314]: https://github.com/savvy-web/silk-update-action/pull/314
 
 ## 4.8.5
@@ -1448,8 +1470,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | @effected/lockfiles | dependency | updated | ^0.6.1 | ^0.6.2 | [#311][#311] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#311]: https://github.com/savvy-web/silk-update-action/pull/311
 
@@ -1475,8 +1495,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | @effected/runtimes | dependency | updated | ^0.4.2 | ^0.4.3 | [#306][#306] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#306]: https://github.com/savvy-web/silk-update-action/pull/306
 
 ## 4.8.2
@@ -1490,8 +1508,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/workspaces | dependency | updated | ^0.15.1 | ^0.16.0 |  |
   | @savvy-web/silk-effects | dependency | updated | ^6.0.3 | ^6.0.4 | [#303][#303] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#303]: https://github.com/savvy-web/silk-update-action/pull/303
 
 ## 4.8.1
@@ -1501,8 +1517,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | @savvy-web/silk-effects | dependency | updated | ^6.0.2 | ^6.0.3 | [#300][#300] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#300]: https://github.com/savvy-web/silk-update-action/pull/300
 
@@ -1583,8 +1597,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | @savvy-web/silk-effects | dependency | updated | ^6.0.0 | ^6.0.1 | [#294][#294] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#294]: https://github.com/savvy-web/silk-update-action/pull/294
 
@@ -1696,8 +1708,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/github | dependency | updated | ^0.5.0 | ^0.6.0 |  |
   | @effected/github-actions | dependency | updated | ^0.8.0 | ^0.9.0 | [#288][#288] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#288]: https://github.com/savvy-web/silk-update-action/pull/288
 
 ## 4.6.3
@@ -1721,8 +1731,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @savvy-web/silk-effects | dependency | updated | ^5.9.1 | ^5.9.2 |  |
   | effect | dependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#285][#285] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#285]: https://github.com/savvy-web/silk-update-action/pull/285
 
 ## 4.6.2
@@ -1735,8 +1743,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/workspaces | dependency | updated | ^0.13.0 | ^0.13.1 |  |
   | @effected/yaml | dependency | updated | ^0.8.0 | ^0.9.0 |  |
   | @savvy-web/silk-effects | dependency | updated | ^5.9.0 | ^5.9.1 | [#282][#282] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#282]: https://github.com/savvy-web/silk-update-action/pull/282
 
@@ -1821,8 +1827,6 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
   | @effected/workspaces | dependency | updated | ^0.11.2 | ^0.12.0 |  |
   | @savvy-web/silk-effects | dependency | updated | ^5.7.0 | ^5.7.1 | [#263][#263] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#263]: https://github.com/savvy-web/silk-update-action/pull/263
 
 ## 4.5.3
@@ -1833,8 +1837,6 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
   | --- | --- | --- | --- | --- | --- |
   | @effected/github | dependency | updated | ^0.3.0 | ^0.4.1 |  |
   | @effected/github-actions | dependency | updated | ^0.6.0 | ^0.6.1 | [#260][#260] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#260]: https://github.com/savvy-web/silk-update-action/pull/260
 
@@ -1848,8 +1850,6 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
   | @effected/workspaces | dependency | updated | ^0.11.1 | ^0.11.2 |  |
   | @effected/yaml | dependency | updated | ^0.7.0 | ^0.8.0 |  |
   | @savvy-web/silk-effects | dependency | updated | ^5.6.0 | ^5.7.0 | [#257][#257] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#257]: https://github.com/savvy-web/silk-update-action/pull/257
 
@@ -2063,8 +2063,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/workspaces | dependency | updated | ^0.9.4 | ^0.9.5 |  |
   | @savvy-web/silk-effects | dependency | updated | ^5.2.0 | ^5.3.0 | [#242][#242] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#242]: https://github.com/savvy-web/silk-update-action/pull/242
 
 ## 4.3.2
@@ -2082,8 +2080,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/semver | dependency | updated | ^0.3.0 | ^0.3.1 |  |
   | @effected/workspaces | dependency | updated | ^0.9.3 | ^0.9.4 |  |
   | @effected/yaml | dependency | updated | ^0.6.0 | ^0.6.1 | [#236][#236] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#236]: https://github.com/savvy-web/silk-update-action/pull/236
 
@@ -2144,8 +2140,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   a package-manager-only upgrade.
   ### Malformed inputs now fail instead of falling back to defaults
   Input values are read through a proper input layer rather than a plain config
-  lookup. A typo like `dry-run: maybe` used to be silently treated as `dry-run:
-  false` — running for real when a dry run was intended — and is now a hard
+  lookup. A typo like `dry-run: maybe` used to be silently treated as `dry-run: false` — running for real when a dry run was intended — and is now a hard
   failure. Inputs that are genuinely absent still take their documented defaults;
   only malformed *present* values are rejected.
 
@@ -2182,8 +2177,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @savvy-web/github-action-builder | devDependency | updated | ^2.0.6 | ^2.1.0 |  |
   | @savvy-web/silk | devDependency | updated | ^3.2.3 | ^3.2.4 | [#222][#222] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Minor Changes
-
 [#222]: https://github.com/savvy-web/silk-update-action/pull/222
 
 ## 4.2.5
@@ -2199,8 +2192,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/yaml | dependency | updated | ^0.5.1 | ^0.6.0 |  |
   | @savvy-web/github-action-effects | dependency | updated | ^3.0.5 | ^3.1.0 |  |
   | @savvy-web/silk-effects | dependency | updated | ^4.2.5 | ^4.2.6 | [#220][#220] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#220]: https://github.com/savvy-web/silk-update-action/pull/220
 
@@ -2243,8 +2234,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @savvy-web/silk-effects | dependency | updated | ^4.2.3 | ^4.2.4 |  |
   | effect | dependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#215][#215] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#215]: https://github.com/savvy-web/silk-update-action/pull/215
 
 ## 4.2.2
@@ -2254,8 +2243,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | @effected/runtimes | dependency | updated | ^0.1.3 | ^0.1.4 | [#210][#210] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#210]: https://github.com/savvy-web/silk-update-action/pull/210
 
@@ -2269,8 +2256,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @effected/workspaces | dependency | updated | ^0.5.2 | ^0.6.1 |  |
   | @savvy-web/github-action-effects | dependency | updated | ^3.0.3 | ^3.0.4 |  |
   | @savvy-web/silk-effects | dependency | updated | ^4.2.0 | ^4.2.3 | [#207][#207] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#207]: https://github.com/savvy-web/silk-update-action/pull/207
 
@@ -2352,8 +2337,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | @savvy-web/silk-effects | dependency | updated | ^3.3.0 | ^3.3.1 | [#190][#190] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#190]: https://github.com/savvy-web/silk-update-action/pull/190
 
 ## 4.0.0
@@ -2423,8 +2406,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | @savvy-web/silk-effects | dependency | updated | ^3.2.3 | ^3.2.5 | [#180][#180] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#180]: https://github.com/savvy-web/silk-update-action/pull/180
 
 ## 3.4.7
@@ -2435,8 +2416,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | @savvy-web/silk-effects | dependency | updated | ^3.2.2 | ^3.2.3 | [#176][#176] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
 
-### Patch Changes
-
 [#176]: https://github.com/savvy-web/silk-update-action/pull/176
 
 ## 3.4.6
@@ -2446,8 +2425,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | @savvy-web/silk-effects | dependency | updated | ^3.2.1 | ^3.2.2 | [#173][#173] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
-
-### Patch Changes
 
 [#173]: https://github.com/savvy-web/silk-update-action/pull/173
 
@@ -2515,8 +2492,6 @@ Thanks to [@savvy-web-bot](https://github.com/apps/savvy-web-bot) for their cont
 ### Other
 
 - Upgrade `@savvy-web/silk-effects` to `^3.0.0` (changesets v3 `next` engine) and `@savvy-web/silk` to `^2.0.0`. Adds `build.nativeDynamicImports` for `@changesets/apply-release-plan` and `workspaces-effect` so their fully dynamic `await import()` calls survive bundling instead of failing at runtime with `Cannot find module`.
-
-### Patch Changes
 
 [#159]: https://github.com/savvy-web/silk-update-action/pull/159
 
