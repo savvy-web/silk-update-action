@@ -43,7 +43,7 @@ export class Report extends Context.Service<
 			deltas?: ReadonlyArray<CatalogDelta>,
 			peerIssues?: ReadonlyArray<PeerIssue>,
 			peerGate?: PeerGateNote,
-		) => Effect.Effect<PullRequestResult, GitHubError, Repo>;
+		) => Effect.Effect<PullRequestResult, GitHubError | GitHubGraphQLError, Repo>;
 		readonly generatePRBody: (
 			updates: ReadonlyArray<DependencyUpdateResult>,
 			changesets: ReadonlyArray<ChangesetFile>,
@@ -119,7 +119,9 @@ export class Report extends Context.Service<
 /**
  * Create or update the dependency update PR.
  *
- * Returns `PullRequestResult` on success, or `GitHubError` in the error channel.
+ * Returns `PullRequestResult` on success, or `GitHubError | GitHubGraphQLError`
+ * in the error channel — the kit's `list` and `upsert` both declare the GraphQL
+ * error. The caller logs either one's `reason` and degrades to no PR.
  *
  * Auto-merge is a separate call in the kit (`setAutoMerge`, a GraphQL mutation)
  * rather than a field on the create call. Its failure is deliberately swallowed
@@ -137,7 +139,7 @@ const createOrUpdatePRImpl = (
 	deltas?: ReadonlyArray<CatalogDelta>,
 	peerIssues?: ReadonlyArray<PeerIssue>,
 	peerGate?: PeerGateNote,
-): Effect.Effect<PullRequestResult, GitHubError, Repo> =>
+): Effect.Effect<PullRequestResult, GitHubError | GitHubGraphQLError, Repo> =>
 	Effect.gen(function* () {
 		const title = buildUpdateSubject(updates);
 
