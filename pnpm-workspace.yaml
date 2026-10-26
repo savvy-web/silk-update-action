@@ -1,3 +1,5 @@
+packages:
+  - .
 autoInstallPeers: true
 configDependencies:
   "@effected/pnpm-plugin-effect": 0.18.7
@@ -20,5 +22,3 @@ minimumReleaseAgeExclude:
   - "@pnpm/exe.win32-arm64@12.11.2 || 12.12.1"
   - "@pnpm/exe.win32-x64@12.11.2 || 12.12.1"
   - pnpm@12.11.2 || 12.12.1
-packages:
-  - .
