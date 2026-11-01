@@ -1,12 +1,14 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PackageJsonFile } from "@effected/package-json";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { WorkspaceDiscovery, WorkspaceDiscoveryError } from "@effected/workspaces";
 import { Effect, Layer, References } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type { DependencyUpdateResult } from "../../../src/schema/domain.js";
 import { computePeerRange, syncPeers } from "../../../src/services/peer-sync.js";
+import { failingPackageJsonFile, packageJsonFileLayer } from "../../utils/fixtures.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Test Helpers
@@ -72,11 +74,12 @@ const runSyncPeers = (
 	config: { lock: string[]; minor: string[] },
 	devUpdates: DependencyUpdateResult[],
 	workspacesLayer: Layer.Layer<WorkspaceDiscovery>,
+	packageJsonFile: Layer.Layer<PackageJsonFile> = packageJsonFileLayer,
 ) =>
 	Effect.runPromise(
 		syncPeers(config, devUpdates).pipe(
 			Effect.provideService(References.MinimumLogLevel, "None"),
-			Effect.provide(workspacesLayer),
+			Effect.provide(Layer.merge(workspacesLayer, packageJsonFile)),
 		),
 	);
 
@@ -435,5 +438,68 @@ describe("syncPeers", () => {
 		// Verify peer was NOT changed
 		const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8"));
 		expect(pkg.peerDependencies.effect).toBe("^3.0.0");
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Formatting preservation
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("syncPeers manifest write", () => {
+	const devUpdate: DependencyUpdateResult = {
+		dependency: "effect",
+		from: "^3.12.0",
+		to: "^3.12.5",
+		type: "devDependency",
+		package: "my-lib",
+	};
+
+	it("changes only the synced peer range's bytes, keeping indent, key order and inline formatting", async () => {
+		const tmpDir = makeTempDir();
+		const pkgDir = join(tmpDir, "packages", "my-lib");
+		mkdirSync(pkgDir, { recursive: true });
+		// Tab indent, peerDependencies before devDependencies, and a one-line
+		// `keywords` array a whole-file JSON.stringify would expand.
+		const original = [
+			"{",
+			'\t"name": "my-lib",',
+			'\t"keywords": ["a", "b"],',
+			'\t"peerDependencies": {',
+			'\t\t"effect": "^3.12.0"',
+			"\t},",
+			'\t"devDependencies": { "effect": "^3.12.5" }',
+			"}",
+			"",
+		].join("\n");
+		writeFileSync(join(pkgDir, "package.json"), original, "utf-8");
+
+		await runSyncPeers(
+			{ lock: ["effect"], minor: [] },
+			[devUpdate],
+			makeWorkspacesLayer([{ name: "my-lib", path: pkgDir }]),
+		);
+
+		expect(readFileSync(join(pkgDir, "package.json"), "utf-8")).toBe(
+			original.replace('\t\t"effect": "^3.12.0"', '\t\t"effect": "^3.12.5"'),
+		);
+	});
+
+	it("warns and keeps going when the manifest write fails", async () => {
+		const tmpDir = makeTempDir();
+		const pkgDir = join(tmpDir, "packages", "my-lib");
+		mkdirSync(pkgDir, { recursive: true });
+		writePackageJson(pkgDir, { name: "my-lib", peerDependencies: { effect: "^3.12.0" } });
+		const before = readFileSync(join(pkgDir, "package.json"), "utf-8");
+
+		const results = await runSyncPeers(
+			{ lock: ["effect"], minor: [] },
+			[devUpdate],
+			makeWorkspacesLayer([{ name: "my-lib", path: pkgDir }]),
+			failingPackageJsonFile,
+		);
+
+		// Still reported; the failed write is a warning, matching the read path.
+		expect(results).toHaveLength(1);
+		expect(readFileSync(join(pkgDir, "package.json"), "utf-8")).toBe(before);
 	});
 });

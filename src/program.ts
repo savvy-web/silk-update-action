@@ -227,7 +227,52 @@ export const innerProgram = (
 					yield* configureStatusStep(detected.root);
 
 					// ── branch ────────────────────────────────────────────────────
-					yield* branchStep(inputs.branch, inputs.sourceBranch, inputs.targetBranch, detected.root);
+					const branchOutcome = yield* branchStep(
+						inputs.branch,
+						inputs.sourceBranch,
+						inputs.targetBranch,
+						detected.root,
+					);
+					if (branchOutcome._tag === "ForeignCommits") {
+						// Someone else pushed to the update branch (#296). The reset would
+						// discard their work, so nothing below runs: the branch and its
+						// pull request stay exactly as they are, and the run ends neutral
+						// with the reason where a maintainer will look for it.
+						const commitList = branchOutcome.commits
+							.map((c) => `- \`${c.sha.slice(0, 7)}\` by ${c.authorLogin ?? c.author}: ${c.subject}`)
+							.join("\n");
+						yield* conclude(
+							"neutral",
+							CheckRunOutput.make({
+								title: "Update branch has commits from someone else",
+								summary:
+									`\`${inputs.branch}\` has commits this action did not make, and updating it would discard them. ` +
+									`No updates were made.\n\n${commitList}\n\n` +
+									"Merge or close the pull request, or delete the branch, and the next run updates it again.",
+							}),
+						);
+						yield* outputs.set("has-changes", "false");
+						yield* outputs.set("updates-count", "0");
+						// Detection succeeded, so the baseline document no longer describes
+						// this run; nothing after the branch step ran, so every list is
+						// empty because it was never computed.
+						yield* emitRunResult(
+							buildRunResult({
+								hasChanges: false,
+								dryRun,
+								detected,
+								branch: inputs.branch,
+								targetBranch: inputs.targetBranch,
+								updates: [],
+								deltas: [],
+								peerIssues: [],
+								lockfileChanges: [],
+								changesets: [],
+								pullRequest: null,
+							}),
+						);
+						return;
+					}
 
 					// ── lockfile snapshot (before) ──────────────────────────────────
 					// Every step below reads and writes at `detected.root` — the resolved

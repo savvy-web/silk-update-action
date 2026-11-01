@@ -8,10 +8,12 @@
  * @module services/regular-deps
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { NpmRegistryShape } from "@effected/npm";
 import { NpmRegistry } from "@effected/npm";
+import type { PackageFieldEdit, PackageJsonFileShape } from "@effected/package-json";
+import { PackageJsonFile } from "@effected/package-json";
 import type { WorkspaceDiscoveryShape } from "@effected/workspaces";
 import { WorkspaceDiscovery } from "@effected/workspaces";
 import { Context, Effect, Layer } from "effect";
@@ -19,7 +21,6 @@ import { Context, Effect, Layer } from "effect";
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schema/domain.js";
 import { matchesPattern, parseSpecifier } from "../utils/deps.js";
-import { detectIndent } from "../utils/pnpm.js";
 import { resolutionRangeForSpecifier, resolveLatestSatisfying } from "../utils/semver.js";
 import { ReleaseAge } from "./release-age.js";
 
@@ -56,9 +57,13 @@ export class RegularDeps extends Context.Service<
 			const registry = yield* NpmRegistry;
 			const discovery = yield* WorkspaceDiscovery;
 			const releaseAge = yield* ReleaseAge;
+			// Resolved HERE, in the layer body, so `updateRegularDeps` keeps R = never.
+			// That placement is also why a missing provide is invisible at every call
+			// site: makeAppLayer must hand this layer PackageJsonFile explicitly.
+			const packageJson = yield* PackageJsonFile;
 			return {
 				updateRegularDeps: (patterns, workspaceRoot, exclude) =>
-					updateRegularDepsImpl(patterns, registry, discovery, releaseAge, workspaceRoot, exclude),
+					updateRegularDepsImpl(patterns, registry, discovery, releaseAge, packageJson, workspaceRoot, exclude),
 			};
 		}),
 	);
@@ -165,10 +170,16 @@ const collectMatchingDeps = (
  * Update a single package.json file. `updates` is keyed by (field, depName)
  * so a dep present in both `dependencies` and `devDependencies` updates
  * each independently if both are tracked.
+ *
+ * The raw parse only DECIDES which specifiers move; the write is a list of
+ * surgical `PackageJsonFile.modify` edits, so every byte outside the edited
+ * values — key order, indentation, inline arrays, line endings — survives, in
+ * a manifest committed to someone else's repository.
  */
 const updatePackageJson = (
 	pkgPath: string,
 	updates: Map<DepSectionField, Map<string, string>>,
+	packageJson: PackageJsonFileShape,
 ): Effect.Effect<void, FileSystemError> =>
 	Effect.gen(function* () {
 		const raw = yield* Effect.try({
@@ -176,13 +187,12 @@ const updatePackageJson = (
 			catch: (e) => new FileSystemError({ operation: "read", path: pkgPath, reason: String(e) }),
 		});
 
-		const indent = detectIndent(raw);
 		const pkg = yield* Effect.try({
 			try: () => JSON.parse(raw) as PackageJsonDeps,
 			catch: (e) => new FileSystemError({ operation: "read", path: pkgPath, reason: `Invalid JSON: ${e}` }),
 		});
 
-		let changed = false;
+		const edits: Array<PackageFieldEdit> = [];
 
 		for (const { field } of DEP_SECTIONS) {
 			const deps = pkg[field];
@@ -192,17 +202,17 @@ const updatePackageJson = (
 			for (const [name, newSpecifier] of fieldUpdates) {
 				const current = deps[name];
 				if (current && parseSpecifier(current) && current !== newSpecifier) {
-					deps[name] = newSpecifier;
-					changed = true;
+					edits.push({ path: [field, name], value: newSpecifier });
 				}
 			}
 		}
 
-		if (changed) {
-			yield* Effect.try({
-				try: () => writeFileSync(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf-8"),
-				catch: (e) => new FileSystemError({ operation: "write", path: pkgPath, reason: String(e) }),
-			});
+		if (edits.length > 0) {
+			yield* packageJson
+				.modify(pkgPath, edits)
+				.pipe(
+					Effect.mapError((error) => new FileSystemError({ operation: "write", path: pkgPath, reason: error.message })),
+				);
 		}
 	});
 
@@ -219,6 +229,7 @@ const updateRegularDepsImpl = (
 	registry: NpmRegistryShape,
 	discovery: WorkspaceDiscoveryShape,
 	releaseAge: Effect.Success<typeof ReleaseAge>,
+	packageJson: PackageJsonFileShape,
 	_workspaceRoot: string,
 	exclude: ReadonlySet<string> | undefined,
 ): Effect.Effect<ReadonlyArray<DependencyUpdateResult>> =>
@@ -319,7 +330,7 @@ const updateRegularDepsImpl = (
 		// Step 4: Apply updates to package.json files.
 		for (const [pkgPath, sections] of fileUpdates) {
 			const total = [...sections.values()].reduce((sum, m) => sum + m.size, 0);
-			yield* updatePackageJson(pkgPath, sections).pipe(
+			yield* updatePackageJson(pkgPath, sections, packageJson).pipe(
 				Effect.tap(() => Effect.logInfo(`Updated ${total} dependencies in ${pkgPath}`)),
 				Effect.catch((error) => Effect.logWarning(`Failed to update ${pkgPath}: ${error.reason}`)),
 			);

@@ -4,8 +4,10 @@
  * @module utils/fixtures
  */
 
+import { NodeServices } from "@effect/platform-node";
 import { PullRequest, PullRequestInfo } from "@effected/github";
 import { DEFAULT_REGISTRY, NpmRegistry } from "@effected/npm";
+import { PackageJsonFile, PackageJsonWriteError } from "@effected/package-json";
 import type { Logger } from "effect";
 import { Effect, Layer, Option, References } from "effect";
 import type {
@@ -353,3 +355,30 @@ export const seededRegistry = (packages: Record<string, SeededPackage>): Layer.L
 
 	return NpmRegistry.layerSeeded({ registries: { [DEFAULT_REGISTRY]: byName }, distTags });
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PackageJsonFile
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The real `PackageJsonFile` over the real platform. The manifest writers edit
+ * actual files on disk in a temp dir, so the formatting-preservation tests read
+ * back the exact bytes `modify` wrote.
+ */
+export const packageJsonFileLayer: Layer.Layer<PackageJsonFile> = PackageJsonFile.layer.pipe(
+	Layer.provide(NodeServices.layer),
+);
+
+/**
+ * The real `PackageJsonFile` with ONLY `modify` faulted: every surgical write
+ * fails as `PackageJsonWriteError` and nothing reaches disk. Reads stay real, so
+ * a writer's decide-then-write path runs unchanged up to the write.
+ */
+export const failingPackageJsonFile: Layer.Layer<PackageJsonFile> = Layer.effect(
+	PackageJsonFile,
+	Effect.map(PackageJsonFile.make, (live) => ({
+		...live,
+		modify: (path: string) =>
+			Effect.fail(PackageJsonWriteError.make({ path, cause: new Error("EACCES: permission denied, write") })),
+	})),
+).pipe(Layer.provide(NodeServices.layer));

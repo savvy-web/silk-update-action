@@ -313,6 +313,20 @@ describe("readInputs — enumerated inputs", () => {
 		// an invalid enum instead of failing at input parsing.
 		const exit = await read({ dependencies: "effect", "auto-merge": "sqush" });
 		expect(Exit.isFailure(exit)).toBe(true);
+		// Read through ActionInput.literals: the failure is the kit's ConfigError,
+		// and its message names the input, the received value and the allowed set.
+		const message = Exit.isFailure(exit) ? Cause.pretty(exit.cause) : "";
+		expect(message).toContain("ConfigError");
+		expect(message).toContain("auto-merge");
+		expect(message).toContain("sqush");
+		expect(message).toContain("squash");
+	});
+
+	it("treats an explicitly empty auto-merge as disabled", async () => {
+		// A workflow expression that resolves to "" on some events must read as
+		// disabled, not fail as an unknown method.
+		const r = await readOrThrow({ dependencies: "effect", "auto-merge": "" });
+		expect(r.inputs["auto-merge"]).toBe("");
 	});
 
 	it("reads runtime-data: live", async () => {

@@ -1,5 +1,23 @@
 # Log
 
+## 2026-11-01
+
+* Updated Build on Effect v4 and the @effected kit, not plain TypeScript or one all-in-one library
+* Updated Bump the @effected kit
+* Updated This repository's @effected ranges come from a config dependency, not package.json
+* Updated config dependency
+* Updated A first-party computed dynamic import stays local, guarded by a build-time assertion
+* Updated A miscompiled computed dynamic import passes every check except the built bundle
+* Updated Open work toward integration testing with a real GitHub App
+* Updated Adopt @effected/package-json for surgical field edits only, never its decode path
+* Updated Demonstrate a failure path with a test, or leave it out of the signature
+* Updated Force-reset a dedicated branch every run rather than rebase
+* Updated silk-update-action
+
+## 2026-10-21
+
+* Updated Runtime upgrades only ever upgrade an existing entry, and always write a bare exact version
+
 ## 2026-09-29
 
 * Updated Rebuild the result output's JSON Schema after editing RunResultDocument

@@ -10,9 +10,10 @@
  * @module pre
  */
 
+import { NodeCrypto } from "@effect/platform-node";
 import { GitHubApp } from "@effected/github";
 import { Action, ActionEnvironment, ActionInput, ActionState, GitHubToken } from "@effected/github-actions";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { STATE_KEYS, StartTimeState } from "./state.js";
 
 export const pre = Effect.gen(function* () {
@@ -48,11 +49,12 @@ export const pre = Effect.gen(function* () {
 
 /**
  * Domain layers for pre-action. `GitHubToken.provision` needs a `GitHubApp`,
- * which in the kit is a self-contained layer — there is no octokit auth-app
+ * which in the kit is a self-contained layer apart from the `Signature`
+ * service it signs the App JWT with (`NodeCrypto.layerSignature`) — there is no octokit auth-app
  * strategy to provide and no separate HttpClient wiring. `ActionState` /
  * `ActionOutputs` come from `Action.run`'s runtime.
  */
-export const PreLive = GitHubApp.layer;
+export const PreLive = GitHubApp.layer.pipe(Layer.provide(NodeCrypto.layerSignature));
 
 /* v8 ignore next 3 -- entry-point guard, only runs in GitHub Actions */
 if (process.env.GITHUB_ACTIONS) {

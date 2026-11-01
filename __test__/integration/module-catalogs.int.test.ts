@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import { NodeCrypto, NodeServices } from "@effect/platform-node";
 import { DEFAULT_REGISTRY, NpmRegistry, PackageTarball, RegistryReadError } from "@effected/npm";
 import { Effect, Layer, References } from "effect";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
@@ -57,7 +57,10 @@ const realRunner = NodeServices.layer;
  * them -- it needs the HttpClient the test is stubbing, and merging it in as a
  * sibling would leave its own requirements unsatisfied.
  */
-const withTarball = <A, E>(base: Layer.Layer<A, E, never>) => Layer.provideMerge(PackageTarball.layer, base);
+// PackageTarball verifies integrity through core's Digest, which NodeServices
+// does not carry.
+const withTarball = <A, E>(base: Layer.Layer<A, E, never>) =>
+	Layer.provideMerge(PackageTarball.layer, Layer.merge(base, NodeCrypto.layerDigest));
 
 /** A spawner whose every command fails, for the extraction-failure path. */
 const failingRunner = fromMap(undefined, { exit: 1, stdout: "", stderr: "not a gzip file" }).layer;

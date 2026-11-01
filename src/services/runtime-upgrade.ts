@@ -234,7 +234,7 @@ const upgradeImpl = (
 			// edit in order, write once, and skip the write entirely when the result
 			// is byte-identical. Replaces a JSON.stringify of the whole parsed tree,
 			// which rewrote the file wholesale and could only preserve formatting by
-			// accident of `detectIndent` guessing right.
+			// accident of a guessed indent being right.
 			yield* packageJson
 				.modify(
 					packageJsonPath,

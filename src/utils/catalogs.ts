@@ -1,3 +1,5 @@
+import type { PackageFieldEdit } from "@effected/package-json";
+
 import type { CatalogDelta } from "../schema/domain.js";
 
 /**
@@ -146,56 +148,6 @@ export const threeWayMergeCatalogs = (
 	return { merged, deltas };
 };
 
-/**
- * The manifest key a catalog map lives under, and the key it is anchored after.
- *
- * bun reads catalogs from the **top level** of the manifest: `catalog` (the
- * default catalog) and `catalogs` (the named ones) sit as siblings of
- * `workspaces`, which stays whatever it already was — usually the array form.
- * bun also tolerates the same two keys nested inside an object-form
- * `workspaces`, so that shape is still *read* (a repo may be written that way,
- * and an earlier build of this action wrote it), but it is never *written*:
- * writing promotes to the canonical top-level form and strips the nested copy.
- */
-const CATALOG_ANCHOR = "workspaces";
-
-/**
- * Set (or delete) a manifest key, inserting a brand-new key straight after
- * `after` rather than appending it to the end of the object.
- *
- * `JSON.stringify` emits keys in insertion order, so a plain assignment would
- * park a newly created `catalogs` block at the bottom of package.json, far from
- * the `workspaces` field it belongs with. Rebuilding the object in place keeps
- * the manifest readable and the diff tight.
- */
-const upsertAfter = (
-	obj: Record<string, unknown>,
-	key: string,
-	value: Record<string, unknown> | undefined,
-	after: string,
-): void => {
-	if (value === undefined) {
-		delete obj[key];
-		return;
-	}
-	// Already present, or nothing to anchor to: assign in place.
-	if (key in obj || !(after in obj)) {
-		obj[key] = value;
-		return;
-	}
-
-	const entries = Object.entries(obj);
-	for (const existing of Object.keys(obj)) {
-		delete obj[existing];
-	}
-	for (const [k, v] of entries) {
-		obj[k] = v;
-		if (k === after) {
-			obj[key] = value;
-		}
-	}
-};
-
 /** Fold one manifest section's `catalog` / `catalogs` fields into `result`. */
 const collectCatalogs = (source: Record<string, unknown>, result: CatalogMap): void => {
 	const normalizedDefault = normalizeCatalogs({ default: source.catalog ?? {} });
@@ -239,39 +191,140 @@ export const readManifestCatalogs = (pkgJson: unknown): CatalogMap => {
 };
 
 /**
- * Write catalogs back into a root manifest, mutating it in place.
+ * Edits that set the value at `path` from nothing, one leaf at a time: an
+ * empty `{}` or `[]` first, then one edit per entry or element.
+ *
+ * Built leaf by leaf rather than as one value because `modify` indents a
+ * multi-line inserted value as if it sat at the top level
+ * (spencerbeggs/effected#1208); growing an empty container one member at a
+ * time indents every line to its real depth.
+ */
+const freshValueEdits = (path: ReadonlyArray<string | number>, value: unknown): Array<PackageFieldEdit> => {
+	if (Array.isArray(value)) {
+		const edits: Array<PackageFieldEdit> = [{ path, value: [] }];
+		value.forEach((element, index) => {
+			edits.push(...freshValueEdits([...path, index], element));
+		});
+		return edits;
+	}
+	if (typeof value === "object" && value !== null) {
+		const edits: Array<PackageFieldEdit> = [{ path, value: {} }];
+		for (const [key, entry] of Object.entries(value)) {
+			edits.push(...freshValueEdits([...path, key], entry));
+		}
+		return edits;
+	}
+	return [{ path, value }];
+};
+
+/** {@link freshValueEdits} for an object value. */
+const freshObjectEdits = (
+	path: ReadonlyArray<string>,
+	value: Readonly<Record<string, unknown>>,
+): Array<PackageFieldEdit> => freshValueEdits(path, value);
+
+/**
+ * True when turning `existing` into an object with only `kept` keys would
+ * delete its FIRST member. `@effected/jsonc` leaves a whitespace-only line
+ * behind when it deletes an object's first member (deleting a middle or last
+ * one is clean), so such an object is rebuilt instead
+ * (spencerbeggs/effected#1208).
+ */
+const deletesFirstMember = (existing: Readonly<Record<string, unknown>>, kept: (key: string) => boolean): boolean => {
+	const first = Object.keys(existing)[0];
+	return first !== undefined && !kept(first);
+};
+
+/**
+ * Edits turning the string-valued object at `path` (as it is on disk) into
+ * `target`, per entry, so an untouched entry keeps its bytes.
+ *
+ * When that would delete the object's first member, the object is rebuilt
+ * entry by entry instead (see {@link deletesFirstMember}); `target` is
+ * non-empty, so the rebuilt object is never empty.
+ */
+const recordEdits = (
+	path: ReadonlyArray<string>,
+	current: unknown,
+	target: Readonly<Record<string, string>>,
+): Array<PackageFieldEdit> => {
+	const existing = asRecord(current);
+	if (existing === null || deletesFirstMember(existing, (key) => key in target)) {
+		return freshObjectEdits(path, target);
+	}
+	const sets: Array<PackageFieldEdit> = Object.entries(target)
+		.filter(([key, value]) => existing[key] !== value)
+		.map(([key, value]) => ({ path: [...path, key], value }));
+	const deletes: Array<PackageFieldEdit> = Object.keys(existing)
+		.filter((key) => !(key in target))
+		.map((key) => ({ path: [...path, key], value: undefined }));
+	return [...sets, ...deletes];
+};
+
+/**
+ * The `PackageJsonFile.modify` edits that write `catalogs` back into the root
+ * manifest `pkgJson` (its parsed on-disk form).
  *
  * Catalogs are written to the **top level** — `catalog` and `catalogs` as
  * siblings of `workspaces` — and `workspaces` itself is never rewritten: an
  * array stays an array. Any nested copy inside an object-form `workspaces` is
  * removed, migrating the manifest to the canonical shape. A catalog that has
  * become empty has its key removed rather than being left as an empty object.
+ *
+ * Edits are per entry wherever the on-disk shape allows, so an entry the merge
+ * did not move keeps its exact bytes. A brand-new `catalog` / `catalogs` key is
+ * appended at the end of the manifest: `modify` has no insert-after position.
  */
-export const writeManifestCatalogs = (pkgJson: Record<string, unknown>, catalogs: CatalogMap): void => {
+export const manifestCatalogEdits = (pkgJson: unknown, catalogs: CatalogMap): ReadonlyArray<PackageFieldEdit> => {
+	const manifest = asRecord(pkgJson) ?? {};
+	const edits: Array<PackageFieldEdit> = [];
+
 	// Migrate away from the nested form. `workspaces` keeps its own shape;
 	// only the catalog keys are lifted out of it.
-	if (!Array.isArray(pkgJson.workspaces)) {
-		const nested = asRecord(pkgJson.workspaces);
-		if (nested !== null) {
-			delete nested.catalog;
-			delete nested.catalogs;
+	const nested = Array.isArray(manifest.workspaces) ? null : asRecord(manifest.workspaces);
+	if (nested !== null && ("catalog" in nested || "catalogs" in nested)) {
+		const remaining = Object.keys(nested).filter((key) => key !== "catalog" && key !== "catalogs");
+		if (remaining.length === 0) {
+			// Deleting an object's last key leaves a blank line; replace it whole.
+			edits.push({ path: ["workspaces"], value: {} });
+		} else if (deletesFirstMember(nested, (key) => key !== "catalog" && key !== "catalogs")) {
+			edits.push(...freshObjectEdits(["workspaces"], Object.fromEntries(remaining.map((key) => [key, nested[key]]))));
+		} else {
+			for (const key of ["catalog", "catalogs"] as const) {
+				if (key in nested) edits.push({ path: ["workspaces", key], value: undefined });
+			}
 		}
 	}
 
 	const { default: defaultCatalog, ...named } = catalogs;
 
-	const populatedDefault = defaultCatalog && Object.keys(defaultCatalog).length > 0 ? { ...defaultCatalog } : undefined;
-	const populatedNamed = Object.fromEntries(
-		Object.entries(named).filter(([, entries]) => Object.keys(entries).length > 0),
-	);
+	if (defaultCatalog && Object.keys(defaultCatalog).length > 0) {
+		edits.push(...recordEdits(["catalog"], manifest.catalog, defaultCatalog));
+	} else if ("catalog" in manifest) {
+		edits.push({ path: ["catalog"], value: undefined });
+	}
 
-	upsertAfter(pkgJson, "catalog", populatedDefault, CATALOG_ANCHOR);
-	// Anchor `catalogs` after `catalog` when there is one, so the two read in
-	// their natural order; otherwise it goes straight after `workspaces`.
-	upsertAfter(
-		pkgJson,
-		"catalogs",
-		Object.keys(populatedNamed).length > 0 ? populatedNamed : undefined,
-		"catalog" in pkgJson ? "catalog" : CATALOG_ANCHOR,
-	);
+	const populatedNamed = Object.entries(named).filter(([, entries]) => Object.keys(entries).length > 0);
+	if (populatedNamed.length === 0) {
+		if ("catalogs" in manifest) edits.push({ path: ["catalogs"], value: undefined });
+		return edits;
+	}
+
+	const existingNamed = asRecord(manifest.catalogs);
+	if (existingNamed === null) {
+		edits.push(...freshObjectEdits(["catalogs"], Object.fromEntries(populatedNamed)));
+		return edits;
+	}
+	const kept = new Set(populatedNamed.map(([name]) => name));
+	if (deletesFirstMember(existingNamed, (name) => kept.has(name))) {
+		edits.push(...freshObjectEdits(["catalogs"], Object.fromEntries(populatedNamed)));
+		return edits;
+	}
+	for (const [name, entries] of populatedNamed) {
+		edits.push(...recordEdits(["catalogs", name], existingNamed[name], entries));
+	}
+	for (const name of Object.keys(existingNamed)) {
+		if (!kept.has(name)) edits.push({ path: ["catalogs", name], value: undefined });
+	}
+	return edits;
 };

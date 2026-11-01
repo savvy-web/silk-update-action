@@ -9,19 +9,17 @@ tags:
   - dx
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T19:19:26Z
 sources:
   - id: errors
     resource: ../../src/errors/errors.ts
   - id: errors-test
     resource: ../../__test__/unit/errors/errors.test.ts
-  - id: pnpm-utils
-    resource: ../../src/utils/pnpm.ts
   - id: lockfile-service
     resource: ../../src/services/lockfile.ts
 integrity:
   generated:
-    body: 68671b05647c17cf
+    body: cd12c8a2726d3984
 ---
 
 # Demonstrate a failure path with a test, or leave it out of the signature
@@ -62,9 +60,11 @@ reasons that are worth keeping distinct rather than folding into one story:
   finding: nothing in `src/` ever resolved either tag, only each module's
   own test suite did, so the tag and layer were dead code wearing a type
   signature.[^lockfile-service] `parsePnpmVersion` / `formatPnpmVersion` /
-  `ParsedPnpmVersion` in `src/utils/pnpm.ts` went the same way: zero callers
-  in `src/` and zero in `__test__/`, and the justification recorded for
-  keeping them had also independently expired.[^pnpm-utils]
+  `ParsedPnpmVersion` in the since-deleted `src/utils/pnpm.ts` went the same
+  way: zero callers in `src/` and zero in `__test__/`, and the justification
+  recorded for keeping them had also independently expired. The module's last
+  export, `detectIndent`, followed once all five package.json writers moved
+  onto `PackageJsonFile.modify`, and the file was deleted with it.
 - **The kit ships the capability now.** This is a *different* argument and
   should not be conflated with the first: `corepackHashFromIntegrity` had a
   real caller and worked, but was deleted anyway once
@@ -95,13 +95,12 @@ table does not.
 - When an adoption or refactor removes the last caller of a helper,
   delete the helper in the same change rather than leaving it for a
   "future need" — record the deleted helper's name and reasoning in a
-  comment at its former location if the reasoning is non-obvious, as
-  `src/utils/pnpm.ts` does.[^pnpm-utils]
+  comment at its former location if the reasoning is non-obvious; when
+  the last export goes, delete the module too.
 
 See [errors](../models/action-errors.md) for the current error model this
 rule keeps closed.
 
 [^errors]: `../../src/errors/errors.ts`
 [^errors-test]: `../../__test__/unit/errors/errors.test.ts`
-[^pnpm-utils]: `../../src/utils/pnpm.ts`
 [^lockfile-service]: `../../src/services/lockfile.ts`

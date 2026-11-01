@@ -7,7 +7,7 @@ tags:
   - deps
 generated:
   by: okfit/claude-code
-  at: 2026-09-27T05:00:59Z
+  at: 2026-11-01T18:48:23Z
 sources:
   - id: config-deps-service
     resource: ../../src/services/config-deps.ts
@@ -17,7 +17,7 @@ sources:
     resource: ../../pnpm-workspace.yaml
 integrity:
   generated:
-    body: 6726b8103e8066b3
+    body: bf6436ab0cfefa03
 ---
 
 # config dependency
@@ -43,7 +43,7 @@ overlap is worth keeping visible:
    to reproduce — see
    [npm has nothing to reproduce config dependencies with](../limitations/npm-has-no-config-dependencies.md).
 2. **This repository's own `@effected/*` ranges**, which arrive through
-   exactly the pnpm mechanism in sense (1) — `@effected/pnpm-plugin-effect`
+   exactly the pnpm mechanism in sense (1) — `@effected/pnpm-plugin-effected`
    is itself a config dependency pinned in this repository's own
    `pnpm-workspace.yaml`. See
    [kit ranges come from a config dependency](../gotchas/kit-ranges-come-from-a-config-dependency.md)

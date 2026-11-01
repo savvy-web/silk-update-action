@@ -1,28 +1,36 @@
 ---
 type: Decision
 title: "Adopt @effected/package-json for surgical field edits only, never its decode path"
-description: Both manifest writers (RuntimeUpgrade, PackageManagerUpgrade) apply changes through PackageJsonFile.modify, a JSONC span edit; both still read with readFileSync + JSON.parse because the package's schema-decoding read path rejects a private workspace root.
+description: Every package.json writer (RuntimeUpgrade, PackageManagerUpgrade, RegularDeps, syncPeers, CatalogConfigDeps) applies changes through PackageJsonFile.modify, a JSONC span edit; each still reads with readFileSync + JSON.parse because the package's schema-decoding read path rejects a private workspace root.
 status: draft
 tags:
   - deps
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T19:19:26Z
 sources:
   - id: package-manager-upgrade
     resource: ../../src/services/package-manager-upgrade.ts
   - id: runtime-upgrade
     resource: ../../src/services/runtime-upgrade.ts
-  - id: pnpm-utils
-    resource: ../../src/utils/pnpm.ts
+  - id: regular-deps
+    resource: ../../src/services/regular-deps.ts
+  - id: peer-sync
+    resource: ../../src/services/peer-sync.ts
+  - id: catalog-config-deps
+    resource: ../../src/services/catalog-config-deps.ts
+  - id: catalog-utils
+    resource: ../../src/utils/catalogs.ts
+  - id: app-layer
+    resource: ../../src/layers/app.ts
   - id: effected-pr-366
     resource: "https://github.com/spencerbeggs/effected/pull/366"
   - id: effected-issue-286
     resource: "https://github.com/spencerbeggs/effected/issues/286"
 integrity:
   generated:
-    body: 86c9939ae7943790
+    body: ec0b863b78648676
 ---
 
 # Adopt @effected/package-json for surgical field edits only, never its decode path
@@ -48,10 +56,11 @@ or `version` field at all, which `Package.decode` rejects outright — turning
 
 ## Decision
 
-Only `PackageJsonFile.modify` is adopted. Both writers still `readFileSync` +
-`JSON.parse` the manifest to **decide** what to write — parsing the
-`packageManager` string, the `devEngines.packageManager` entry, or locating a
-`devEngines.runtime` entry — and only the **write** goes through `modify`, as
+Only `PackageJsonFile.modify` is adopted. Every writer still `readFileSync` +
+`JSON.parse`s the manifest to **decide** what to write — parsing the
+`packageManager` string, the `devEngines.packageManager` entry, locating a
+`devEngines.runtime` entry, checking a dependency or peer specifier, or
+reading the catalogs to merge — and only the **write** goes through `modify`, as
 a list of JSONC field edits (`{ path: [...], value }`) applied in one
 read/edit/write pass.[^package-manager-upgrade][^runtime-upgrade] `modify`
 preserves every byte outside the edited span and skips the write entirely when
@@ -70,13 +79,26 @@ requirement was adopted. Three objections were evaluated against what shipped:
 | a caret `packageManager` pin (`pnpm@^11.20.0`) is rejected | moot — the caret-pin parsing this repo needs moved onto `@effected/npm`'s `PackageManagerPin` instead, not onto this package's decode path[^package-manager-upgrade] |
 | the write path sorts keys canonically | solved by `modify` being a span edit rather than a re-serialize — key order never moves |
 
-`PackageManagerUpgrade` and `RuntimeUpgrade` both resolve `PackageJsonFile` in
-their **layer bodies**, not inside a method — that placement is what keeps
-each `upgrade` method's requirement channel `never`, and it is also exactly
-the placement that made a missing provide invisible to `tsc` at any call
-site.[^package-manager-upgrade][^runtime-upgrade] Providing the service to
-only one of the two consumers shipped as a release that failed every run
-before creating a check run — see
+The writers are:
+
+| writer | edits |
+| --- | --- |
+| `RuntimeUpgrade` | `devEngines.runtime[*].version` |
+| `PackageManagerUpgrade` | `packageManager`, `devEngines.packageManager.version` |
+| `RegularDeps` | `[section, name]` per bumped specifier[^regular-deps] |
+| `syncPeers` | `["peerDependencies", name]`[^peer-sync] |
+| `CatalogConfigDeps` | `[section, name]` per bumped config dependency, plus `manifestCatalogEdits`' per-entry `catalog` / `catalogs` edits[^catalog-config-deps][^catalog-utils] |
+
+`PackageManagerUpgrade`, `RuntimeUpgrade`, `RegularDeps` and
+`CatalogConfigDeps` resolve `PackageJsonFile` in their **layer bodies**, not
+inside a method — that placement is what keeps each method's requirement
+channel `never`, and it is also exactly the placement that made a missing
+provide invisible to `tsc` at any call site.[^package-manager-upgrade][^runtime-upgrade]
+`syncPeers` is a free function, so its `PackageJsonFile` requirement lands on
+`steps/peer-sync.ts` and then `innerProgram`; `makeAppLayer` therefore
+**exposes** the service as well as providing it to the four layers.[^app-layer]
+Providing the service to only one of two consumers shipped as a release that
+failed every run before creating a check run — see
 [the v4.6.0 incident](../incidents/v4-6-0-packagejsonfile-unprovided.md).
 
 A second, independent decode-free member — `resolveEntryPoint`, a pure
@@ -91,13 +113,15 @@ verdict above.
 - **Adopt the schema-decoding read/write wholesale.** Rejected: it rejects the
   exact manifest shape this action must edit.
 - **Keep hand-rolling the write** (parse, mutate the tree, `JSON.stringify`
-  with a guessed indent via `detectIndent`). This is what both writers did
-  before adopting `modify`; superseded because it could reformat regions the
-  run never intended to touch, in a manifest committed to someone else's
-  repository. `detectIndent` (`src/utils/pnpm.ts`) is no longer called by
-  either writer for this reason — its three remaining call sites are
-  `RegularDeps`, `PeerSync` and `CatalogConfigDeps`, none of which write
-  through `PackageJsonFile`.[^pnpm-utils]
+  with a guessed indent via `detectIndent`). This is what every writer did
+  before adopting `modify`; superseded because it re-serialized the whole
+  file — expanding one-line arrays and objects, and re-indenting anything the
+  guess got wrong — in a manifest committed to someone else's repository.
+  `RuntimeUpgrade` and `PackageManagerUpgrade` moved first; `RegularDeps`,
+  `syncPeers` and `CatalogConfigDeps` followed, and `detectIndent` and its
+  module `src/utils/pnpm.ts` were deleted with their last caller. Each of the
+  three carries a test comparing the full file text after an update against
+  the original with only the targeted values changed.
 - **Keep the local `corepackHashFromIntegrity` and version-parsing helpers**
   once the kit shipped equivalents. Rejected on a different argument than the
   decode question: `corepackHashFromIntegrity` had a real caller and worked,
@@ -109,8 +133,7 @@ verdict above.
   `formatPnpmVersion` / `ParsedPnpmVersion` were deleted for the opposite
   reason — they had **zero callers** in `src/` or `__test__/`, and their
   recorded justification (the kit rejecting a caret pin) had independently
-  stopped being true.[^pnpm-utils] `src/utils/pnpm.ts` now exports only
-  `detectIndent`.
+  stopped being true.
 - **Replace `findRuntimeEntry`'s live-object mutation with a second, separate
   path lookup.** Not needed: `locateRuntimeEntry` returns the entry *and* the
   JSONC path to its `version` from one walk, which is what `modify` consumes
@@ -122,7 +145,16 @@ verdict above.
 
 - A version bump that resolves to the same value produces no file write and
   no diff, because `modify` compares before writing.
-- Both writers still carry a dependency on `readFileSync` + `JSON.parse` for
+- A **brand-new** top-level key lands at the end of the manifest: `modify`
+  appends a new property and has no insert-after position. That moved
+  `CatalogConfigDeps`' first-time `catalog` / `catalogs` block from just after
+  `workspaces` (where the old whole-file rewrite spliced it) to the end of the
+  file. Two further `modify` behaviors shape `manifestCatalogEdits`: a
+  multi-line object inserted as one value is indented as if it were at the top
+  level, so new objects are built as `{}` plus one edit per entry; and deleting
+  an object's last key leaves a blank line, so sets run before deletes and an
+  emptied catalog is deleted at its own key.[^catalog-utils]
+- Every writer still carries a dependency on `readFileSync` + `JSON.parse` for
   the read half — adopting the decode path would remove that, but only if the
   package ever ships a presence-lenient decode that accepts a nameless,
   versionless manifest. `PackageManifest` (also shipped at `0.9.0`) is exactly
@@ -148,6 +180,10 @@ than adopted for tidiness.
 
 [^package-manager-upgrade]: `../../src/services/package-manager-upgrade.ts`
 [^runtime-upgrade]: `../../src/services/runtime-upgrade.ts`
-[^pnpm-utils]: `../../src/utils/pnpm.ts`
+[^regular-deps]: `../../src/services/regular-deps.ts`
+[^peer-sync]: `../../src/services/peer-sync.ts`
+[^catalog-config-deps]: `../../src/services/catalog-config-deps.ts`
+[^catalog-utils]: `../../src/utils/catalogs.ts`
+[^app-layer]: `../../src/layers/app.ts`
 [^effected-pr-366]: `https://github.com/spencerbeggs/effected/pull/366`
 [^effected-issue-286]: `https://github.com/spencerbeggs/effected/issues/286`

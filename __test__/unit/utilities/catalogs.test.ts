@@ -1,11 +1,26 @@
+import { PackageJsonFormat } from "@effected/package-json";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { CatalogMap } from "../../../src/utils/catalogs.js";
 import {
+	manifestCatalogEdits,
 	normalizeCatalogs,
 	readManifestCatalogs,
 	threeWayMergeCatalogs,
-	writeManifestCatalogs,
 } from "../../../src/utils/catalogs.js";
+
+/**
+ * Apply `manifestCatalogEdits` to `pkg` serialized with tabs, through the same
+ * kit formatter `PackageJsonFile.modify` uses, and return both the text and the
+ * parsed result — the edits are only meaningful against real source text.
+ */
+const applyCatalogs = (pkg: Record<string, unknown>, catalogs: CatalogMap) => {
+	let text = `${JSON.stringify(pkg, null, "\t")}\n`;
+	for (const edit of manifestCatalogEdits(pkg, catalogs)) {
+		text = Effect.runSync(PackageJsonFormat.modifyToString(text, edit.path, edit.value));
+	}
+	return { text, json: JSON.parse(text) as Record<string, unknown> };
+};
 
 describe("normalizeCatalogs", () => {
 	it("accepts a Map of Maps", () => {
@@ -180,7 +195,7 @@ describe("threeWayMergeCatalogs", () => {
 	});
 });
 
-describe("readManifestCatalogs / writeManifestCatalogs", () => {
+describe("readManifestCatalogs / manifestCatalogEdits", () => {
 	it("maps the top-level catalog to the default catalog and back", () => {
 		const pkg: Record<string, unknown> = {
 			workspaces: ["."],
@@ -192,22 +207,22 @@ describe("readManifestCatalogs / writeManifestCatalogs", () => {
 		expect(read.default).toEqual({ react: "^19.0.0" });
 		expect(read.silk).toEqual({ effect: "^3.21.4" });
 
-		writeManifestCatalogs(pkg, { default: { react: "^19.1.0" }, silk: { effect: "^3.22.0" } });
-		expect(pkg.catalog).toEqual({ react: "^19.1.0" });
-		expect(pkg.catalogs).toEqual({ silk: { effect: "^3.22.0" } });
+		const { json } = applyCatalogs(pkg, { default: { react: "^19.1.0" }, silk: { effect: "^3.22.0" } });
+		expect(json.catalog).toEqual({ react: "^19.1.0" });
+		expect(json.catalogs).toEqual({ silk: { effect: "^3.22.0" } });
 	});
 
 	it("leaves an array workspaces field untouched and writes catalogs at the top level", () => {
 		const pkg: Record<string, unknown> = { workspaces: ["."] };
 
-		writeManifestCatalogs(pkg, { silk: { effect: "^3.21.4" } });
+		const { json } = applyCatalogs(pkg, { silk: { effect: "^3.21.4" } });
 
 		// The array form is bun's canonical shape: it must survive verbatim.
-		expect(pkg.workspaces).toEqual(["."]);
-		expect(pkg.catalogs).toEqual({ silk: { effect: "^3.21.4" } });
+		expect(json.workspaces).toEqual(["."]);
+		expect(json.catalogs).toEqual({ silk: { effect: "^3.21.4" } });
 	});
 
-	it("inserts a new catalogs block straight after workspaces, not at the end", () => {
+	it("appends new catalog blocks after every existing key, leaving those keys in place", () => {
 		const pkg: Record<string, unknown> = {
 			name: "root",
 			workspaces: ["."],
@@ -215,34 +230,35 @@ describe("readManifestCatalogs / writeManifestCatalogs", () => {
 			devDependencies: {},
 		};
 
-		writeManifestCatalogs(pkg, { default: { react: "^19.0.0" }, silk: { effect: "^3.21.4" } });
+		const { json } = applyCatalogs(pkg, { default: { react: "^19.0.0" }, silk: { effect: "^3.21.4" } });
 
-		expect(Object.keys(pkg)).toEqual(["name", "workspaces", "catalog", "catalogs", "scripts", "devDependencies"]);
+		// `modify` has no insert-after position, so new keys go last.
+		expect(Object.keys(json)).toEqual(["name", "workspaces", "scripts", "devDependencies", "catalog", "catalogs"]);
 	});
 
 	it("appends catalogs when the manifest has no workspaces key to anchor to", () => {
 		const pkg: Record<string, unknown> = { name: "root" };
 
-		writeManifestCatalogs(pkg, { silk: { effect: "^3.21.4" } });
+		const { json } = applyCatalogs(pkg, { silk: { effect: "^3.21.4" } });
 
-		expect(pkg.workspaces).toBeUndefined();
-		expect(pkg.catalogs).toEqual({ silk: { effect: "^3.21.4" } });
+		expect(json.workspaces).toBeUndefined();
+		expect(json.catalogs).toEqual({ silk: { effect: "^3.21.4" } });
 	});
 
 	it("removes a catalog key that has become empty", () => {
 		const pkg: Record<string, unknown> = { workspaces: ["."], catalogs: { silk: { a: "1" } } };
 
-		writeManifestCatalogs(pkg, { silk: {} });
+		const { json } = applyCatalogs(pkg, { silk: {} });
 
-		expect(pkg.catalogs).toBeUndefined();
+		expect(json.catalogs).toBeUndefined();
 	});
 
 	it("removes an emptied default catalog", () => {
 		const pkg: Record<string, unknown> = { workspaces: ["."], catalog: { react: "^19.0.0" } };
 
-		writeManifestCatalogs(pkg, { default: {} });
+		const { json } = applyCatalogs(pkg, { default: {} });
 
-		expect(pkg.catalog).toBeUndefined();
+		expect(json.catalog).toBeUndefined();
 	});
 
 	it("reads an empty map from a manifest with no catalogs", () => {
@@ -287,11 +303,11 @@ describe("readManifestCatalogs / writeManifestCatalogs", () => {
 			workspaces: { packages: ["."], catalog: { react: "^19.0.0" }, catalogs: { silk: { effect: "^3.21.4" } } },
 		};
 
-		writeManifestCatalogs(pkg, readManifestCatalogs(pkg));
+		const { json } = applyCatalogs(pkg, readManifestCatalogs(pkg));
 
-		expect(pkg.workspaces).toEqual({ packages: ["."] });
-		expect(pkg.catalog).toEqual({ react: "^19.0.0" });
-		expect(pkg.catalogs).toEqual({ silk: { effect: "^3.21.4" } });
+		expect(json.workspaces).toEqual({ packages: ["."] });
+		expect(json.catalog).toEqual({ react: "^19.0.0" });
+		expect(json.catalogs).toEqual({ silk: { effect: "^3.21.4" } });
 	});
 
 	it("round-trips the canonical bun shape without disturbing the manifest", () => {
@@ -302,14 +318,105 @@ describe("readManifestCatalogs / writeManifestCatalogs", () => {
 			devDependencies: { "@savvy-web/silk": "^2.4.1" },
 		};
 
-		writeManifestCatalogs(pkg, { silk: { effect: "^3.21.4" } });
+		const before = `${JSON.stringify(pkg, null, "\t")}\n`;
+		const { text } = applyCatalogs(pkg, { silk: { effect: "^3.21.4" } });
 
-		expect(pkg).toEqual({
-			name: "design-docs",
-			workspaces: ["."],
-			catalogs: { silk: { effect: "^3.21.4" } },
-			devDependencies: { "@savvy-web/silk": "^2.4.1" },
+		// Exactly one value's bytes change.
+		expect(text).toBe(before.replace('"effect": "^3.21.0"', '"effect": "^3.21.4"'));
+	});
+
+	it("emits no edits when the catalogs on disk already match", () => {
+		const pkg = { workspaces: ["."], catalog: { react: "^19.0.0" }, catalogs: { silk: { effect: "^3.21.4" } } };
+
+		expect(manifestCatalogEdits(pkg, readManifestCatalogs(pkg))).toEqual([]);
+	});
+
+	it("edits per entry: adds, updates and removes keys without replacing the catalog", () => {
+		const pkg = {
+			catalogs: { silk: { keep: "1", bump: "1", drop: "1" }, gone: { x: "1" } },
+		};
+
+		const edits = manifestCatalogEdits(pkg, { silk: { keep: "1", bump: "2", add: "1" } });
+
+		expect(edits).toEqual([
+			{ path: ["catalogs", "silk", "bump"], value: "2" },
+			{ path: ["catalogs", "silk", "add"], value: "1" },
+			{ path: ["catalogs", "silk", "drop"], value: undefined },
+			{ path: ["catalogs", "gone"], value: undefined },
+		]);
+		expect(applyCatalogs(pkg, { silk: { keep: "1", bump: "2", add: "1" } }).json).toEqual({
+			catalogs: { silk: { keep: "1", bump: "2", add: "1" } },
 		});
-		expect(Object.keys(pkg)).toEqual(["name", "workspaces", "catalogs", "devDependencies"]);
+	});
+
+	it("replaces a non-object catalog field and adds a missing named catalog whole", () => {
+		const pkg = { catalog: "nonsense", catalogs: { silk: { a: "1" } } };
+
+		const { text, json } = applyCatalogs(pkg, { default: { react: "^19.0.0" }, silk: { a: "1" }, peers: { b: "2" } });
+
+		expect(json).toEqual({ catalog: { react: "^19.0.0" }, catalogs: { silk: { a: "1" }, peers: { b: "2" } } });
+		// Built entry by entry, so the inserted object is indented to its depth.
+		expect(text).toContain('\t\t"peers": {\n\t\t\t"b": "2"\n\t\t}');
+	});
+
+	// @effected/jsonc leaves a whitespace-only line when it deletes the FIRST
+	// member of an object (spencerbeggs/effected#1208), so none of these may
+	// reach a first-member delete.
+	const BLANK_LINE = /\n[ \t]*\n/;
+
+	it("drops a catalog's first entry without a blank line", () => {
+		const pkg = { workspaces: ["."], catalogs: { silk: { drop: "1", keep: "1" } } };
+
+		const { text, json } = applyCatalogs(pkg, { silk: { keep: "1" } });
+
+		expect(json).toEqual({ workspaces: ["."], catalogs: { silk: { keep: "1" } } });
+		expect(text).not.toMatch(BLANK_LINE);
+	});
+
+	it("swaps a catalog's only entry for a different key without a blank line", () => {
+		const pkg = { workspaces: ["."], catalogs: { silk: { zod: "^3.0.0" } } };
+
+		const { text, json } = applyCatalogs(pkg, { silk: { effect: "^4.1.1" } });
+
+		expect(json).toEqual({ workspaces: ["."], catalogs: { silk: { effect: "^4.1.1" } } });
+		expect(text).not.toMatch(BLANK_LINE);
+	});
+
+	it("drops the first named catalog without a blank line", () => {
+		const pkg = { workspaces: ["."], catalogs: { gone: { x: "1" }, silk: { a: "1" } } };
+
+		const { text, json } = applyCatalogs(pkg, { silk: { a: "1" } });
+
+		expect(json).toEqual({ workspaces: ["."], catalogs: { silk: { a: "1" } } });
+		expect(text).not.toMatch(BLANK_LINE);
+	});
+
+	it("migrates a nested catalog that comes first in workspaces without a blank line", () => {
+		const pkg: Record<string, unknown> = { workspaces: { catalog: { react: "^19.0.0" }, packages: ["."] } };
+
+		const { text, json } = applyCatalogs(pkg, readManifestCatalogs(pkg));
+
+		expect(json).toEqual({ workspaces: { packages: ["."] }, catalog: { react: "^19.0.0" } });
+		expect(text).not.toMatch(BLANK_LINE);
+		// The rebuilt array is indented to its depth, not the top level.
+		expect(text).toContain('\t"workspaces": {\n\t\t"packages": [\n\t\t\t"."\n\t\t]\n\t}');
+	});
+
+	it("keeps an untouched entry's bytes when a later entry is dropped", () => {
+		const pkg = { workspaces: ["."], catalogs: { silk: { keep: "1", drop: "1" } } };
+		const before = `${JSON.stringify(pkg, null, "\t")}\n`;
+
+		const { text } = applyCatalogs(pkg, { silk: { keep: "1" } });
+
+		expect(text).toBe(before.replace(',\n\t\t\t"drop": "1"', ""));
+	});
+
+	it("empties an object-form workspaces that held only catalogs, without a blank line", () => {
+		const pkg = { workspaces: { catalog: { react: "^19.0.0" } } };
+
+		const { text, json } = applyCatalogs(pkg, readManifestCatalogs(pkg));
+
+		expect(json).toEqual({ workspaces: {}, catalog: { react: "^19.0.0" } });
+		expect(text).not.toMatch(/\n\s*\n/);
 	});
 });

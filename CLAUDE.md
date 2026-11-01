@@ -41,9 +41,14 @@ skip it entirely for a simple, self-contained bug fix or test-only change.
 | Editing any doc in `okf/` | [`okf/conventions/write-falsifiable-claims.md`](okf/conventions/write-falsifiable-claims.md) |
 | "What has shipped broken before" | [`okf/incidents/index.md`](okf/incidents/index.md) |
 
+Two subdirectory routers load when you work in their trees:
+[`src/CLAUDE.md`](src/CLAUDE.md) (source conventions) and
+[`__test__/CLAUDE.md`](__test__/CLAUDE.md) (the collection contract and test
+traps). Like this file, they point into the bundle rather than restating it.
+
 **Keep the bundle current.** When a change touches a documented decision,
 convention, or gotcha, update the concept file (or add a new one) in the same
-change, then run `pnpm exec okfit validate .` and `pnpm exec okfit sync`.
+change, then run `pnpm exec okfit validate` and `pnpm exec okfit sync`.
 Never hand-edit `okf/index.md` or `okf/log.md` — sync regenerates them.
 Decisions carry `status: draft` until a human runs `okfit verify` on them;
 don't set that field yourself.

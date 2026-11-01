@@ -6,8 +6,9 @@
  * @module services/peer-sync
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { PackageJsonFile } from "@effected/package-json";
 import { SemVer } from "@effected/semver";
 import { WorkspaceDiscovery } from "@effected/workspaces";
 import { Effect } from "effect";
@@ -15,7 +16,6 @@ import { Effect } from "effect";
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schema/domain.js";
 import { parseSpecifier } from "../utils/deps.js";
-import { detectIndent } from "../utils/pnpm.js";
 
 export type PeerStrategy = "lock" | "minor";
 
@@ -63,11 +63,17 @@ export const computePeerRange = (params: {
 
 /**
  * Sync peerDependency ranges based on devDependency updates and peer config.
+ *
+ * A free function, so `PackageJsonFile` lands on the CALLER's requirement
+ * channel (`steps/peer-sync.ts`, then `innerProgram`) rather than on a layer's
+ * input — `makeAppLayer` must therefore EXPOSE it, not merely provide it to a
+ * consumer layer. `app.test.ts`'s `innerProgram` assertion is what catches the
+ * difference.
  */
 export const syncPeers = (
 	config: PeerSyncConfig,
 	devUpdates: ReadonlyArray<DependencyUpdateResult>,
-): Effect.Effect<ReadonlyArray<DependencyUpdateResult>, FileSystemError, WorkspaceDiscovery> =>
+): Effect.Effect<ReadonlyArray<DependencyUpdateResult>, FileSystemError, WorkspaceDiscovery | PackageJsonFile> =>
 	Effect.gen(function* () {
 		if (config.lock.length === 0 && config.minor.length === 0) return [];
 
@@ -79,6 +85,7 @@ export const syncPeers = (
 		for (const pkg of config.minor) strategyMap.set(pkg, "minor");
 
 		const discovery = yield* WorkspaceDiscovery;
+		const packageJson = yield* PackageJsonFile;
 		const packages = yield* discovery.listPackages().pipe(
 			Effect.catch((error) =>
 				Effect.gen(function* () {
@@ -119,7 +126,6 @@ export const syncPeers = (
 
 			if (!raw) continue;
 
-			const indent = detectIndent(raw);
 			const pkg = JSON.parse(raw) as Record<string, unknown>;
 			const peers = pkg.peerDependencies as Record<string, string> | undefined;
 
@@ -146,11 +152,11 @@ export const syncPeers = (
 
 			if (!newPeerSpecifier || newPeerSpecifier === currentPeerSpecifier) continue;
 
-			peers[update.dependency] = newPeerSpecifier;
-			yield* Effect.try({
-				try: () => writeFileSync(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf-8"),
-				catch: (e) => new FileSystemError({ operation: "write", path: pkgPath, reason: String(e) }),
-			}).pipe(Effect.catch((e) => Effect.logWarning(`Failed to write ${pkgPath}: ${e.reason}`)));
+			// One surgical edit of the peer range: the rest of the manifest keeps its
+			// bytes. A failed write warns and continues, like a failed read above.
+			yield* packageJson
+				.modify(pkgPath, [{ path: ["peerDependencies", update.dependency], value: newPeerSpecifier }])
+				.pipe(Effect.catch((e) => Effect.logWarning(`Failed to write ${pkgPath}: ${e.message}`)));
 
 			yield* Effect.logInfo(
 				`Synced peer ${update.dependency} in ${update.package}: ${currentPeerSpecifier} -> ${newPeerSpecifier}`,

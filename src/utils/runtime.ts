@@ -1,7 +1,7 @@
 /**
  * Pure helpers for reading and rewriting devEngines.runtime entries.
  *
- * No Effect service dependencies — mirrors src/utils/pnpm.ts.
+ * No Effect service dependencies.
  *
  * The `upgrade-runtime-*` inputs only ever *upgrade* a runtime the manifest
  * already declares — they never introduce one — so there is no "upsert": an
@@ -22,6 +22,8 @@
  * @module utils/runtime
  */
 
+import { SemVer } from "@effected/semver";
+
 /** A JavaScript runtime managed by this action. */
 export type RuntimeName = "node" | "deno" | "bun";
 
@@ -33,20 +35,16 @@ export interface RuntimeEntry {
 	[key: string]: unknown;
 }
 
-const RANGE_OPERATOR_RE = /^(>=|<=|\^|~|>|<|=)/;
-
 /**
  * True when `raw` is a static exact version (bare `X.Y.Z`, optionally with
  * prerelease/build) — i.e. it carries no range operator, wildcard, OR-set, or
  * partial form. Used to make `auto` a no-op on pinned versions.
+ *
+ * Delegates to `SemVer.isValid`, the full version grammar: a hand-rolled
+ * wildcard check once rejected any `x` in the string, so a pinned prerelease
+ * such as `22.11.0-next.1` read as a range and `auto` moved it.
  */
-export const isStaticVersion = (raw: string): boolean => {
-	const value = raw.trim();
-	if (RANGE_OPERATOR_RE.test(value)) return false;
-	if (/[x*]/i.test(value)) return false;
-	if (/\s|\|\|/.test(value)) return false;
-	return /^\d+\.\d+\.\d+(?:[-+].*)?$/.test(value);
-};
+export const isStaticVersion = (raw: string): boolean => SemVer.isValid(raw.trim());
 
 const toEntryList = (runtimeField: unknown): RuntimeEntry[] => {
 	if (runtimeField === undefined || runtimeField === null) return [];

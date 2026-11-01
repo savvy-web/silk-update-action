@@ -13,34 +13,16 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import { NodeCrypto, NodeServices } from "@effect/platform-node";
 import { PackageTarball } from "@effected/npm";
+import type { PackageJsonFile } from "@effected/package-json";
 import { LockfileReadError, LockfileReader } from "@effected/workspaces";
 import { Effect, Exit, Layer, Option, References } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CatalogConfigDeps } from "../../src/services/catalog-config-deps.js";
-import { seededRegistry } from "../utils/fixtures.js";
+import { failingPackageJsonFile, packageJsonFileLayer, seededRegistry } from "../utils/fixtures.js";
 import { makeTarball } from "./fixtures/tarball.js";
-
-// Toggle for the final manifest write, so the FileSystemError path can be
-// exercised without depending on filesystem permissions (which differ between
-// a root container and a developer's machine). Defaults to passthrough; the
-// fixture helpers in this file write through the same mocked module.
-const fsFailures = { write: false };
-
-vi.mock("node:fs", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("node:fs")>();
-	return {
-		...actual,
-		writeFileSync: (...args: Parameters<typeof actual.writeFileSync>) => {
-			if (fsFailures.write && String(args[0]).endsWith("package.json")) {
-				throw new Error("EACCES: permission denied, write");
-			}
-			return actual.writeFileSync(...args);
-		},
-	};
-});
 
 const PKG = "@fixture/plugin";
 /** Two config dependencies merging onto one manifest, in listed order. */
@@ -152,10 +134,23 @@ const failingLockfileStub = Layer.succeed(LockfileReader, {
 	checkIntegrity: () => Effect.die("not used"),
 } as never);
 
-const layers = (packages: Record<string, ReadonlyArray<string>>, lockfile: Layer.Layer<LockfileReader>) => {
+const layers = (
+	packages: Record<string, ReadonlyArray<string>>,
+	lockfile: Layer.Layer<LockfileReader>,
+	packageJsonFile: Layer.Layer<PackageJsonFile> = packageJsonFileLayer,
+) => {
 	// PackageTarball has to be built OVER the stubs (it needs the stubbed
 	// HttpClient), not merged beside them (effected#282).
-	const base = Layer.mergeAll(registry(packages), lockfile, httpStub, realRunner);
+	// PackageTarball verifies integrity through core's Digest, which
+	// NodeServices does not carry.
+	const base = Layer.mergeAll(
+		registry(packages),
+		lockfile,
+		httpStub,
+		realRunner,
+		NodeCrypto.layerDigest,
+		packageJsonFile,
+	);
 	return CatalogConfigDeps.layer.pipe(Layer.provide(Layer.provideMerge(PackageTarball.layer, base)));
 };
 
@@ -164,11 +159,15 @@ const runWith = (
 	packages: Record<string, ReadonlyArray<string>>,
 	lockfile: Layer.Layer<LockfileReader>,
 	workspaceRoot: string | undefined = root,
+	packageJsonFile: Layer.Layer<PackageJsonFile> = packageJsonFileLayer,
 ) =>
 	Effect.gen(function* () {
 		const service = yield* CatalogConfigDeps;
 		return yield* service.update(deps, workspaceRoot);
-	}).pipe(Effect.provide(layers(packages, lockfile)), Effect.provideService(References.MinimumLogLevel, "None"));
+	}).pipe(
+		Effect.provide(layers(packages, lockfile, packageJsonFile)),
+		Effect.provideService(References.MinimumLogLevel, "None"),
+	);
 
 /** The common case: one package, a lockfile-installed base version. */
 const run = (deps: ReadonlyArray<string>, versions: ReadonlyArray<string>, installed: string | null) =>
@@ -227,7 +226,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	fsFailures.write = false;
 	rmSync(root, { recursive: true, force: true });
 	rmSync(work, { recursive: true, force: true });
 });
@@ -698,18 +696,20 @@ describe("CatalogConfigDeps", () => {
 		expect(pkg.workspaces).toEqual(["."]);
 		expect(pkg.workspaces.packages).toBeUndefined();
 		expect(pkg.catalogs).toEqual({ silk: { effect: "^3.21.4" }, silkPeers: { effect: "^3.21.0" } });
-		// The new block lands beside `workspaces`, not appended after every other
-		// field, and nothing else in the manifest is disturbed.
+		// Every existing key keeps its place; the new block is appended, because
+		// `PackageJsonFile.modify` has no insert-after position. (Before the
+		// surgical write it was spliced in after `workspaces` by rebuilding the
+		// object, at the cost of re-serializing the whole manifest.)
 		expect(Object.keys(pkg)).toEqual([
 			"name",
 			"private",
 			"type",
 			"workspaces",
-			"catalogs",
 			"scripts",
 			"devDependencies",
 			"packageManager",
 			"trustedDependencies",
+			"catalogs",
 		]);
 		expect(pkg.trustedDependencies).toEqual(["@parcel/watcher"]);
 	});
@@ -756,10 +756,85 @@ describe("CatalogConfigDeps", () => {
 			catalogs: { silk: { effect: "^3.21.0" } },
 			devDependencies: { [PKG]: "^0.23.0" },
 		});
-		fsFailures.write = true;
+		const before = readPkgRaw();
 
-		const exit = await Effect.runPromiseExit(runWith([PKG], { [PKG]: ["0.23.1", "0.24.0"] }, lockfileStub("0.23.1")));
+		const exit = await Effect.runPromiseExit(
+			runWith([PKG], { [PKG]: ["0.23.1", "0.24.0"] }, lockfileStub("0.23.1"), root, failingPackageJsonFile),
+		);
 
 		expect(Exit.isFailure(exit)).toBe(true);
+		expect(readPkgRaw()).toBe(before);
+	});
+
+	it("changes only the bumped specifier and catalog entry bytes, keeping indent, key order and inline formatting", async () => {
+		publish(PKG, "0.23.1", catalogsSource({ silk: { effect: "^3.21.0", zod: "^3.0.0" } }));
+		publish(PKG, "0.24.0", catalogsSource({ silk: { effect: "^3.21.4", zod: "^3.0.0" } }));
+		// 4-space indent, `devDependencies` before `catalogs`, a one-line
+		// `workspaces` array and a one-line unmanaged catalog — everything a
+		// whole-file JSON.stringify would expand or reorder.
+		const original = [
+			"{",
+			'    "private": true,',
+			'    "name": "root",',
+			'    "workspaces": ["packages/*", "."],',
+			`    "devDependencies": { "${PKG}": "^0.23.0", "typescript": "^5.0.0" },`,
+			'    "catalogs": {',
+			'        "silk": {',
+			'            "zod": "^3.0.0",',
+			'            "effect": "^3.21.0"',
+			"        },",
+			'        "mine": { "lodash": "^4.0.0" }',
+			"    },",
+			'    "trustedDependencies": ["@parcel/watcher"]',
+			"}",
+			"",
+		].join("\n");
+		writeFileSync(join(root, "package.json"), original);
+
+		await run([PKG], ["0.23.1", "0.24.0"], "0.23.1");
+
+		expect(readPkgRaw()).toBe(
+			original
+				.replace(`"${PKG}": "^0.23.0"`, `"${PKG}": "^0.24.0"`)
+				.replace('"effect": "^3.21.0"', '"effect": "^3.21.4"'),
+		);
+	});
+
+	it("writes a brand-new catalogs block well-indented without touching the bytes before it", async () => {
+		publish(PKG, "0.23.0", catalogsSource({ silk: {} }));
+		publish(PKG, "0.23.1", catalogsSource({ silk: { effect: "^3.21.4" }, silkPeers: { effect: "^3.21.0" } }));
+		const original = [
+			"{",
+			'\t"name": "root",',
+			'\t"workspaces": ["."],',
+			`\t"devDependencies": { "${PKG}": "^0.23.0" }`,
+			"}",
+			"",
+		].join("\n");
+		writeFileSync(join(root, "package.json"), original);
+
+		await run([PKG], ["0.23.0", "0.23.1"], "0.23.0");
+
+		// `modify` appends a new key at the end of its object (it has no
+		// insert-after option), and the block is built entry by entry so every
+		// line is indented to its depth.
+		expect(readPkgRaw()).toBe(
+			[
+				"{",
+				'\t"name": "root",',
+				'\t"workspaces": ["."],',
+				`\t"devDependencies": { "${PKG}": "^0.23.1" },`,
+				'\t"catalogs": {',
+				'\t\t"silk": {',
+				'\t\t\t"effect": "^3.21.4"',
+				"\t\t},",
+				'\t\t"silkPeers": {',
+				'\t\t\t"effect": "^3.21.0"',
+				"\t\t}",
+				"\t}",
+				"}",
+				"",
+			].join("\n"),
+		);
 	});
 });

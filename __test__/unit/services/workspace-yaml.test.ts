@@ -8,18 +8,28 @@ import type { PnpmWorkspaceContent } from "../../../src/services/workspace-yaml.
 import { formatWorkspaceYaml, readWorkspaceYaml, sortContent } from "../../../src/services/workspace-yaml.js";
 
 describe("sortContent", () => {
-	it("sorts top-level keys alphabetically with packages first", () => {
+	// `packages` takes no special place: @savvy-web/silk-effects' PnpmWorkspace
+	// handler (the consumer's lint hook) sorts every top-level key
+	// alphabetically, so a `packages`-first order would be rewritten after this
+	// action commits.
+	it("sorts every top-level key alphabetically, packages included", () => {
 		const input: PnpmWorkspaceContent = {
 			onlyBuiltDependencies: ["pkg-b"],
 			configDependencies: { typescript: "5.4.0" },
 			packages: ["pkgs/*"],
+			catalog: { effect: "^4.0.0" },
+			autoInstallPeers: true,
 		};
 
 		const result = sortContent(input);
-		const keys = Object.keys(result);
 
-		expect(keys[0]).toBe("packages");
-		expect(keys).toEqual(["packages", "configDependencies", "onlyBuiltDependencies"]);
+		expect(Object.keys(result)).toEqual([
+			"autoInstallPeers",
+			"catalog",
+			"configDependencies",
+			"onlyBuiltDependencies",
+			"packages",
+		]);
 	});
 
 	it("sorts array values for sortable keys", () => {
@@ -116,9 +126,8 @@ describe("formatWorkspaceYaml", () => {
 				yield* formatWorkspaceYaml(tempDir);
 				const result = yield* readWorkspaceYaml(tempDir);
 				expect(result).not.toBeNull();
-				// After formatting, packages should be first and sorted
-				const keys = Object.keys(result ?? {});
-				expect(keys[0]).toBe("packages");
+				// After formatting, keys are alphabetical and arrays sorted
+				expect(Object.keys(result ?? {})).toEqual(["onlyBuiltDependencies", "packages"]);
 				expect(result?.packages).toEqual(["apps/*", "pkgs/*"]);
 				expect(result?.onlyBuiltDependencies).toEqual(["argon2", "sharp"]);
 			}).pipe(Effect.provideService(References.MinimumLogLevel, "None"));

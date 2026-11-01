@@ -121,21 +121,15 @@ export const readInputs = Effect.gen(function* () {
 	const run = yield* ActionInput.list("run").pipe(Config.withDefault<ReadonlyArray<string>>([]));
 	const upgradePackageManager = yield* ActionInput.string("upgrade-package-manager").pipe(Config.withDefault("false"));
 	const changesets = yield* ActionInput.boolean("changesets").pipe(Config.withDefault(true));
-	const rawAutoMerge = yield* ActionInput.string("auto-merge").pipe(Config.withDefault(""));
-	// An empty value means "disabled"; anything else must name a real merge
-	// method. Validated rather than cast, so a typo fails loudly here instead of
-	// reaching the GraphQL mutation as an invalid enum.
-	const AUTO_MERGE_METHODS = ["", "merge", "squash", "rebase"] as const;
-	if (!(AUTO_MERGE_METHODS as ReadonlyArray<string>).includes(rawAutoMerge)) {
-		yield* Effect.fail(
-			new InvalidInputError({
-				field: "auto-merge",
-				reason: 'Expected "merge", "squash", "rebase", or an empty value to disable auto-merge',
-				value: rawAutoMerge,
-			}),
-		);
-	}
-	const autoMerge = rawAutoMerge as (typeof AUTO_MERGE_METHODS)[number];
+	// An absent or empty value means "disabled"; anything else must name a real
+	// merge method, so a typo fails loudly here (the kit's ConfigError names the
+	// input, the value and the allowed set) instead of reaching the GraphQL
+	// mutation as an invalid enum.
+	const autoMerge: "" | "merge" | "squash" | "rebase" = yield* ActionInput.literals("auto-merge", [
+		"merge",
+		"squash",
+		"rebase",
+	]).pipe(Config.withDefault(""));
 	// DERIVED default, not a static one. Unset means "no-auto-merge" where there
 	// is an auto-merge to withhold, and "false" where there is not — so leaving
 	// it unset costs nothing on a repo that does not auto-merge, rather than
@@ -143,7 +137,7 @@ export const readInputs = Effect.gen(function* () {
 	// not change any outcome. An explicit value always wins, including an
 	// explicit "false" on a repo that does auto-merge.
 	const rawCheckPeers = yield* ActionInput.string("check-peers").pipe(Config.withDefault(""));
-	const checkPeers = rawCheckPeers === "" ? (rawAutoMerge === "" ? "false" : "no-auto-merge") : rawCheckPeers;
+	const checkPeers = rawCheckPeers === "" ? (autoMerge === "" ? "false" : "no-auto-merge") : rawCheckPeers;
 	if (!(CHECK_PEERS_MODES as ReadonlyArray<string>).includes(checkPeers)) {
 		yield* Effect.fail(
 			new InvalidInputError({
@@ -156,7 +150,7 @@ export const readInputs = Effect.gen(function* () {
 	// A gate that cannot fire. WARN rather than fail: `auto-merge` is legitimately
 	// dynamic in a workflow expression, so a run where it resolves to "" is not a
 	// misconfiguration -- failing here would break a valid workflow.
-	if (checkPeers === "no-auto-merge" && rawAutoMerge === "") {
+	if (checkPeers === "no-auto-merge" && autoMerge === "") {
 		yield* Effect.logWarning(
 			'check-peers: "no-auto-merge" has no effect because auto-merge is disabled; ' +
 				"peer issues will be reported but nothing is gated",

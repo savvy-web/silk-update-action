@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ReleaseAgeGate } from "@effected/npm";
+import type { PackageJsonFile } from "@effected/package-json";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { WorkspaceDiscovery, WorkspaceDiscoveryError } from "@effected/workspaces";
 import { Effect, Layer, References } from "effect";
@@ -9,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { RegularDeps } from "../../../src/services/regular-deps.js";
 import { ReleaseAge } from "../../../src/services/release-age.js";
 import { matchesPattern, parseSpecifier } from "../../../src/utils/deps.js";
-import { seededRegistry } from "../../utils/fixtures.js";
+import { failingPackageJsonFile, packageJsonFileLayer, seededRegistry } from "../../utils/fixtures.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Test Helpers
@@ -74,6 +75,7 @@ const runWithService = <A, E>(
 	packages?: Record<string, string | string[]>,
 	workspacesLayer?: Layer.Layer<WorkspaceDiscovery>,
 	releaseAge: Layer.Layer<ReleaseAge> = ReleaseAge.layerNoop,
+	packageJsonFile: Layer.Layer<PackageJsonFile> = packageJsonFileLayer,
 ) => {
 	// These suites describe a package as a bare version or a version list; the
 	// shared seeder takes the richer per-version shape.
@@ -89,7 +91,9 @@ const runWithService = <A, E>(
 			)
 		: seededRegistry({});
 	const wsLayer = workspacesLayer ?? mockWorkspaces([]);
-	const layer = RegularDeps.layer.pipe(Layer.provide(Layer.mergeAll(registryLayer, wsLayer, releaseAge)));
+	const layer = RegularDeps.layer.pipe(
+		Layer.provide(Layer.mergeAll(registryLayer, wsLayer, releaseAge, packageJsonFile)),
+	);
 	return Effect.runPromise(
 		Effect.gen(function* () {
 			const service = yield* RegularDeps;
@@ -121,6 +125,16 @@ describe("matchesPattern", () => {
 
 	it("matches bare wildcard", () => {
 		expect(matchesPattern("anything", "*")).toBe(true);
+	});
+
+	it("does not let a bare wildcard cross a scope's slash", () => {
+		expect(matchesPattern("@savvy-web/changesets", "*")).toBe(false);
+		expect(matchesPattern("@savvy-web/changesets", "**")).toBe(true);
+	});
+
+	it("expands braces and matches case-sensitively", () => {
+		expect(matchesPattern("@effect/vitest", "@effect/{vitest,platform-node}")).toBe(true);
+		expect(matchesPattern("Effect", "effect")).toBe(false);
 	});
 
 	it("handles dots in package names safely", () => {
@@ -185,6 +199,27 @@ describe("parseSpecifier", () => {
 
 	it("should parse < prefix", () => {
 		expect(parseSpecifier("<3.6.0")).toEqual({ prefix: "<", version: "3.6.0" });
+	});
+
+	// Callers rewrite a parsed specifier as `${prefix}${resolved}`, so a compound
+	// range that parsed would lose everything after its first version: the upper
+	// bound of ">=1.2.3 <2.0.0", the second arm of an OR set. Returning null makes
+	// every caller leave the range exactly as written.
+	it("returns null for a bounded compound range", () => {
+		expect(parseSpecifier(">=1.2.3 <2.0.0")).toBeNull();
+	});
+
+	it("returns null for an OR set", () => {
+		expect(parseSpecifier("1.2.3 || 2.0.0")).toBeNull();
+		expect(parseSpecifier("^1.2.3 || ^2.0.0")).toBeNull();
+	});
+
+	it("returns null for a hyphen range", () => {
+		expect(parseSpecifier("1.2.3 - 2.0.0")).toBeNull();
+	});
+
+	it("still parses a single version with prerelease and build", () => {
+		expect(parseSpecifier("^1.2.3-rc.1+build.5")).toEqual({ prefix: "^", version: "1.2.3-rc.1+build.5" });
 	});
 });
 
@@ -779,5 +814,62 @@ describe("RegularDeps.updateRegularDeps", () => {
 
 		const pkg = readPackageJson(dir);
 		expect(pkg.dependencies["pre-stable"]).toBe("0.5.0");
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Formatting preservation
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("RegularDeps manifest write", () => {
+	it("changes only the bumped specifier's bytes, keeping indent, key order and inline formatting", async () => {
+		const dir = makeTempDir();
+		// 4-space indent, `version` before `name`, devDependencies before
+		// dependencies, and a one-line `files` array a whole-file
+		// JSON.stringify would expand onto four lines.
+		const original = [
+			"{",
+			'    "version": "1.0.0",',
+			'    "name": "root",',
+			'    "files": ["dist", "README.md"],',
+			'    "devDependencies": {',
+			'        "effect": "^3.0.0",',
+			'        "zod": "^3.0.0"',
+			"    },",
+			'    "dependencies": { "effect": "^3.0.0" }',
+			"}",
+			"",
+		].join("\n");
+		writeFileSync(join(dir, "package.json"), original, "utf-8");
+
+		await runWithService(
+			(s) => s.updateRegularDeps(["effect"], dir),
+			{ effect: "3.1.0" },
+			mockWorkspaces([{ name: "root", path: dir }]),
+		);
+
+		expect(readFileSync(join(dir, "package.json"), "utf-8")).toBe(
+			original
+				.replace('"effect": "^3.0.0",', '"effect": "^3.1.0",')
+				.replace('{ "effect": "^3.0.0" }', '{ "effect": "^3.1.0" }'),
+		);
+	});
+
+	it("warns and keeps going when the manifest write fails", async () => {
+		const dir = makeTempDir();
+		writePackageJson(dir, { name: "root", dependencies: { effect: "^3.0.0" } });
+		const before = readFileSync(join(dir, "package.json"), "utf-8");
+
+		const result = await runWithService(
+			(s) => s.updateRegularDeps(["effect"], dir),
+			{ effect: "3.1.0" },
+			mockWorkspaces([{ name: "root", path: dir }]),
+			ReleaseAge.layerNoop,
+			failingPackageJsonFile,
+		);
+
+		// The update is still reported; the write failure is a warning, not a failure.
+		expect(result).toHaveLength(1);
+		expect(readFileSync(join(dir, "package.json"), "utf-8")).toBe(before);
 	});
 });

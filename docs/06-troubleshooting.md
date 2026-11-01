@@ -154,6 +154,18 @@ This also catches workflows written against an earlier version, where `upgrade-p
 - Check that no branch protection rules prevent force-pushing the update branch
 - If the branch is locked, unlock it manually in the repository settings
 
+### The run skipped because the update branch has commits from someone else
+
+**Cause**: Someone other than the action's GitHub App pushed a commit to the update branch, for example a fix to make `check-peers` pass. Resetting the branch would discard it, so the action leaves the branch and its pull request alone, concludes the check run as neutral, and lists the commits it found. No updates are made while this is the case.
+
+**Solutions**:
+
+- Merge the pull request (with your fix) or close it; the next run starts from the source branch again
+- Or delete the update branch to discard the extra commits deliberately
+- To keep a change the action should carry every run, put it on the source branch instead
+
+If the token has no App identity (the run log warns "cannot verify who authored the commits"), the check is skipped and the branch is reset as before.
+
 ### Branch is out of date after action runs
 
 **Cause**: The action resets the branch to the source branch (`source-branch`, default `main`) before applying changes. If the source branch advanced after the action started but before it pushed, the branch may be based on a slightly older commit.

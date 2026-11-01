@@ -9,7 +9,7 @@ tags:
 resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
-  at: 2026-09-27T08:37:13Z
+  at: 2026-11-01T18:48:23Z
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
@@ -17,7 +17,7 @@ sources:
     resource: ../../package.json
 integrity:
   generated:
-    body: d342d9ec9a046ce2
+    body: 49b9f91f46787852
 ---
 
 # This repository's @effected ranges come from a config dependency, not package.json
@@ -29,14 +29,14 @@ Every `@effected/*` entry in `package.json`'s `dependencies` reads
 example `"@effected/workspaces": "catalog:effected"`.[^package-json] The
 apparent source of truth for what this action depends on is a pnpm catalog
 protocol reference, and `pnpm-workspace.yaml` names a `configDependencies`
-block pinning `@effected/pnpm-plugin-effect` by exact version.[^pnpm-workspace] Checking the registry shows the published plugin's own
+block pinning `@effected/pnpm-plugin-effected` by exact version.[^pnpm-workspace] Checking the registry shows the published plugin's own
 catalog names sane, current ranges, and a fresh install after removing a
 dogfood override resolves back to versions that look wrong.
 
 ## What you will wrongly conclude
 
 That because `package.json` names no direct range, there is nothing to check
-beyond confirming `@effected/pnpm-plugin-effect` itself is up to date on the
+beyond confirming `@effected/pnpm-plugin-effected` itself is up to date on the
 registry — and that a stale-looking resolved version after reinstalling means
 either the registry has not caught up, or the install is broken.
 
@@ -45,7 +45,7 @@ either the registry has not caught up, or the install is broken.
 The `catalog:effected` protocol means the actual version **ranges** for every
 `@effected/*` package are not declared in this repository's own
 `package.json` at all — they live inside the `catalogs` export of
-`@effected/pnpm-plugin-effect`, a **pnpm config dependency** pinned by bare
+`@effected/pnpm-plugin-effected`, a **pnpm config dependency** pinned by bare
 exact version in `pnpm-workspace.yaml`'s `configDependencies` block, with
 its integrity held in the lockfile's config-dependency preamble.[^pnpm-workspace]
 Bumping a kit package here is therefore not a `package.json` edit and
@@ -66,17 +66,17 @@ which version of the plugin *this repository* has pinned.
 
 ## How to check
 
-- Do not check the registry listing for `@effected/pnpm-plugin-effect` and
+- Do not check the registry listing for `@effected/pnpm-plugin-effected` and
   conclude the catalog it names is what this repository installs — that
   proves the *plugin* is current and says nothing about which plugin version
   this repository's `configDependencies` pin resolves.
 - Check the resolved tree directly: `node -p
   "require('./node_modules/@effected/npm/package.json').version"` (or grep
   the adopted symbol out of the installed `.d.ts`) after an install, and
-  compare it against what the *current* `@effected/pnpm-plugin-effect`
+  compare it against what the *current* `@effected/pnpm-plugin-effected`
   release's catalog names.
 - If they disagree, the fix is bumping the `configDependencies` pin itself
-  with `pnpm add --config @effected/pnpm-plugin-effect@<version>`, then
+  with `pnpm add --config @effected/pnpm-plugin-effected@<version>`, then
   `pnpm clean --lockfile && pnpm install`. Bumping a direct `@effected/*` entry in `package.json` has no
   effect, because none of them declare a direct range to bump.
 
