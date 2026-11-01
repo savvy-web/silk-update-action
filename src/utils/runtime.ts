@@ -1,7 +1,7 @@
 /**
  * Pure helpers for reading and rewriting devEngines.runtime entries.
  *
- * No Effect service dependencies — mirrors src/utils/pnpm.ts.
+ * No Effect service dependencies.
  *
  * The `upgrade-runtime-*` inputs only ever *upgrade* a runtime the manifest
  * already declares — they never introduce one — so there is no "upsert": an

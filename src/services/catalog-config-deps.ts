@@ -24,10 +24,12 @@
  * @module services/catalog-config-deps
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PackageTarball } from "@effected/npm";
 import { NpmRegistry } from "@effected/npm";
+import type { PackageFieldEdit, PackageJsonFileShape } from "@effected/package-json";
+import { PackageJsonFile } from "@effected/package-json";
 import { LockfileReader } from "@effected/workspaces";
 import { Context, Effect, Layer, Option } from "effect";
 import type { HttpClient } from "effect/http";
@@ -36,9 +38,8 @@ import type { ChildProcessSpawner } from "effect/process";
 import { FileSystemError } from "../errors/errors.js";
 import type { CatalogDelta, DependencyUpdateResult } from "../schema/domain.js";
 import type { CatalogMap } from "../utils/catalogs.js";
-import { readManifestCatalogs, threeWayMergeCatalogs, writeManifestCatalogs } from "../utils/catalogs.js";
+import { manifestCatalogEdits, readManifestCatalogs, threeWayMergeCatalogs } from "../utils/catalogs.js";
 import { parseSpecifier } from "../utils/deps.js";
-import { detectIndent } from "../utils/pnpm.js";
 import { resolutionRangeForSpecifier, resolveLatestSatisfying } from "../utils/semver.js";
 import { fetchModuleCatalogs } from "./module-catalogs.js";
 
@@ -78,8 +79,11 @@ export class CatalogConfigDeps extends Context.Service<
 			const context = yield* Effect.context<
 				NpmRegistry | PackageTarball | LockfileReader | HttpClient.HttpClient | ChildProcessSpawner.ChildProcessSpawner
 			>();
+			// The manifest write's surgical editor, resolved in the layer body like
+			// RuntimeUpgrade's, so makeAppLayer must provide it to this layer.
+			const packageJson = yield* PackageJsonFile;
 			return {
-				update: (deps, workspaceRoot) => updateImpl(deps, workspaceRoot).pipe(Effect.provide(context)),
+				update: (deps, workspaceRoot) => updateImpl(deps, workspaceRoot, packageJson).pipe(Effect.provide(context)),
 			};
 		}),
 	);
@@ -416,6 +420,7 @@ const processDep = (
 const updateImpl = (
 	deps: ReadonlyArray<string>,
 	workspaceRoot: string,
+	packageJson: PackageJsonFileShape,
 ): Effect.Effect<
 	CatalogConfigDepsResult,
 	FileSystemError,
@@ -429,7 +434,6 @@ const updateImpl = (
 			try: () => readFileSync(pkgPath, "utf-8"),
 			catch: (e) => new FileSystemError({ operation: "read", path: pkgPath, reason: String(e) }),
 		});
-		const indent = detectIndent(raw);
 		const manifest = yield* Effect.try({
 			try: () => JSON.parse(raw) as Manifest,
 			catch: (e) => new FileSystemError({ operation: "read", path: pkgPath, reason: `Invalid JSON: ${e}` }),
@@ -442,6 +446,9 @@ const updateImpl = (
 		let owned: CatalogMap = {};
 		const updates: Array<DependencyUpdateResult> = [];
 		const deltas: Array<CatalogDelta> = [];
+		// Specifier edits, in listed order; the catalog edits are appended once the
+		// whole merge is known. The parse above only decides — the write is these.
+		const specifierEdits: Array<PackageFieldEdit> = [];
 		let changed = false;
 
 		for (const name of deps) {
@@ -465,6 +472,7 @@ const updateImpl = (
 
 			if (outcome.update !== null && outcome.field !== null && outcome.specifier !== null) {
 				(manifest[outcome.field] as Record<string, string>)[name] = outcome.specifier;
+				specifierEdits.push({ path: [outcome.field, name], value: outcome.specifier });
 				updates.push(outcome.update);
 				changed = true;
 			}
@@ -478,11 +486,14 @@ const updateImpl = (
 		}
 
 		if (changed) {
-			writeManifestCatalogs(manifest, catalogs);
-			yield* Effect.try({
-				try: () => writeFileSync(pkgPath, `${JSON.stringify(manifest, null, indent)}\n`, "utf-8"),
-				catch: (e) => new FileSystemError({ operation: "write", path: pkgPath, reason: String(e) }),
-			});
+			// One read/edit/write pass: every byte outside the edited spans — key
+			// order, indentation, untouched catalog entries — survives, and a result
+			// identical to what is on disk is not written at all.
+			yield* packageJson
+				.modify(pkgPath, [...specifierEdits, ...manifestCatalogEdits(manifest, catalogs)])
+				.pipe(
+					Effect.mapError((error) => new FileSystemError({ operation: "write", path: pkgPath, reason: error.message })),
+				);
 			yield* Effect.logInfo(
 				`Updated ${updates.length} config dependencies and ${deltas.length} catalog entries in ${pkgPath}`,
 			);

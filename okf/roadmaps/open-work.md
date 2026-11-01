@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: okfit/claude-code
-  at: 2026-11-01T19:00:51Z
+  at: 2026-11-01T19:19:26Z
 sources:
   - id: pre-ts
     resource: ../../src/pre.ts
@@ -23,7 +23,7 @@ sources:
     resource: ../../src/steps/format-workspace.ts
 integrity:
   generated:
-    body: 79f065d09b8ffbcf
+    body: 5f5eda2e5d5430fd
 ---
 
 # Open work toward integration testing with a real GitHub App
@@ -73,10 +73,12 @@ concrete re-derivation step rather than a vague "someday."
   re-derived on 2026-11-01 with `grep -rl 'from "node:' src/ | wc -l`, which
   returns **12**. `src/utils/deps.ts` left the list when its `matchesGlob`
   was replaced by core's `Glob`.
-  `runtime-upgrade.ts` and `package-manager-upgrade.ts` are expected to stay
-  on this list even after everything else clears: both still `readFileSync` +
-  `JSON.parse` a manifest to *decide* what to write, only routing the actual
-  write through `PackageJsonFile.modify` — see
+  The five package.json writers — `runtime-upgrade.ts`,
+  `package-manager-upgrade.ts`, `regular-deps.ts`, `peer-sync.ts` and
+  `catalog-config-deps.ts` — are expected to stay on this list even after
+  everything else clears: each still `readFileSync` + `JSON.parse`s a manifest
+  to *decide* what to write, only routing the actual write through
+  `PackageJsonFile.modify` — see
   [package.json edits go through modify only](../decisions/package-json-modify-only.md)
   for why the decode-based read path stays declined.
 - **Adopting `@effected/package-json`'s lenient decode path (`PackageManifest`)

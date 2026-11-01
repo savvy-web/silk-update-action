@@ -12,6 +12,7 @@
  * @module steps/peer-sync
  */
 
+import type { PackageJsonFile } from "@effected/package-json";
 import type { WorkspaceDiscovery } from "@effected/workspaces";
 import { Effect } from "effect";
 import type { FileSystemError } from "../errors/errors.js";
@@ -41,7 +42,7 @@ export interface PeerSyncResult {
 export const peerSyncStep = (
 	config: PeerSyncConfig,
 	regularUpdates: ReadonlyArray<DependencyUpdateResult>,
-): Effect.Effect<PeerSyncResult, FileSystemError, WorkspaceDiscovery> =>
+): Effect.Effect<PeerSyncResult, FileSystemError, WorkspaceDiscovery | PackageJsonFile> =>
 	Effect.gen(function* () {
 		const configured = config.lock.length > 0 || config.minor.length > 0;
 

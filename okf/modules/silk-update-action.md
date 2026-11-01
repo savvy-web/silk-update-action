@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T19:19:26Z
 sources:
   - id: action-yml
     resource: ../../action.yml
@@ -31,7 +31,7 @@ sources:
     resource: ../../src/schema/outputs.ts
 integrity:
   generated:
-    body: d4fbe4e490f8b85c
+    body: 2d55618b1b85199f
 ---
 
 # silk-update-action (module)
@@ -145,8 +145,8 @@ No `*Live` constant survives.
 | `RuntimeUpgrade` | the three `@effected/runtimes` resolvers, `PackageJsonFile` |
 | `ReleaseAge` | `WorkspaceCatalogs`, `NpmRegistry` |
 | `ConfigDeps` | `NpmRegistry`, `ReleaseAge` |
-| `CatalogConfigDeps` | `NpmRegistry`, `LockfileReader`, `PackageTarball` |
-| `RegularDeps` | `NpmRegistry`, `WorkspaceDiscovery`, `ReleaseAge` |
+| `CatalogConfigDeps` | `NpmRegistry`, `LockfileReader`, `PackageTarball`, `PackageJsonFile` |
+| `RegularDeps` | `NpmRegistry`, `WorkspaceDiscovery`, `ReleaseAge`, `PackageJsonFile` |
 | `Changesets` | `Changesets.DepsRegen` (`@savvy-web/silk-effects`) |
 | `Report` | `PullRequest`, `ActionState` (resolves the DCO sign-off once, from the persisted token) |
 
@@ -203,12 +203,13 @@ over `PullRequest` rather than a pure module. See
 ## Pure helpers (`src/utils/`)
 
 `branch.ts` (`resolveTargetBranch`), `catalogs.ts` (catalog-map merge
-helpers), `commit-signoff.ts` (`resolveSignoff` — the DCO trailer from the
+helpers, and `manifestCatalogEdits` — the per-entry `PackageJsonFile.modify`
+edits that write a merged catalog map back), `commit-signoff.ts` (`resolveSignoff` — the DCO trailer from the
 persisted App token), `commit-subject.ts` (`buildUpdateSubject` — the PR
 title / commit subject, derived from the run's contents rather than a static
 string), `deps.ts`, `markdown.ts` (`bold`/`rule` — the two builders
 `GitHubMarkdown` doesn't ship), `peers.ts` (`decidePeerGate` — the pure
-auto-merge gate predicate), `pnpm.ts` (`detectIndent` only), `runtime.ts`
+auto-merge gate predicate), `runtime.ts`
 (`locateRuntimeEntry` — entry + JSONC `versionPath`, never a live object to
 mutate), `semver.ts` (range resolution helpers).
 

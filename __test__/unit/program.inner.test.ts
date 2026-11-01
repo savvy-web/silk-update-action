@@ -34,10 +34,12 @@ import { NodeServices } from "@effect/platform-node";
 import type { ScriptResult, SpawnRecord } from "@effected/commands";
 import type { StatusEntry } from "@effected/git";
 import { Git } from "@effected/git";
-import { CheckRun } from "@effected/github";
+import type { CommitSummary } from "@effected/github";
+import { CheckRun, CommitSummary as CommitSummaryClass, InstallationToken } from "@effected/github";
 import {
 	ActionLogger,
 	ActionOutputs,
+	ActionState,
 	CachedPackageManager,
 	PackageManagerInstaller,
 	PackageManagerInstallerError,
@@ -52,7 +54,7 @@ import {
 	WorkspaceDiscovery,
 	WorkspaceRoot,
 } from "@effected/workspaces";
-import { Cause, Effect, Exit, Layer, Logger, Option, References, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Logger, Option, Redacted, References, Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InvalidInputError } from "../../src/errors/errors.js";
 import type { makeAppLayer } from "../../src/layers/app.js";
@@ -171,6 +173,7 @@ interface Spies {
 	readonly configDeps: ReturnType<typeof vi.fn>;
 	readonly catalogConfigDeps: ReturnType<typeof vi.fn>;
 	readonly regularDeps: ReturnType<typeof vi.fn>;
+	readonly foreignCommits: ReturnType<typeof vi.fn>;
 	readonly runtimeUpgrade: ReturnType<typeof vi.fn>;
 	readonly changesetsCreate: ReturnType<typeof vi.fn>;
 	readonly commitChanges: ReturnType<typeof vi.fn>;
@@ -204,6 +207,8 @@ interface HarnessOptions {
 	 * can only have come from the activation step.
 	 */
 	readonly installedBinDir?: string;
+	/** Commits `BranchManager.foreignCommits` reports on the update branch (#296). */
+	readonly foreignCommits?: ReadonlyArray<CommitSummary>;
 }
 
 const update = (dependency: string, from: string, to: string): DependencyUpdateResult => ({
@@ -258,6 +263,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		configDeps: vi.fn(() => Effect.succeed(options.configUpdates ?? [])),
 		catalogConfigDeps: vi.fn(() => Effect.succeed({ updates: options.configUpdates ?? [], deltas: [] })),
 		regularDeps: vi.fn(() => Effect.succeed(options.regularUpdates ?? [])),
+		foreignCommits: vi.fn(() => Effect.succeed(options.foreignCommits ?? [])),
 		runtimeUpgrade: vi.fn(() => Effect.succeed([])),
 		changesetsCreate: vi.fn(() => Effect.succeed([])),
 		commitChanges: vi.fn(() => Effect.void),
@@ -320,7 +326,24 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		set: () => Effect.succeed(CatalogSet.empty()),
 	});
 
+	// The token the `pre` phase persists, carrying the App's identity: the branch
+	// step reads it to tell the action's own commits from anyone else's.
+	const actionState = ActionState.layerTest({
+		get: (() =>
+			Effect.succeed(
+				InstallationToken.make({
+					token: Redacted.make("ghs_test_token_123"),
+					expiresAt: DateTime.makeUnsafe("2030-01-01T01:00:00Z"),
+					installationId: 4242,
+					permissions: {},
+					appSlug: "silk-bot",
+					appUserId: 7,
+				}),
+			)) as ActionState["Service"]["get"],
+	});
+
 	const layer = Layer.mergeAll(
+		actionState,
 		catalogs,
 		ActionOutputs.layerTest({
 			set: (name: string, value: string) =>
@@ -387,6 +410,9 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		discovery,
 		detection,
 		packageManagerUpgrade,
+		// Exposed, as makeAppLayer exposes it: the peer-sync step resolves it in a
+		// step body, not a layer body.
+		packageJsonFile,
 		// The activation step's installer. `install` is the spy: the pin it is
 		// handed proves the step ran for an applied upgrade and stayed silent
 		// otherwise. The double answers `tool-cache`, the only source
@@ -414,6 +440,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
 			validateBranches: () => Effect.void,
 			commitChanges: spies.commitChanges as unknown as Effect.Success<typeof BranchManager>["commitChanges"],
 			ensureBaseHistory: () => Effect.void,
+			foreignCommits: spies.foreignCommits as unknown as Effect.Success<typeof BranchManager>["foreignCommits"],
 		}),
 		Layer.succeed(Report, {
 			createOrUpdatePR: spies.createOrUpdatePR as unknown as Effect.Success<typeof Report>["createOrUpdatePR"],
@@ -1232,5 +1259,49 @@ describe("check-peers gate", () => {
 		// leaves every gate test green while the PR silently loses its section.
 		const peerArg = harness.spies.createOrUpdatePR.mock.calls[0]?.[6] as ReadonlyArray<{ dependency: string }>;
 		expect(peerArg.map((i) => i.dependency)).toContain("react");
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Foreign commits on the update branch (#296)
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("innerProgram — foreign commits on the update branch", () => {
+	const human = CommitSummaryClass.make({
+		sha: "abcdef1234567",
+		message: "fix: pin a peer\n\nbody",
+		author: "A Maintainer",
+		authorLogin: "maintainer",
+		url: "https://github.com/test/repo/commit/abcdef1234567",
+		parents: [],
+	});
+
+	it("checks the branch against the App's own bot identity", async () => {
+		writeFixture("pnpm");
+		const harness = makeHarness();
+
+		const exit = await runInner(harness, baseInputs({ dependencies: ["effect"] }));
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		expect(harness.spies.foreignCommits).toHaveBeenCalledWith("pnpm/config-deps", "main", "silk-bot[bot]");
+	});
+
+	it("leaves the branch alone, runs no update step, and ends neutral naming the commits", async () => {
+		writeFixture("pnpm");
+		const harness = makeHarness({ foreignCommits: [human], regularUpdates: [update("effect", "4.0.0", "4.1.1")] });
+
+		const exit = await runInner(harness, baseInputs({ dependencies: ["effect"] }));
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		expect(harness.spies.regularDeps).not.toHaveBeenCalled();
+		expect(harness.spies.commitChanges).not.toHaveBeenCalled();
+		expect(harness.spies.createOrUpdatePR).not.toHaveBeenCalled();
+		const run = harness.checkRunState.runs[0];
+		expect(run?.conclusion).toBe("neutral");
+		expect(run?.output?.title).toBe("Update branch has commits from someone else");
+		expect(run?.output?.summary).toContain("`abcdef1` by maintainer: fix: pin a peer");
+		expect(harness.outputs.get("has-changes")).toBe("false");
+		expect(harness.outputs.get("updates-count")).toBe("0");
+		expect(findLine("Warn", "Step: branch", "SKIPPED")).toBeDefined();
 	});
 });

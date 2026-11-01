@@ -7,7 +7,7 @@
  */
 
 import { Git } from "@effected/git";
-import { CheckRun, GitBranch, GitCommit, PullRequest, Repo } from "@effected/github";
+import { CheckRun, GitBranch, GitCommit, GitHubCommit, PullRequest, Repo } from "@effected/github";
 import { DryRun, GitHubToken, PackageManagerInstaller, ToolInstaller } from "@effected/github-actions";
 import { NpmRegistry, PackageTarball } from "@effected/npm";
 import { PackageJsonFile } from "@effected/package-json";
@@ -81,19 +81,24 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 	// copy of the Node platform and the fetch client in its bundle, and forced a
 	// direct `@effect/platform-node` dependency the program has no business naming.
 	const npmRegistry = NpmRegistry.layer;
-	// Surgical, decode-free package.json edits. BOTH RuntimeUpgrade and
-	// PackageManagerUpgrade resolve it in their layer bodies, so both must be
-	// provided it — omitting it for one of them is not a type error (see the
-	// requirement-channel test) and fails only at runtime, on the runner, as
-	// "Service not found: @effected/package-json/PackageJsonFile". Like the
-	// workspace layers above, its FileSystem/Path requirements stay in this
-	// layer's requirement channel rather than being built here.
+	// Surgical, decode-free package.json edits — every manifest writer goes
+	// through it. RuntimeUpgrade, PackageManagerUpgrade, RegularDeps and
+	// CatalogConfigDeps resolve it in their LAYER BODIES, so each must be
+	// provided it; `syncPeers` (via steps/peer-sync) resolves it in a STEP body,
+	// so it is also EXPOSED in `domainLayers` below. Omitting either is not a
+	// type error at any call site and fails only on the runner, as "Service not
+	// found: @effected/package-json/PackageJsonFile" — `app.test.ts`'s two
+	// requirement assertions are what catch it. Like the workspace layers above,
+	// its FileSystem/Path requirements stay in this layer's requirement channel.
 	const packageJsonFile = PackageJsonFile.layer;
 	// Bare, like NpmRegistry: its FileSystem/Crypto/HttpClient/ChildProcessSpawner
 	// requirements are all ActionServices members, so they stay in the channel.
 	const packageTarball = PackageTarball.layer;
 	const gitBranch = GitBranch.layer.pipe(Layer.provide(githubClient));
 	const gitCommit = GitCommit.layer.pipe(Layer.provide(githubClient));
+	// The commits API (compare), which BranchManager reads to find commits on the
+	// update branch the action did not make before it force-resets it (#296).
+	const githubCommit = GitHubCommit.layer.pipe(Layer.provide(githubClient));
 	const prLayer = PullRequest.layer.pipe(Layer.provide(githubClient));
 
 	const workspaceRoot = WorkspaceRoot.layer;
@@ -164,11 +169,16 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 		// That is the third blind spot the guard documents about itself.
 		workspaceCatalogs,
 		Changesets.layer.pipe(Layer.provide(depsRegen)),
-		BranchManager.layer.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, Git.layer))),
+		BranchManager.layer.pipe(Layer.provide(Layer.mergeAll(gitBranch, gitCommit, githubCommit, Git.layer))),
 		PackageManagerUpgrade.layer.pipe(Layer.provide(Layer.merge(npmRegistry, packageJsonFile))),
 		ConfigDeps.layer.pipe(Layer.provide(Layer.merge(npmRegistry, releaseAge))),
-		CatalogConfigDeps.layer.pipe(Layer.provide(Layer.mergeAll(npmRegistry, lockfileReader, packageTarball))),
-		RegularDeps.layer.pipe(Layer.provide(Layer.mergeAll(npmRegistry, workspaceDiscovery, releaseAge))),
+		CatalogConfigDeps.layer.pipe(
+			Layer.provide(Layer.mergeAll(npmRegistry, lockfileReader, packageTarball, packageJsonFile)),
+		),
+		RegularDeps.layer.pipe(Layer.provide(Layer.mergeAll(npmRegistry, workspaceDiscovery, releaseAge, packageJsonFile))),
+		// EXPOSED for `steps/peer-sync.ts`, which resolves it in a step body (see
+		// the note at its construction above).
+		packageJsonFile,
 		Report.layer.pipe(Layer.provide(prLayer)),
 		RuntimeUpgrade.layer.pipe(Layer.provide(Layer.merge(makeRuntimeResolvers(options.runtimeLive), packageJsonFile))),
 	);

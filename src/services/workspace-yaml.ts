@@ -79,17 +79,14 @@ export const STRINGIFY_OPTIONS = {
  * - `onlyBuiltDependencies` array (if present)
  * - `publicHoistPattern` array (if present)
  * - `configDependencies` object keys alphabetically
- * - All top-level keys alphabetically, keeping `packages` first
+ * - All top-level keys alphabetically, `packages` included (as the
+ *   silk-effects handler does, so the consumer's lint hook leaves the file as
+ *   this action wrote it)
  */
 export const sortContent = (content: PnpmWorkspaceContent): PnpmWorkspaceContent => {
 	const result: PnpmWorkspaceContent = {};
 
-	// Get all keys and sort them, but keep 'packages' first
-	const keys = Object.keys(content).sort((a, b) => {
-		if (a === "packages") return -1;
-		if (b === "packages") return 1;
-		return a.localeCompare(b);
-	});
+	const keys = Object.keys(content).sort((a, b) => a.localeCompare(b));
 
 	for (const key of keys) {
 		const value = content[key];

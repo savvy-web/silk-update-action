@@ -131,7 +131,7 @@ When `vitest` updates from `3.1.0` to `3.2.5`, the peer range updates to
 
 The branch name used for the dependency update PR. Default: `pnpm/config-deps`.
 
-The action creates this branch from the source branch if it does not exist, or resets it to the source branch before applying updates (see [`source-branch`](#source-branch)).
+The action creates this branch from the source branch if it does not exist, or resets it to the source branch before applying updates (see [`source-branch`](#source-branch)). If someone other than the action has pushed a commit to it, the run leaves the branch and its pull request alone instead (see [Troubleshooting](06-troubleshooting.md#the-run-skipped-because-the-update-branch-has-commits-from-someone-else)).
 
 ```yaml
 branch: deps/weekly-update
@@ -574,7 +574,7 @@ The action manages a dedicated branch for dependency updates:
 
 1. The `source-branch` and `target-branch` refs are validated up front — a missing ref fails the run before any destructive operation
 2. If the branch does not exist, it is created from the source branch (`source-branch`, default `main`)
-3. If the branch exists, it is force-reset to the source branch in a single update, so the ref never disappears mid-run
+3. If the branch exists and every commit on it ahead of the source branch was made by the action's GitHub App, it is force-reset to the source branch in a single update, so the ref never disappears mid-run. If anyone else has pushed to it, the run stops here with a neutral check run and leaves the branch and pull request untouched
 4. Changes are committed via the GitHub API (not `git commit`) to produce verified/signed commits
 5. The branch ref is updated directly using the Git Data API
 

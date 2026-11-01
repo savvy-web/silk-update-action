@@ -5,7 +5,7 @@ description: Why the update branch is validated then force-reset to the source r
 status: draft
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T19:19:26Z
 sources:
   - id: services-branch
     resource: ../../src/services/branch.ts
@@ -13,7 +13,7 @@ sources:
     resource: ../../src/steps/branch.ts
 integrity:
   generated:
-    body: 1145dcf2007bdb72
+    body: 1820fbfb652eab08
 ---
 
 # Force-reset a dedicated branch every run rather than rebase
@@ -40,6 +40,22 @@ happened.[^services-branch] `upsert` replaced an older exists → delete →
 create sequence: same net effect (a fresh start from the source ref every
 run), without a window in which the ref does not exist for anything else
 that might read it.
+
+Between the preflight and the reset, `branchStep` looks for commits on the
+update branch that this action did not make, and skips the reset when it
+finds any (#296).[^steps-branch] `BranchManager.foreignCommits` compares the
+update branch against the source branch and keeps every commit ahead of it
+whose git author name and GitHub login both differ from the App's bot
+identity (the identity the `pre` phase persisted, `GitHubToken.botIdentity`);
+this action's own commits go through the Git Data API with no explicit author,
+so GitHub attributes them to that bot.[^services-branch] Comparing against the
+source branch rather than a recorded reset point keeps the check right after
+the source has moved. When it finds any, the run ends there: the check run
+concludes `neutral` naming each commit, `has-changes` is `false`, and the
+branch and its pull request are left as they are. When the token carries no
+App identity (the `github-actions[bot]` fallback) the check is skipped with a
+warning and the reset proceeds, because this action never commits as that
+bot and every one of its own commits would otherwise read as foreign.
 
 After the API-side reset, `manage` fetches the branch by an explicit refspec
 (`+refs/heads/<branch>:refs/remotes/origin/<branch>`) rather than a bare
@@ -68,11 +84,19 @@ visibly.[^services-branch]
 ## Alternatives rejected
 
 - **Rebase the branch forward onto the source ref instead of resetting.**
-  Rejected: the branch only ever contains automated dependency updates, so
-  there is nothing on it worth preserving across runs, and rebase introduces
-  conflict resolution this action would have no human present to perform.
-  Always starting from a clean reset needs no conflict logic and is always in
-  a known-good state.
+  Rejected: the action's own commits are regenerated from scratch each run
+  (re-resolve, re-install, re-commit), so replaying them would conflict against
+  a moved base almost every time, and rebase introduces conflict resolution
+  this action would have no human present to perform. Always starting from a
+  clean reset needs no conflict logic and is always in a known-good state.
+  What a reset can lose is a commit a *human* pushed, which is what the
+  foreign-commit check guards instead.
+- **On a foreign commit, warn and reset anyway, or fail the run.** Rejected
+  for #296: warning still deletes the maintainer's fix, and the most likely
+  cause is a maintainer helping (a `check-peers` PR held open is exactly the
+  one someone pushes a peer fix to), so failing turns help into a red job.
+  Skipping keeps their work and says why. An `on-foreign-commit` input was
+  also declined in favour of one default.
 - **Skip the ref-existence preflight and let `upsert` fail naturally on a
   bad ref.** Rejected: `upsert` is destructive (it force-resets an existing
   branch), so the check has to happen *before* that call, not surface as a
@@ -87,6 +111,12 @@ visibly.[^services-branch]
   required.
 
 ## Consequences
+
+- An unattended repository whose update branch someone pushed to stops
+  receiving updates until a human merges or closes that PR or deletes the
+  branch. The neutral check run names the commits and says how to clear it.
+- A commit made *as* the App's bot reads as the action's own and is
+  discarded by the reset, as before.
 
 - A `source-branch` or `target-branch` typo is now caught inside the check
   run, before the reset, rather than surfacing later as an API error or a

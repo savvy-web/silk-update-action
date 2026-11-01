@@ -4,8 +4,17 @@ import { join } from "node:path";
 import type { ScriptResult } from "@effected/commands";
 import type { StatusEntry } from "@effected/git";
 import { Git, UnknownRefError } from "@effected/git";
-import type { FileChange, Repo } from "@effected/github";
-import { GitBranch, GitCommit, GitHubError, RepoRef, Repo as RepoTag } from "@effected/github";
+import type { CommitSummary, FileChange, Repo } from "@effected/github";
+import {
+	CommitComparison,
+	CommitSummary as CommitSummaryClass,
+	GitBranch,
+	GitCommit,
+	GitHubCommit,
+	GitHubError,
+	RepoRef,
+	Repo as RepoTag,
+} from "@effected/github";
 import { Effect, Layer, Option, References, Result } from "effect";
 import { describe, expect, it } from "vitest";
 import { BranchManager } from "../../../src/services/branch.js";
@@ -88,8 +97,23 @@ const runWithBranchManager = <A, E>(
 	responses?: ReadonlyMap<string, ScriptResult>,
 	statusEntries?: ReadonlyArray<StatusEntry>,
 	gitOverrides: Partial<Parameters<typeof Git.layerTest>[0]> = {},
+	compareCommits: ReadonlyArray<CommitSummary> = [],
 ) => {
 	const state: BranchState = { branches: new Map(branches ?? []) };
+	const compareCalls: Array<{ base: string; head: string }> = [];
+	const githubCommit = GitHubCommit.layerTest({
+		compare: (base, head) =>
+			Effect.sync(() => {
+				compareCalls.push({ base, head });
+				return CommitComparison.make({
+					status: compareCommits.length > 0 ? "ahead" : "identical",
+					aheadBy: compareCommits.length,
+					behindBy: 0,
+					commits: [...compareCommits],
+					files: [],
+				});
+			}),
+	});
 	const commitState: CommitState = { commits: [] };
 	const spawner = fromMap(responses);
 	const gitCalls: GitCall[] = [];
@@ -130,12 +154,15 @@ const runWithBranchManager = <A, E>(
 	});
 
 	const serviceLayer = BranchManager.layer.pipe(
-		Layer.provide(Layer.mergeAll(branchDouble(state), commitDouble(commitState), spawner.layer, gitLayer)),
+		Layer.provide(
+			Layer.mergeAll(branchDouble(state), commitDouble(commitState), spawner.layer, gitLayer, githubCommit),
+		),
 	);
 
 	return {
 		state,
 		commitState,
+		compareCalls,
 		spawner,
 		gitCalls,
 		result: Effect.runPromise(
@@ -214,6 +241,7 @@ describe("BranchManager.manage", () => {
 					commitDouble({ commits: [] }),
 					spawner.layer,
 					Git.layerTest({ status: () => Effect.succeed([]) }),
+					GitHubCommit.layerTest(),
 				),
 			),
 		);
@@ -543,6 +571,86 @@ describe("BranchManager.validateBranches", () => {
 			expect(either.failure._tag).toBe("InvalidInputError");
 			expect((either.failure as { field: string }).field).toBe("target-branch");
 		}
+	});
+});
+
+const commitBy = (sha: string, author: string, authorLogin?: string): CommitSummary =>
+	CommitSummaryClass.make({
+		sha,
+		message: `commit ${sha}`,
+		author,
+		...(authorLogin !== undefined ? { authorLogin } : {}),
+		url: `https://github.com/test/repo/commit/${sha}`,
+		parents: [],
+	});
+
+const BOT = "silk-bot[bot]";
+
+describe("BranchManager.foreignCommits", () => {
+	const findForeign = (branch: string, source: string) =>
+		Effect.gen(function* () {
+			const manager = yield* BranchManager;
+			return yield* manager.foreignCommits(branch, source, BOT);
+		});
+
+	it("reports nothing, without comparing, when the update branch does not exist", async () => {
+		const { result, compareCalls } = runWithBranchManager(
+			findForeign("pnpm/config-deps", "main"),
+			new Map([["main", "main-sha"]]),
+			undefined,
+			undefined,
+			{},
+			[commitBy("h1", "A Maintainer", "maintainer")],
+		);
+		const either = await result;
+		expect(Result.isSuccess(either) && either.success).toEqual([]);
+		expect(compareCalls).toEqual([]);
+	});
+
+	it("compares the update branch against the source branch", async () => {
+		const { result, compareCalls } = runWithBranchManager(
+			findForeign("pnpm/config-deps", "dev"),
+			new Map([
+				["dev", "dev-sha"],
+				["pnpm/config-deps", "branch-sha"],
+			]),
+		);
+		await result;
+		expect(compareCalls).toEqual([{ base: "dev", head: "pnpm/config-deps" }]);
+	});
+
+	it("reports nothing when every commit ahead of the source is the bot's", async () => {
+		const { result } = runWithBranchManager(
+			findForeign("pnpm/config-deps", "main"),
+			new Map([
+				["main", "main-sha"],
+				["pnpm/config-deps", "branch-sha"],
+			]),
+			undefined,
+			undefined,
+			{},
+			// Attributed by login, and by git author name alone (no login).
+			[commitBy("b1", "silk-bot[bot]", BOT), commitBy("b2", BOT)],
+		);
+		const either = await result;
+		expect(Result.isSuccess(either) && either.success).toEqual([]);
+	});
+
+	it("reports each commit someone other than the bot pushed", async () => {
+		const human = commitBy("h1", "A Maintainer", "maintainer");
+		const { result } = runWithBranchManager(
+			findForeign("pnpm/config-deps", "main"),
+			new Map([
+				["main", "main-sha"],
+				["pnpm/config-deps", "branch-sha"],
+			]),
+			undefined,
+			undefined,
+			{},
+			[commitBy("b1", BOT, BOT), human],
+		);
+		const either = await result;
+		expect(Result.isSuccess(either) && either.success.map((c) => c.sha)).toEqual(["h1"]);
 	});
 });
 

@@ -36,8 +36,16 @@
 import { readFileSync } from "node:fs";
 import type { GitCommandError, GitShape, NotARepositoryError, UnknownRefError } from "@effected/git";
 import { Git } from "@effected/git";
-import type { FileChange, GitBranchShape, GitCommitShape, GitHubError, Repo } from "@effected/github";
-import { FileContent, FileDeletion, GitBranch, GitCommit } from "@effected/github";
+import type {
+	CommitSummary,
+	FileChange,
+	GitBranchShape,
+	GitCommitShape,
+	GitHubCommitShape,
+	GitHubError,
+	Repo,
+} from "@effected/github";
+import { FileContent, FileDeletion, GitBranch, GitCommit, GitHubCommit } from "@effected/github";
 import { Context, Effect, Layer, Option } from "effect";
 
 import { InvalidInputError } from "../errors/errors.js";
@@ -96,6 +104,26 @@ export class BranchManager extends Context.Service<
 		 * first and only fetches/deepens when the merge-base is missing.
 		 */
 		readonly ensureBaseHistory: (base: string, workspaceRoot: string) => Effect.Effect<void, GitServiceError>;
+		/**
+		 * The commits on the update branch, ahead of `sourceBranch`, that the
+		 * action did not author (#296).
+		 *
+		 * `manage` force-resets the update branch to the source SHA, so any commit
+		 * a human pushed onto it since the last run would be discarded silently.
+		 * Every commit this action makes goes through the Git Data API with no
+		 * explicit author, so GitHub attributes it to the App's bot; a commit ahead
+		 * of the source whose author (git name or GitHub login) is not `ownAuthor`
+		 * is someone else's. Comparing against the source branch rather than a
+		 * recorded reset point keeps the check right after the source has moved.
+		 *
+		 * Empty when the branch does not exist yet. Blind spot: a commit made *as*
+		 * the bot reads as the action's own.
+		 */
+		readonly foreignCommits: (
+			branchName: string,
+			sourceBranch: string,
+			ownAuthor: string,
+		) => Effect.Effect<ReadonlyArray<CommitSummary>, GitHubError, Repo>;
 	}
 >()("BranchManager") {
 	/**
@@ -116,6 +144,7 @@ export class BranchManager extends Context.Service<
 			// thread and no `withSpawner` wrapper any more. `Repo` deliberately is
 			// NOT resolved here — see the module note.
 			const git = yield* Git;
+			const commits = yield* GitHubCommit;
 
 			return {
 				manage: (branchName, workspaceRoot, defaultBranch = "main") =>
@@ -124,6 +153,8 @@ export class BranchManager extends Context.Service<
 					commitChangesImpl(git, commit, message, branchName, workspaceRoot),
 				validateBranches: (source, target) => validateBranchesImpl(branch, source, target),
 				ensureBaseHistory: (base, workspaceRoot) => ensureBaseHistoryImpl(git, base, workspaceRoot),
+				foreignCommits: (branchName, sourceBranch, ownAuthor) =>
+					foreignCommitsImpl(branch, commits, branchName, sourceBranch, ownAuthor),
 			};
 		}),
 	);
@@ -189,6 +220,20 @@ const manageBranchImpl = (
 			upToDate: true,
 			baseRef: defaultBranch,
 		};
+	});
+
+/** See `BranchManager.foreignCommits`. */
+const foreignCommitsImpl = (
+	branch: GitBranchShape,
+	commits: GitHubCommitShape,
+	branchName: string,
+	sourceBranch: string,
+	ownAuthor: string,
+): Effect.Effect<ReadonlyArray<CommitSummary>, GitHubError, Repo> =>
+	Effect.gen(function* () {
+		if (!(yield* branch.exists(branchName))) return [];
+		const comparison = yield* commits.compare(sourceBranch, branchName);
+		return comparison.commits.filter((c) => c.authorLogin !== ownAuthor && c.author !== ownAuthor);
 	});
 
 /**
