@@ -1,5 +1,53 @@
 # silk-update-action
 
+## 4.15.0
+
+### Features
+
+#### Commits pushed to the update branch are no longer discarded
+
+- Each run used to force-reset the update branch, silently deleting any commit someone had pushed to it, such as a fix to make `check-peers` pass. The action now checks the branch first. If any commit ahead of the source branch was not made by the action's GitHub App, the run leaves the branch and its pull request untouched, makes no updates, and concludes its check run as `neutral`, listing each commit and how to clear it. `has-changes` is `false` for such a run.
+
+- Merge or close the pull request, or delete the branch, and the next run updates it again. When the token carries no App identity, the check is skipped with a warning and the branch is reset as before.
+
+### Bug Fixes
+
+- Dependency, peer-dependency and catalog updates to `package.json` now change only the values they update. Indentation, key order and every other field are kept byte for byte, where the file used to be re-serialized as a whole. A newly created `catalog` or `catalogs` block is added at the end of the file.
+- `pnpm-workspace.yaml` keys are now sorted fully alphabetically, `packages` included, matching the `@savvy-web/silk` lint hook so it no longer reorders the file after the action commits. [#600][#600]
+
+* A compound dependency range such as `>=1.2.3 <2.0.0`, `1.2.3 || 2.0.0` or `1.2.3 - 2.0.0` is now left exactly as written. It was previously rewritten to a single bound, dropping its upper limit or its other alternatives.
+* `upgrade-runtime-*` in `auto` mode no longer moves a pinned prerelease whose identifier contains an `x` (for example `22.11.0-next.1`); it was misread as a wildcard range.
+* An invalid `auto-merge` value now fails with an error that names the input, the value received and the allowed methods (`merge`, `squash`, `rebase`). An empty value still disables auto-merge.
+* Dependency patterns now match the same way on every runner OS, including Windows. As before, a bare `*` matches unscoped names only; use `@scope/*` or `**` for scoped packages. [#600][#600]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effect/platform-node | dependency | updated | ^4.0.6 | ~4.1.1 |
+| @effected/commands | dependency | updated | ^0.17.0 | ^0.19.0 |
+| @effected/git | dependency | updated | ^0.26.0 | ^0.29.0 |
+| @effected/github | dependency | updated | ^0.25.1 | ^0.27.0 |
+| @effected/github-actions | dependency | updated | ^0.28.2 | ^0.30.0 |
+| @effected/lockfiles | dependency | updated | ^0.19.5 | ^0.21.0 |
+| @effected/npm | dependency | updated | ^0.27.1 | ^0.29.0 |
+| @effected/package-json | dependency | updated | ^0.26.1 | ^0.28.0 |
+| @effected/runtimes | dependency | updated | ^0.15.2 | ^0.17.0 |
+| @effected/schemastore | dependency | updated | ^0.26.3 | ^0.28.0 |
+| @effected/semver | dependency | updated | ^0.18.0 | ^0.20.0 |
+| @effected/workspaces | dependency | updated | ^0.39.1 | ^0.41.0 |
+| @effected/yaml | dependency | updated | ^0.25.1 | ^0.27.0 |
+| @savvy-web/silk-effects | dependency | updated | ^10.2.0 | ^11.0.0 |
+| effect | dependency | updated | ^4.0.6 | ~4.1.1 |
+
+[#600][#600]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#600]: https://github.com/savvy-web/silk-update-action/pull/600
+
 ## 4.14.21
 
 ### Dependencies
