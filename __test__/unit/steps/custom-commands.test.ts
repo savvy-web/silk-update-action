@@ -46,7 +46,8 @@ describe("runCommands", () => {
 
 		expect(spawner.spawns).toHaveLength(2);
 		for (const call of spawner.spawns) {
-			expect((call.env?.PATH ?? call.env?.Path)?.startsWith("/toolcache/pnpm/12.4.2/x64/.bin")).toBe(true);
+			const path = call.env?.PATH ?? call.env?.Path;
+			expect(typeof path === "string" && path.startsWith("/toolcache/pnpm/12.4.2/x64/.bin")).toBe(true);
 			expect(call.extendEnv).toBe(true);
 		}
 	});

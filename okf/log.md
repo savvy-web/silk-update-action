@@ -1,5 +1,16 @@
 # Log
 
+## 2026-11-01
+
+* Updated Build on Effect v4 and the @effected kit, not plain TypeScript or one all-in-one library
+* Updated Bump the @effected kit
+* Updated This repository's @effected ranges come from a config dependency, not package.json
+* Updated config dependency
+
+## 2026-10-21
+
+* Updated Runtime upgrades only ever upgrade an existing entry, and always write a bare exact version
+
 ## 2026-09-29
 
 * Updated Rebuild the result output's JSON Schema after editing RunResultDocument

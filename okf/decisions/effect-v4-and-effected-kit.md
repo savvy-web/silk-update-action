@@ -5,7 +5,7 @@ description: Why domain logic is Effect services over Context.Service/Layer, and
 status: draft
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T18:48:23Z
 sources:
   - id: package-json
     resource: ../../package.json
@@ -15,7 +15,7 @@ sources:
     resource: ../../src/services/branch.ts
 integrity:
   generated:
-    body: 89c9514ced7aba3a
+    body: 42fbc95de988d81e
 ---
 
 # Build on Effect v4 and the @effected kit, not plain TypeScript or one all-in-one library
@@ -41,7 +41,7 @@ Actions, GitHub API, npm registry, command-running and workspace capabilities
 come from the first-party `@effected/*` kit (`commands`, `git`, `github`,
 `github-actions`, `lockfiles`, `npm`, `package-json`, `runtimes`, `semver`,
 `workspaces`, `yaml`), pinned as `catalog:effected`, plus core `effect`
-(`catalog:effect`).[^package-json] `@savvy-web/silk-effects` supplies the
+from the same catalog.[^package-json] `@savvy-web/silk-effects` supplies the
 changeset-consolidation service.[^package-json]
 
 Effect's typed error channel makes per-item failure handling explicit rather
@@ -89,7 +89,7 @@ resolving nothing under a bare `Config` read.
 
 **Versions belong in `package.json`, not in prose.** `effect` and every
 `@effected/*` package are pinned by catalog entry
-(`catalog:effect`/`catalog:effected`), and a version literal copied into a doc
+(`catalog:effected`), and a version literal copied into a doc
 goes stale the next time the catalog moves while nobody edits the sentence
 that named it. Where a version is worth stating at all, it is stated as
 history — a claim about what a release *shipped*, which does not go stale —

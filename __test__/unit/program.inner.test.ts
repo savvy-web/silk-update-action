@@ -738,7 +738,12 @@ describe("innerProgram — package-manager activation", () => {
 		expect(spawned).toContain("pnpm clean --lockfile");
 		expect(spawned).toContain("pnpm install --frozen-lockfile=false");
 		expect(spawned).toContain("sh -c pnpm lint:fix");
-		const pathOf = (call: SpawnRecord) => call.env?.PATH ?? call.env?.Path;
+		// Env values may be Redacted since Effect 4.1; PATH never is, so a
+		// Redacted one fails the assertion rather than being stringified.
+		const pathOf = (call: SpawnRecord) => {
+			const path = call.env?.PATH ?? call.env?.Path;
+			return typeof path === "string" ? path : undefined;
+		};
 		const managerSpawns = harness.spies.execLines.filter((call) =>
 			["pnpm clean --lockfile", "pnpm install --frozen-lockfile=false", "sh -c pnpm lint:fix"].includes(
 				[call.command, ...call.args].join(" "),
@@ -844,7 +849,8 @@ describe("innerProgram — package-manager activation", () => {
 
 		const installs = harness.spies.execLines.filter((call) => [call.command, ...call.args].join(" ") === "npm install");
 		expect(installs).toHaveLength(1);
-		expect((installs[0]?.env?.PATH ?? installs[0]?.env?.Path)?.startsWith("/toolcache/npm/12.0.2/x64/.bin")).toBe(true);
+		const installPath = installs[0]?.env?.PATH ?? installs[0]?.env?.Path;
+		expect(typeof installPath === "string" && installPath.startsWith("/toolcache/npm/12.0.2/x64/.bin")).toBe(true);
 		expect(installs[0]?.extendEnv).toBe(true);
 		expect(harness.addedPaths).toEqual(["/toolcache/npm/12.0.2/x64/.bin"]);
 	});

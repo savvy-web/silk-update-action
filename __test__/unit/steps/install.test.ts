@@ -67,10 +67,13 @@ describe("runInstall", () => {
 		expect(spawner.spawns).toHaveLength(2);
 		for (const call of spawner.spawns) {
 			const path = call.env?.PATH ?? call.env?.Path;
-			expect(path?.startsWith("/toolcache/pnpm/12.4.2/x64/.bin")).toBe(true);
+			// Env values may be Redacted since Effect 4.1; PATH never is.
+			expect(typeof path).toBe("string");
+			if (typeof path !== "string") return;
+			expect(path.startsWith("/toolcache/pnpm/12.4.2/x64/.bin")).toBe(true);
 			// The rest of the inherited PATH survives: a `pnpm` that shells out to
 			// `git` or `node` must still find them.
-			expect(path?.length).toBeGreaterThan("/toolcache/pnpm/12.4.2/x64/.bin".length + 1);
+			expect(path.length).toBeGreaterThan("/toolcache/pnpm/12.4.2/x64/.bin".length + 1);
 			expect(call.extendEnv).toBe(true);
 		}
 	});

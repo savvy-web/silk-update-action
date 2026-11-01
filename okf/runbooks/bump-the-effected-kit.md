@@ -9,7 +9,7 @@ tags:
 resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
-  at: 2026-09-27T08:37:13Z
+  at: 2026-11-01T18:48:23Z
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
@@ -19,15 +19,21 @@ sources:
     resource: ../../.repos/config.json
 integrity:
   generated:
-    body: c3eadd66227deefc
+    body: 02da4225551c1250
 ---
 
 # Bump the @effected kit
 
-Every `@effected/*` entry in `package.json` reads `"catalog:effected"`
-rather than a direct range,[^package-json] so a kit bump is not a
-`package.json` edit. The ranges live inside the `catalogs` export of
-`@effected/pnpm-plugin-effect`, a pnpm config dependency pinned by bare
+Every `@effected/*` entry in `package.json`, and `effect` and every
+`@effect/*` entry with them, reads `"catalog:effected"` rather than a
+direct range,[^package-json] so a kit bump is not a `package.json` edit.
+The plugin serves exactly one catalog, `effected`; `catalog:effect`,
+`catalog:effect:peers` and `catalog:effected:peers` do not exist, and an
+install with any of them left behind fails with
+`ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`. The Effect family is held to
+one minor (`~4.1.1`, not a caret), so a new Effect minor arrives only with
+a new plugin release. The ranges live inside the `catalogs` export of
+`@effected/pnpm-plugin-effected`, a pnpm config dependency pinned by bare
 exact version in `pnpm-workspace.yaml`'s `configDependencies` block, with
 its integrity recorded in the `pnpm-lock.yaml` config-dependency
 preamble rather than inline.[^pnpm-workspace] See
@@ -35,15 +41,15 @@ preamble rather than inline.[^pnpm-workspace] See
 for why that makes the registry listing and the plugin's own published
 catalog both insufficient checks on their own.
 
-**Trigger:** a newer `@effected/pnpm-plugin-effect` release publishes a
+**Trigger:** a newer `@effected/pnpm-plugin-effected` release publishes a
 catalog naming newer `@effected/*` versions, and this repository needs to
 move onto it.
 
 ## Steps
 
-1. Bump the `@effected/pnpm-plugin-effect` entry in `pnpm-workspace.yaml`'s
+1. Bump the `@effected/pnpm-plugin-effected` entry in `pnpm-workspace.yaml`'s
    `configDependencies` block (`pnpm-workspace.yaml:4-6`)[^pnpm-workspace]
-   with `pnpm add --config @effected/pnpm-plugin-effect@<version>`. pnpm
+   with `pnpm add --config @effected/pnpm-plugin-effected@<version>`. pnpm
    writes the bare version and records the integrity in the lockfile's
    config-dependency preamble; do not hand-add a `+sha512-` suffix (see
    [write pins bare](../decisions/write-pins-bare.md)).
@@ -86,12 +92,13 @@ move onto it.
    re-exports. See
    [a duplicate kit package and a type error are not necessarily cause and effect](../gotchas/duplicate-kit-copies-and-stale-transitives.md)
    for how to read what the probe finds.
-9. Re-pin `.repos/config.json`'s `effected` entry's `ref` field to the
-   release tag matching the versions just installed, in the **same commit**
-   as the bump.[^repos-config] Verify the re-pin by comparing the vendored
-   `packages/<name>/package.json` at that ref against `node_modules`, never
-   by reading the tag name — use `/silk:repos` (the `repos_manage` tool)
-   rather than a manual submodule checkout.
+9. If the bump moved `effect`, re-pin `.repos/config.json`'s `effect`
+   entry to the tag matching the installed version
+   (`savvy repos pin effect effect@<version>`, or the `repos_manage` tool),
+   in the **same commit** as the bump.[^repos-config] Verify the re-pin by
+   comparing the vendored `packages/effect/package.json` at that ref
+   against `node_modules/effect/package.json`, never by reading the tag
+   name.
 10. Write a changeset describing the bump.
 
 ## Observable end state
@@ -99,7 +106,7 @@ move onto it.
 `pnpm why <pkg>` on every installed `@effected/*` package reports the
 version the new plugin release's catalog names; `pnpm typecheck`,
 `pnpm test`, and `pnpm build:prod` are all clean; `.repos/config.json`'s
-`effected.ref` names the release tag matching what is actually installed;
+`effect` ref names the tag matching the installed `effect`;
 and a changeset for the bump exists.
 
 ## Related

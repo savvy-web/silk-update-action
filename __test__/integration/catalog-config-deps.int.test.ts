@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import { NodeCrypto, NodeServices } from "@effect/platform-node";
 import { PackageTarball } from "@effected/npm";
 import { LockfileReadError, LockfileReader } from "@effected/workspaces";
 import { Effect, Exit, Layer, Option, References } from "effect";
@@ -155,7 +155,9 @@ const failingLockfileStub = Layer.succeed(LockfileReader, {
 const layers = (packages: Record<string, ReadonlyArray<string>>, lockfile: Layer.Layer<LockfileReader>) => {
 	// PackageTarball has to be built OVER the stubs (it needs the stubbed
 	// HttpClient), not merged beside them (effected#282).
-	const base = Layer.mergeAll(registry(packages), lockfile, httpStub, realRunner);
+	// PackageTarball verifies integrity through core's Digest, which
+	// NodeServices does not carry.
+	const base = Layer.mergeAll(registry(packages), lockfile, httpStub, realRunner, NodeCrypto.layerDigest);
 	return CatalogConfigDeps.layer.pipe(Layer.provide(Layer.provideMerge(PackageTarball.layer, base)));
 };
 
