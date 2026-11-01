@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T19:00:51Z
 sources:
   - id: pre-ts
     resource: ../../src/pre.ts
@@ -23,7 +23,7 @@ sources:
     resource: ../../src/steps/format-workspace.ts
 integrity:
   generated:
-    body: fbdfd497c78677f6
+    body: 79f065d09b8ffbcf
 ---
 
 # Open work toward integration testing with a real GitHub App
@@ -64,14 +64,15 @@ These are not gated by the same integration-test condition above; they are
 recorded here because they were open at the same review pass and each has a
 concrete re-derivation step rather than a vague "someday."
 
-- **Raw `node:` imports remain drift, not necessity.** Thirteen modules under
+- **Raw `node:` imports remain drift, not necessity.** Twelve modules under
   `src/` still import directly from `node:fs` / `node:path` rather than
   through the ambient `FileSystem` / `Path` services every layer already has
   available: `src/services/{branch,catalog-config-deps,changesets,config-deps,
   lockfile,module-catalogs,package-manager-upgrade,peer-sync,regular-deps,
-  runtime-upgrade,workspace-yaml}.ts`, `src/steps/install.ts`, and
-  `src/utils/deps.ts` — re-derived on 2026-09-13 with
-  `grep -rl 'from "node:' src/ | wc -l`, which still returns **13**.
+  runtime-upgrade,workspace-yaml}.ts` and `src/steps/install.ts` —
+  re-derived on 2026-11-01 with `grep -rl 'from "node:' src/ | wc -l`, which
+  returns **12**. `src/utils/deps.ts` left the list when its `matchesGlob`
+  was replaced by core's `Glob`.
   `runtime-upgrade.ts` and `package-manager-upgrade.ts` are expected to stay
   on this list even after everything else clears: both still `readFileSync` +
   `JSON.parse` a manifest to *decide* what to write, only routing the actual

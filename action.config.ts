@@ -43,7 +43,7 @@ export default defineConfig({
 		// path to match against here. `module-catalogs.ts` is reachable from
 		// `dist/main.js` (via `CatalogConfigDeps`), and because a context-module
 		// rewrite only fails in production — vitest runs the source, not the
-		// bundle — `build:prod` runs `scripts/assert-native-dynamic-import.mjs`
+		// bundle — `build:prod` runs `lib/scripts/assert-native-dynamic-import.mjs`
 		// after every build, asserting the built `dist/main.js` still holds a
 		// genuine `await import(<ident>)` at that call site and not a numbered
 		// context module. Deleting the magic comment fails the build.

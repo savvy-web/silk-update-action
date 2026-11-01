@@ -21,7 +21,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
-		"build:prod": "github-action-builder build && node scripts/assert-native-dynamic-import.mjs",
+		"build:prod": "github-action-builder build && node lib/scripts/assert-native-dynamic-import.mjs",
 		"ci:build": "CI=\"true\" turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
 		"ci:test": "schemastore check lib/scripts/schemastore.config.ts && CI=\"true\" vitest run --coverage",
 		"lint": "biome check --max-diagnostics=none",

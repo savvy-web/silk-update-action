@@ -10,6 +10,16 @@ describe("isStaticVersion", () => {
 	it("false for wildcard (24.x)", () => expect(isStaticVersion("24.x")).toBe(false));
 	it("false for comparator (>=20)", () => expect(isStaticVersion(">=20.0.0")).toBe(false));
 	it("false for OR range", () => expect(isStaticVersion("20.0.0 || 22.0.0")).toBe(false));
+	// An "x" inside a prerelease identifier is not a wildcard: these are pinned
+	// versions, and `auto` must leave them alone.
+	it("true for a prerelease containing an x", () => {
+		expect(isStaticVersion("22.11.0-next.1")).toBe(true);
+		expect(isStaticVersion("1.2.3-alpha.x")).toBe(true);
+	});
+	it("true for build metadata containing an x", () => expect(isStaticVersion("1.2.3+build.x")).toBe(true));
+	it("false for an uppercase wildcard (24.X)", () => expect(isStaticVersion("24.X")).toBe(false));
+	it("false for a malformed prerelease (1.2.3-)", () => expect(isStaticVersion("1.2.3-")).toBe(false));
+	it("false for a leading-zero version (01.2.3)", () => expect(isStaticVersion("01.2.3")).toBe(false));
 });
 
 describe("locateRuntimeEntry", () => {

@@ -7,19 +7,19 @@ tags:
   - bundle
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T19:00:51Z
 sources:
   - id: action-config
     resource: ../../action.config.ts
   - id: module-catalogs
     resource: ../../src/services/module-catalogs.ts
   - id: assert-native-dynamic-import
-    resource: ../../scripts/assert-native-dynamic-import.mjs
+    resource: ../../lib/scripts/assert-native-dynamic-import.mjs
   - id: effected-242
     resource: "https://github.com/spencerbeggs/effected/issues/242"
 integrity:
   generated:
-    body: 7f724017e17a17b3
+    body: 02f64f6c03e6499e
 ---
 
 # A first-party computed dynamic import stays local, guarded by a build-time assertion
@@ -69,7 +69,7 @@ module path to match against for a first-party computed import.[^module-catalogs
 Because a context-module rewrite here only breaks in the **built** bundle —
 vitest runs the TypeScript source directly, so nothing in the unit or
 integration suites, typecheck, or lint can see this class of failure —
-`build:prod` runs `scripts/assert-native-dynamic-import.mjs` after every
+`build:prod` runs `lib/scripts/assert-native-dynamic-import.mjs` after every
 build to check the shipped `dist/main.js` directly.[^assert-native-dynamic-import]
 The script anchors on two things: a stable reachability marker
 (`"fetchModuleCatalogs:"`, a string the module emits verbatim, proving the
@@ -115,5 +115,5 @@ context-module rewrite pattern (`await l(5252)(t)`,
 
 [^action-config]: `action.config.ts`
 [^module-catalogs]: `src/services/module-catalogs.ts`
-[^assert-native-dynamic-import]: `scripts/assert-native-dynamic-import.mjs`
+[^assert-native-dynamic-import]: `lib/scripts/assert-native-dynamic-import.mjs`
 [^effected-242]: <https://github.com/spencerbeggs/effected/issues/242>

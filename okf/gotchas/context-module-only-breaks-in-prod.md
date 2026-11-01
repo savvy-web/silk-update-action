@@ -10,17 +10,17 @@ tags:
 resource: ../../action.config.ts
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-01T19:00:51Z
 sources:
   - id: action-config
     resource: ../../action.config.ts
   - id: assert-script
-    resource: ../../scripts/assert-native-dynamic-import.mjs
+    resource: ../../lib/scripts/assert-native-dynamic-import.mjs
   - id: module-catalogs
     resource: ../../src/services/module-catalogs.ts
 integrity:
   generated:
-    body: f9b9081d1d387671
+    body: 7b90ba6064137ca8
 ---
 
 # A miscompiled computed dynamic import passes every check except the built bundle
@@ -61,7 +61,7 @@ failing tests. Typecheck and lint operate on source too. The only thing that
 can see the miscompilation is a script that reads the actual bundled output
 and looks for the difference between a genuine `await import(<identifier>)`
 and rspack's numbered context-module call
-(`await l(5252)(t)`).[^assert-script] `scripts/assert-native-dynamic-import.mjs`
+(`await l(5252)(t)`).[^assert-script] `lib/scripts/assert-native-dynamic-import.mjs`
 is that script, run on every `build:prod` invocation (`pnpm build`,
 `pnpm build:prod`, `pnpm ci:build`, and CI's build step all route through
 it).[^assert-script]
@@ -81,7 +81,7 @@ behavior changing.[^assert-script]
 - Never treat `pnpm typecheck` / `pnpm lint` / `pnpm test` passing as evidence
   about this call site — none of them touch `dist/main.js`.
 - Run `pnpm build:prod` (or any command that invokes it) and confirm
-  `scripts/assert-native-dynamic-import.mjs` prints its success line rather
+  `lib/scripts/assert-native-dynamic-import.mjs` prints its success line rather
   than failing; that script is the only signal that inspects the artifact
   itself.
 - If the guard ever fails with "could not find module-catalogs", the module
@@ -94,5 +94,5 @@ behavior changing.[^assert-script]
   instead carries its own inline `webpackIgnore` comment.
 
 [^action-config]: `../../action.config.ts`
-[^assert-script]: `../../scripts/assert-native-dynamic-import.mjs`
+[^assert-script]: `../../lib/scripts/assert-native-dynamic-import.mjs`
 [^module-catalogs]: `../../src/services/module-catalogs.ts`

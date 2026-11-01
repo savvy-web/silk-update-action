@@ -123,6 +123,16 @@ describe("matchesPattern", () => {
 		expect(matchesPattern("anything", "*")).toBe(true);
 	});
 
+	it("does not let a bare wildcard cross a scope's slash", () => {
+		expect(matchesPattern("@savvy-web/changesets", "*")).toBe(false);
+		expect(matchesPattern("@savvy-web/changesets", "**")).toBe(true);
+	});
+
+	it("expands braces and matches case-sensitively", () => {
+		expect(matchesPattern("@effect/vitest", "@effect/{vitest,platform-node}")).toBe(true);
+		expect(matchesPattern("Effect", "effect")).toBe(false);
+	});
+
 	it("handles dots in package names safely", () => {
 		expect(matchesPattern("jquery.form", "jquery.form")).toBe(true);
 		// Dot should NOT act as regex wildcard
@@ -185,6 +195,27 @@ describe("parseSpecifier", () => {
 
 	it("should parse < prefix", () => {
 		expect(parseSpecifier("<3.6.0")).toEqual({ prefix: "<", version: "3.6.0" });
+	});
+
+	// Callers rewrite a parsed specifier as `${prefix}${resolved}`, so a compound
+	// range that parsed would lose everything after its first version: the upper
+	// bound of ">=1.2.3 <2.0.0", the second arm of an OR set. Returning null makes
+	// every caller leave the range exactly as written.
+	it("returns null for a bounded compound range", () => {
+		expect(parseSpecifier(">=1.2.3 <2.0.0")).toBeNull();
+	});
+
+	it("returns null for an OR set", () => {
+		expect(parseSpecifier("1.2.3 || 2.0.0")).toBeNull();
+		expect(parseSpecifier("^1.2.3 || ^2.0.0")).toBeNull();
+	});
+
+	it("returns null for a hyphen range", () => {
+		expect(parseSpecifier("1.2.3 - 2.0.0")).toBeNull();
+	});
+
+	it("still parses a single version with prerelease and build", () => {
+		expect(parseSpecifier("^1.2.3-rc.1+build.5")).toEqual({ prefix: "^", version: "1.2.3-rc.1+build.5" });
 	});
 });
 

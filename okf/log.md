@@ -6,6 +6,9 @@
 * Updated Bump the @effected kit
 * Updated This repository's @effected ranges come from a config dependency, not package.json
 * Updated config dependency
+* Updated A first-party computed dynamic import stays local, guarded by a build-time assertion
+* Updated A miscompiled computed dynamic import passes every check except the built bundle
+* Updated Open work toward integration testing with a real GitHub App
 
 ## 2026-10-21
 

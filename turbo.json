@@ -15,6 +15,7 @@
 				"*.ts",
 				"lib/**/*.ts",
 				"lib/**/*.mts",
+				"lib/**/*.mjs",
 				"src/**/*.ts",
 				"action.yml",
 				"README.md",
