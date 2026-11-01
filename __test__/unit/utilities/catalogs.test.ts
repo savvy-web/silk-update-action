@@ -359,6 +359,58 @@ describe("readManifestCatalogs / manifestCatalogEdits", () => {
 		expect(text).toContain('\t\t"peers": {\n\t\t\t"b": "2"\n\t\t}');
 	});
 
+	// @effected/jsonc leaves a whitespace-only line when it deletes the FIRST
+	// member of an object (spencerbeggs/effected#1208), so none of these may
+	// reach a first-member delete.
+	const BLANK_LINE = /\n[ \t]*\n/;
+
+	it("drops a catalog's first entry without a blank line", () => {
+		const pkg = { workspaces: ["."], catalogs: { silk: { drop: "1", keep: "1" } } };
+
+		const { text, json } = applyCatalogs(pkg, { silk: { keep: "1" } });
+
+		expect(json).toEqual({ workspaces: ["."], catalogs: { silk: { keep: "1" } } });
+		expect(text).not.toMatch(BLANK_LINE);
+	});
+
+	it("swaps a catalog's only entry for a different key without a blank line", () => {
+		const pkg = { workspaces: ["."], catalogs: { silk: { zod: "^3.0.0" } } };
+
+		const { text, json } = applyCatalogs(pkg, { silk: { effect: "^4.1.1" } });
+
+		expect(json).toEqual({ workspaces: ["."], catalogs: { silk: { effect: "^4.1.1" } } });
+		expect(text).not.toMatch(BLANK_LINE);
+	});
+
+	it("drops the first named catalog without a blank line", () => {
+		const pkg = { workspaces: ["."], catalogs: { gone: { x: "1" }, silk: { a: "1" } } };
+
+		const { text, json } = applyCatalogs(pkg, { silk: { a: "1" } });
+
+		expect(json).toEqual({ workspaces: ["."], catalogs: { silk: { a: "1" } } });
+		expect(text).not.toMatch(BLANK_LINE);
+	});
+
+	it("migrates a nested catalog that comes first in workspaces without a blank line", () => {
+		const pkg: Record<string, unknown> = { workspaces: { catalog: { react: "^19.0.0" }, packages: ["."] } };
+
+		const { text, json } = applyCatalogs(pkg, readManifestCatalogs(pkg));
+
+		expect(json).toEqual({ workspaces: { packages: ["."] }, catalog: { react: "^19.0.0" } });
+		expect(text).not.toMatch(BLANK_LINE);
+		// The rebuilt array is indented to its depth, not the top level.
+		expect(text).toContain('\t"workspaces": {\n\t\t"packages": [\n\t\t\t"."\n\t\t]\n\t}');
+	});
+
+	it("keeps an untouched entry's bytes when a later entry is dropped", () => {
+		const pkg = { workspaces: ["."], catalogs: { silk: { keep: "1", drop: "1" } } };
+		const before = `${JSON.stringify(pkg, null, "\t")}\n`;
+
+		const { text } = applyCatalogs(pkg, { silk: { keep: "1" } });
+
+		expect(text).toBe(before.replace(',\n\t\t\t"drop": "1"', ""));
+	});
+
 	it("empties an object-form workspaces that held only catalogs, without a blank line", () => {
 		const pkg = { workspaces: { catalog: { react: "^19.0.0" } } };
 

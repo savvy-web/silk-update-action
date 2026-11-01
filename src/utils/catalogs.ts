@@ -191,34 +191,57 @@ export const readManifestCatalogs = (pkgJson: unknown): CatalogMap => {
 };
 
 /**
- * Edits that set an object at `path` from nothing: an empty `{}` first, then
- * one edit per entry.
+ * Edits that set the value at `path` from nothing, one leaf at a time: an
+ * empty `{}` or `[]` first, then one edit per entry or element.
  *
- * Built entry by entry rather than as one object value because `modify`
- * indents a multi-line inserted value as if it sat at the top level; growing an
- * empty object one key at a time indents every line to its real depth.
+ * Built leaf by leaf rather than as one value because `modify` indents a
+ * multi-line inserted value as if it sat at the top level
+ * (spencerbeggs/effected#1208); growing an empty container one member at a
+ * time indents every line to its real depth.
  */
+const freshValueEdits = (path: ReadonlyArray<string | number>, value: unknown): Array<PackageFieldEdit> => {
+	if (Array.isArray(value)) {
+		const edits: Array<PackageFieldEdit> = [{ path, value: [] }];
+		value.forEach((element, index) => {
+			edits.push(...freshValueEdits([...path, index], element));
+		});
+		return edits;
+	}
+	if (typeof value === "object" && value !== null) {
+		const edits: Array<PackageFieldEdit> = [{ path, value: {} }];
+		for (const [key, entry] of Object.entries(value)) {
+			edits.push(...freshValueEdits([...path, key], entry));
+		}
+		return edits;
+	}
+	return [{ path, value }];
+};
+
+/** {@link freshValueEdits} for an object value. */
 const freshObjectEdits = (
 	path: ReadonlyArray<string>,
 	value: Readonly<Record<string, unknown>>,
-): Array<PackageFieldEdit> => {
-	const edits: Array<PackageFieldEdit> = [{ path, value: {} }];
-	for (const [key, entry] of Object.entries(value)) {
-		if (typeof entry === "object" && entry !== null) {
-			edits.push(...freshObjectEdits([...path, key], entry as Record<string, unknown>));
-		} else {
-			edits.push({ path: [...path, key], value: entry });
-		}
-	}
-	return edits;
+): Array<PackageFieldEdit> => freshValueEdits(path, value);
+
+/**
+ * True when turning `existing` into an object with only `kept` keys would
+ * delete its FIRST member. `@effected/jsonc` leaves a whitespace-only line
+ * behind when it deletes an object's first member (deleting a middle or last
+ * one is clean), so such an object is rebuilt instead
+ * (spencerbeggs/effected#1208).
+ */
+const deletesFirstMember = (existing: Readonly<Record<string, unknown>>, kept: (key: string) => boolean): boolean => {
+	const first = Object.keys(existing)[0];
+	return first !== undefined && !kept(first);
 };
 
 /**
  * Edits turning the string-valued object at `path` (as it is on disk) into
  * `target`, per entry, so an untouched entry keeps its bytes.
  *
- * Sets run before deletes so the object is never emptied mid-sequence — deleting
- * an object's last key leaves a blank line behind, and `target` is non-empty.
+ * When that would delete the object's first member, the object is rebuilt
+ * entry by entry instead (see {@link deletesFirstMember}); `target` is
+ * non-empty, so the rebuilt object is never empty.
  */
 const recordEdits = (
 	path: ReadonlyArray<string>,
@@ -226,7 +249,7 @@ const recordEdits = (
 	target: Readonly<Record<string, string>>,
 ): Array<PackageFieldEdit> => {
 	const existing = asRecord(current);
-	if (existing === null) {
+	if (existing === null || deletesFirstMember(existing, (key) => key in target)) {
 		return freshObjectEdits(path, target);
 	}
 	const sets: Array<PackageFieldEdit> = Object.entries(target)
@@ -264,6 +287,8 @@ export const manifestCatalogEdits = (pkgJson: unknown, catalogs: CatalogMap): Re
 		if (remaining.length === 0) {
 			// Deleting an object's last key leaves a blank line; replace it whole.
 			edits.push({ path: ["workspaces"], value: {} });
+		} else if (deletesFirstMember(nested, (key) => key !== "catalog" && key !== "catalogs")) {
+			edits.push(...freshObjectEdits(["workspaces"], Object.fromEntries(remaining.map((key) => [key, nested[key]]))));
 		} else {
 			for (const key of ["catalog", "catalogs"] as const) {
 				if (key in nested) edits.push({ path: ["workspaces", key], value: undefined });
@@ -290,10 +315,14 @@ export const manifestCatalogEdits = (pkgJson: unknown, catalogs: CatalogMap): Re
 		edits.push(...freshObjectEdits(["catalogs"], Object.fromEntries(populatedNamed)));
 		return edits;
 	}
+	const kept = new Set(populatedNamed.map(([name]) => name));
+	if (deletesFirstMember(existingNamed, (name) => kept.has(name))) {
+		edits.push(...freshObjectEdits(["catalogs"], Object.fromEntries(populatedNamed)));
+		return edits;
+	}
 	for (const [name, entries] of populatedNamed) {
 		edits.push(...recordEdits(["catalogs", name], existingNamed[name], entries));
 	}
-	const kept = new Set(populatedNamed.map(([name]) => name));
 	for (const name of Object.keys(existingNamed)) {
 		if (!kept.has(name)) edits.push({ path: ["catalogs", name], value: undefined });
 	}
