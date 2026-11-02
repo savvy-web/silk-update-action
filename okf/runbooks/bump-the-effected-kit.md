@@ -9,7 +9,7 @@ tags:
 resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
-  at: 2026-11-01T18:48:23Z
+  at: 2026-11-02T21:32:52Z
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
@@ -19,7 +19,7 @@ sources:
     resource: ../../.repos/config.json
 integrity:
   generated:
-    body: 02da4225551c1250
+    body: 7de1d1354987ebbe
 ---
 
 # Bump the @effected kit
@@ -31,7 +31,7 @@ The plugin serves exactly one catalog, `effected`; `catalog:effect`,
 `catalog:effect:peers` and `catalog:effected:peers` do not exist, and an
 install with any of them left behind fails with
 `ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`. The Effect family is held to
-one minor (`~4.1.1`, not a caret), so a new Effect minor arrives only with
+one minor (a tilde such as `~4.1.2`, not a caret), so a new Effect minor arrives only with
 a new plugin release. The ranges live inside the `catalogs` export of
 `@effected/pnpm-plugin-effected`, a pnpm config dependency pinned by bare
 exact version in `pnpm-workspace.yaml`'s `configDependencies` block, with

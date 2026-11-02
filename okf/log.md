@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-02
+
+* Updated Bump the @effected kit
+
 ## 2026-11-01
 
 * Updated Build on Effect v4 and the @effected kit, not plain TypeScript or one all-in-one library
