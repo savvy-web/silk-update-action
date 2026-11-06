@@ -15,7 +15,7 @@
  * artifact to commit.
  *
  * The JSON Schema is generated from {@link RunResultDocument} by the
- * `schemastore` CLI (`lib/scripts/schemastore.config.ts`) into
+ * `effected schema` (`lib/scripts/schemastore.config.ts`) into
  * `schemas/<label>/output.json`; `pnpm schema:check` fails CI when the
  * committed document is stale. Change the contract by editing these types and
  * running `pnpm schema:build`; never by editing the emitted JSON.

@@ -16,8 +16,8 @@ import {
  */
 const applyCatalogs = (pkg: Record<string, unknown>, catalogs: CatalogMap) => {
 	let text = `${JSON.stringify(pkg, null, "\t")}\n`;
-	for (const edit of manifestCatalogEdits(pkg, catalogs)) {
-		text = Effect.runSync(PackageJsonFormat.modifyToString(text, edit.path, edit.value));
+	for (const { path, value, ...options } of manifestCatalogEdits(pkg, catalogs)) {
+		text = Effect.runSync(PackageJsonFormat.modifyToString(text, path, value, options));
 	}
 	return { text, json: JSON.parse(text) as Record<string, unknown> };
 };
@@ -222,7 +222,7 @@ describe("readManifestCatalogs / manifestCatalogEdits", () => {
 		expect(json.catalogs).toEqual({ silk: { effect: "^3.21.4" } });
 	});
 
-	it("appends new catalog blocks after every existing key, leaving those keys in place", () => {
+	it("places new catalog and catalogs blocks after workspaces, leaving the other keys in place", () => {
 		const pkg: Record<string, unknown> = {
 			name: "root",
 			workspaces: ["."],
@@ -232,8 +232,7 @@ describe("readManifestCatalogs / manifestCatalogEdits", () => {
 
 		const { json } = applyCatalogs(pkg, { default: { react: "^19.0.0" }, silk: { effect: "^3.21.4" } });
 
-		// `modify` has no insert-after position, so new keys go last.
-		expect(Object.keys(json)).toEqual(["name", "workspaces", "scripts", "devDependencies", "catalog", "catalogs"]);
+		expect(Object.keys(json)).toEqual(["name", "workspaces", "catalog", "catalogs", "scripts", "devDependencies"]);
 	});
 
 	it("appends catalogs when the manifest has no workspaces key to anchor to", () => {
@@ -355,13 +354,55 @@ describe("readManifestCatalogs / manifestCatalogEdits", () => {
 		const { text, json } = applyCatalogs(pkg, { default: { react: "^19.0.0" }, silk: { a: "1" }, peers: { b: "2" } });
 
 		expect(json).toEqual({ catalog: { react: "^19.0.0" }, catalogs: { silk: { a: "1" }, peers: { b: "2" } } });
-		// Built entry by entry, so the inserted object is indented to its depth.
+		// The inserted object is indented to its depth, not the top level.
 		expect(text).toContain('\t\t"peers": {\n\t\t\t"b": "2"\n\t\t}');
 	});
 
-	// @effected/jsonc leaves a whitespace-only line when it deletes the FIRST
-	// member of an object (spencerbeggs/effected#1208), so none of these may
-	// reach a first-member delete.
+	it("places a new catalog block directly after workspaces", () => {
+		const pkg = { name: "x", workspaces: ["."], scripts: { a: "b" } };
+
+		const { text, json } = applyCatalogs(pkg, { silk: { effect: "^4.1.1" } });
+
+		expect(Object.keys(json)).toEqual(["name", "workspaces", "catalogs", "scripts"]);
+		expect(text).toContain('\t"catalogs": {\n\t\t"silk": {\n\t\t\t"effect": "^4.1.1"\n\t\t}\n\t},\n\t"scripts"');
+	});
+
+	it("places a new catalogs block after an existing catalog that sits away from workspaces", () => {
+		const pkg = { workspaces: ["."], scripts: { a: "b" }, catalog: { react: "^19.0.0" }, private: true };
+
+		const { json } = applyCatalogs(pkg, { default: { react: "^19.0.0" }, silk: { effect: "^4.1.1" } });
+
+		expect(Object.keys(json)).toEqual(["workspaces", "scripts", "catalog", "catalogs", "private"]);
+	});
+
+	it("anchors a new catalogs block on workspaces when the catalog block is being removed", () => {
+		const pkg = { workspaces: ["."], scripts: { a: "b" }, catalog: { react: "^19.0.0" } };
+
+		const { json } = applyCatalogs(pkg, { silk: { effect: "^4.1.1" } });
+
+		expect(Object.keys(json)).toEqual(["workspaces", "catalogs", "scripts"]);
+	});
+
+	it("does not move an existing catalog block when its entries change", () => {
+		const pkg = { workspaces: ["."], scripts: { a: "b" }, catalog: { react: "^18.0.0" } };
+
+		const { json } = applyCatalogs(pkg, { default: { react: "^19.0.0" } });
+
+		expect(Object.keys(json)).toEqual(["workspaces", "scripts", "catalog"]);
+	});
+
+	it("keeps a sibling's bytes when a catalog's first entry is dropped", () => {
+		const pkg = { workspaces: ["."], catalogs: { silk: { drop: "1", keep: "1" } } };
+		const before = `${JSON.stringify(pkg, null, "\t")}\n`;
+
+		const { text } = applyCatalogs(pkg, { silk: { keep: "1" } });
+
+		expect(text).toBe(before.replace('\t\t\t"drop": "1",\n', ""));
+	});
+
+	// A delete takes its whole line, whichever member it removes. These guard the
+	// whitespace-only line @effected/jsonc used to leave on a first-member delete
+	// (spencerbeggs/effected#1208).
 	const BLANK_LINE = /\n[ \t]*\n/;
 
 	it("drops a catalog's first entry without a blank line", () => {
@@ -398,7 +439,7 @@ describe("readManifestCatalogs / manifestCatalogEdits", () => {
 
 		expect(json).toEqual({ workspaces: { packages: ["."] }, catalog: { react: "^19.0.0" } });
 		expect(text).not.toMatch(BLANK_LINE);
-		// The rebuilt array is indented to its depth, not the top level.
+		// The surviving member is untouched.
 		expect(text).toContain('\t"workspaces": {\n\t\t"packages": [\n\t\t\t"."\n\t\t]\n\t}');
 	});
 

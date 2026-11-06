@@ -10,7 +10,7 @@ tags:
   - observability
 generated:
   by: okfit/claude-code
-  at: 2026-09-15T18:43:07Z
+  at: 2026-11-06T01:10:41Z
 sources:
   - id: action-yml
     resource: ../../action.yml
@@ -24,7 +24,7 @@ sources:
     resource: ../../src/schema/hosted.ts
 integrity:
   generated:
-    body: 9edd06388ecfe358
+    body: ddf17c7f228b554e
 ---
 
 # Action outputs
@@ -87,7 +87,7 @@ happened.[^domain-ts] See
 ## The generated JSON Schema is closed, on purpose
 
 `schemas/5.0/output.json` is generated from `RunResultDocument` by the
-`schemastore` CLI (`@effected/schemastore-cli`) reading
+`effected schema` command (`@effected/plugin`) reading
 `lib/scripts/schemastore.config.ts` (structural lint, an ajv strict-mode
 gate, and a write-only-if-content-differs pass).[^schemastore-config] Every
 struct lowers to a **closed** object (`additionalProperties: false`) — the
@@ -99,7 +99,7 @@ The document names its own schema: `$schema` is a `Schema.Literal` of
 `SCHEMA_URL`, and `SCHEMA_URL` is `OutputSchemaIdentity.$id` — the
 `HostedSchema` built once in `src/schema/hosted.ts` and handed to the config
 as `hosted`. That is the only place the repository, path and label
-(`SCHEMA_VERSION = "5.0"`) are spelled; the `$id` the CLI writes and the URL
+(`SCHEMA_VERSION = "5.0"`) are spelled; the `$id` `effected schema` writes and the URL
 every payload carries are one derivation.[^hosted] There is no in-band
 `schemaVersion` field: the version is in the URL. Rebuild with
 `pnpm schema:build`; see

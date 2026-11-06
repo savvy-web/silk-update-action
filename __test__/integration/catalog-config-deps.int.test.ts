@@ -696,20 +696,18 @@ describe("CatalogConfigDeps", () => {
 		expect(pkg.workspaces).toEqual(["."]);
 		expect(pkg.workspaces.packages).toBeUndefined();
 		expect(pkg.catalogs).toEqual({ silk: { effect: "^3.21.4" }, silkPeers: { effect: "^3.21.0" } });
-		// Every existing key keeps its place; the new block is appended, because
-		// `PackageJsonFile.modify` has no insert-after position. (Before the
-		// surgical write it was spliced in after `workspaces` by rebuilding the
-		// object, at the cost of re-serializing the whole manifest.)
+		// Every existing key keeps its place; the new block goes straight after
+		// `workspaces`, through the edit's `insertAfter`.
 		expect(Object.keys(pkg)).toEqual([
 			"name",
 			"private",
 			"type",
 			"workspaces",
+			"catalogs",
 			"scripts",
 			"devDependencies",
 			"packageManager",
 			"trustedDependencies",
-			"catalogs",
 		]);
 		expect(pkg.trustedDependencies).toEqual(["@parcel/watcher"]);
 	});
@@ -800,7 +798,7 @@ describe("CatalogConfigDeps", () => {
 		);
 	});
 
-	it("writes a brand-new catalogs block well-indented without touching the bytes before it", async () => {
+	it("writes a brand-new catalogs block well-indented after workspaces, without touching the other bytes", async () => {
 		publish(PKG, "0.23.0", catalogsSource({ silk: {} }));
 		publish(PKG, "0.23.1", catalogsSource({ silk: { effect: "^3.21.4" }, silkPeers: { effect: "^3.21.0" } }));
 		const original = [
@@ -815,15 +813,13 @@ describe("CatalogConfigDeps", () => {
 
 		await run([PKG], ["0.23.0", "0.23.1"], "0.23.0");
 
-		// `modify` appends a new key at the end of its object (it has no
-		// insert-after option), and the block is built entry by entry so every
-		// line is indented to its depth.
+		// The new block goes straight after `workspaces`, every line indented to
+		// its depth.
 		expect(readPkgRaw()).toBe(
 			[
 				"{",
 				'\t"name": "root",',
 				'\t"workspaces": ["."],',
-				`\t"devDependencies": { "${PKG}": "^0.23.1" },`,
 				'\t"catalogs": {',
 				'\t\t"silk": {',
 				'\t\t\t"effect": "^3.21.4"',
@@ -831,7 +827,8 @@ describe("CatalogConfigDeps", () => {
 				'\t\t"silkPeers": {',
 				'\t\t\t"effect": "^3.21.0"',
 				"\t\t}",
-				"\t}",
+				"\t},",
+				`\t"devDependencies": { "${PKG}": "^0.23.1" }`,
 				"}",
 				"",
 			].join("\n"),

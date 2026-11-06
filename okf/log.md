@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-06
+
+* Updated Action outputs
+* Updated Adopt @effected/package-json for surgical field edits only, never its decode path
+* Updated Rebuild the result output's JSON Schema after editing RunResultDocument
+
 ## 2026-11-02
 
 * Updated Bump the @effected kit
