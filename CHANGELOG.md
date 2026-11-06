@@ -1,5 +1,34 @@
 # silk-update-action
 
+## 4.15.3
+
+### Bug Fixes
+
+- A first-time `catalog` or `catalogs` block written to a root `package.json` now goes straight after `workspaces` rather than at the end of the file. Existing blocks stay where they are. [#607][#607]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | ^0.28.0 | ^0.29.0 |
+| @effected/github-actions | dependency | updated | ^0.31.0 | ^0.32.0 |
+| @effected/lockfiles | dependency | updated | ^0.22.0 | ^0.22.1 |
+| @effected/npm | dependency | updated | ^0.30.0 | ^0.30.1 |
+| @effected/package-json | dependency | updated | ^0.29.0 | ^0.30.0 |
+| @effected/runtimes | dependency | updated | ^0.18.0 | ^0.18.1 |
+| @effected/schemastore | dependency | updated | ^0.29.0 | ^0.30.0 |
+| @effected/semver | dependency | updated | ^0.21.0 | ^0.22.0 |
+| @effected/workspaces | dependency | updated | ^0.42.0 | ^0.43.0 |
+| @effected/yaml | dependency | updated | ^0.28.0 | ^0.29.0 |
+
+[#607][#607]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#607]: https://github.com/savvy-web/silk-update-action/pull/607
+
 ## 4.15.2
 
 ### Dependencies
