@@ -8,7 +8,7 @@ tags:
 resource: ../../lib/scripts/schemastore.config.ts
 generated:
   by: okfit/claude-code
-  at: 2026-09-29T02:56:11Z
+  at: 2026-11-06T01:10:41Z
 sources:
   - id: schemastore-config
     resource: ../../lib/scripts/schemastore.config.ts
@@ -20,14 +20,14 @@ sources:
     resource: ../../turbo.json
 integrity:
   generated:
-    body: 823b0219a80bda68
+    body: 1aeafb14eeb52d90
 ---
 
 # Rebuild the result output's JSON Schema after editing RunResultDocument
 
 `schemas/<label>/output.json` is generated from `RunResultDocument`
-(`src/schema/domain.ts`) by the `schemastore` CLI
-(`@effected/schemastore-cli`) reading `lib/scripts/schemastore.config.ts`,
+(`src/schema/domain.ts`) by the `effected schema`
+command (`@effected/plugin`) reading `lib/scripts/schemastore.config.ts`,
 run as `pnpm schema:build`.[^package-json] The config never spells a URL,
 path or version: it receives `OutputSchemaIdentity` from
 `src/schema/hosted.ts` as its entry's `hosted`, and the `$schema` the emitted
@@ -59,7 +59,7 @@ in `src/schema/domain.ts`.
    is committed, so a formatter reflowing the file never provokes a rewrite.
 3. Read the summary line: `1 schema(s): 1 written, 0 unchanged, 0 drift`
    after a real change, `0 written, 1 unchanged` when nothing moved. A
-   `gate failed` count means a lint or ajv finding; the CLI prints it.
+   `gate failed` count means a lint or ajv finding; the command prints it.
 4. Run `pnpm lint:fix` so the committed artifact is Biome-formatted (the
    CLI's `semantic` drift policy accepts that), then `pnpm schema:check` and
    expect `0 written, 1 unchanged, 0 drift`.
@@ -73,7 +73,7 @@ in `src/schema/domain.ts`.
 
 Once a label has shipped to a consumer, do not regenerate it: append a new
 label to `SCHEMA_VERSIONS`, make it `SCHEMA_VERSION`, and leave the old file
-in place as a frozen version the CLI verifies but never rewrites.[^hosted]
+in place as a frozen version the command verifies but never rewrites.[^hosted]
 
 ## Observable end state
 

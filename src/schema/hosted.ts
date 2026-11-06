@@ -5,7 +5,7 @@
  * `lib/scripts/schemastore.config.ts` receives {@link OutputSchemaIdentity} as
  * its entry's `hosted`, and the emitted `result` document carries
  * {@link SCHEMA_URL} as `$schema`. Both are the same value's `$id`, so the URL a
- * payload names and the `$id` the CLI writes cannot disagree.
+ * payload names and the `$id` `effected schema` writes cannot disagree.
  *
  * @module schema/hosted
  */
@@ -21,7 +21,7 @@ export const SCHEMA_VERSION = "5.0";
 
 /**
  * Every label the documents have been published under, oldest first; the
- * current one is the newest. Older labels are frozen: the CLI verifies each
+ * current one is the newest. Older labels are frozen: `effected schema` verifies each
  * file still exists and declares its derived `$id`, but never regenerates it.
  */
 export const SCHEMA_VERSIONS: ReadonlyArray<string> = [SCHEMA_VERSION];

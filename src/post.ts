@@ -8,10 +8,9 @@
  * @module post
  */
 
-import { NodeCrypto } from "@effect/platform-node";
 import { GitHubApp } from "@effected/github";
 import { Action, ActionState, GitHubToken } from "@effected/github-actions";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Option } from "effect";
 import { STATE_KEYS, StartTimeState } from "./state.js";
 
 export const post = Effect.gen(function* () {
@@ -38,12 +37,11 @@ export const post = Effect.gen(function* () {
 );
 
 /**
- * Domain layers for post-action. `GitHubToken.dispose` needs a `GitHubApp`,
- * which in the kit is self-contained apart from the `Signature` service it
- * signs the App JWT with (`NodeCrypto.layerSignature`). `ActionState` comes from `Action.run`'s
- * runtime.
+ * Domain layers for post-action. `GitHubToken.dispose` needs a `GitHubApp`.
+ * `ActionState` and the `Signature` service `GitHubApp` signs the App JWT with
+ * come from `Action.run`'s runtime.
  */
-export const PostLive = GitHubApp.layer.pipe(Layer.provide(NodeCrypto.layerSignature));
+export const PostLive = GitHubApp.layer;
 
 /* v8 ignore next 3 -- entry-point guard, only runs in GitHub Actions */
 if (process.env.GITHUB_ACTIONS) {

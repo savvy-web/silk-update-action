@@ -8,8 +8,8 @@
  * @module utils/deps
  */
 
-import { SemVer } from "@effected/semver";
-import { Glob } from "effect";
+import { VersionSpecifier } from "@effected/semver";
+import { Glob, Result } from "effect";
 
 /**
  * Check if a dependency name matches a glob pattern.
@@ -28,23 +28,21 @@ export const matchesPattern = (depName: string, pattern: string): boolean => Glo
 /**
  * Parse a version specifier into prefix and version.
  *
- * Returns null for catalog: and workspace: specifiers (should be skipped).
+ * Returns null for anything that is not one operator and one complete version:
+ * `catalog:` and `workspace:` specifiers, dist-tags, partial versions, and
+ * compound ranges. Callers rewrite the specifier as `${prefix}${resolved}`, so a
+ * compound range (">=1.2.3 <2.0.0", "1.2.3 || 2.0.0", "1.2.3 - 2.0.0") that parsed
+ * here would be collapsed to a single bound; null leaves it exactly as written.
+ *
+ * An explicit `=` pin is also null: the kit accepts it, but this action has
+ * never rewritten one.
  */
 export const parseSpecifier = (specifier: string): { prefix: string; version: string } | null => {
-	if (specifier.startsWith("catalog:")) return null;
-	if (specifier.startsWith("workspace:")) return null;
-
-	// Match optional prefix (>=, <=, >, <, ^, ~) followed by a semver-like version
-	const match = specifier.match(/^(>=|<=|>|<|\^|~)?(\d+\.\d+\.\d+.*)$/);
-	if (!match) return null;
-	// The tail must be ONE version. Callers rewrite the specifier as
-	// `${prefix}${resolved}`, so a compound range (">=1.2.3 <2.0.0",
-	// "1.2.3 || 2.0.0", "1.2.3 - 2.0.0") that parsed here would be collapsed to a
-	// single bound. Returning null leaves it exactly as written.
-	if (!SemVer.isValid(match[2])) return null;
+	const parsed = VersionSpecifier.parseResult(specifier);
+	if (Result.isFailure(parsed) || parsed.success.operator === "=") return null;
 
 	return {
-		prefix: match[1] ?? "",
-		version: match[2],
+		prefix: parsed.success.operator,
+		version: parsed.success.version.toString(),
 	};
 };

@@ -8,7 +8,7 @@ tags:
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-11-01T19:19:26Z
+  at: 2026-11-06T01:10:41Z
 sources:
   - id: package-manager-upgrade
     resource: ../../src/services/package-manager-upgrade.ts
@@ -30,7 +30,7 @@ sources:
     resource: "https://github.com/spencerbeggs/effected/issues/286"
 integrity:
   generated:
-    body: ec0b863b78648676
+    body: 5e922a5ef82e6f31
 ---
 
 # Adopt @effected/package-json for surgical field edits only, never its decode path
@@ -145,15 +145,14 @@ verdict above.
 
 - A version bump that resolves to the same value produces no file write and
   no diff, because `modify` compares before writing.
-- A **brand-new** top-level key lands at the end of the manifest: `modify`
-  appends a new property and has no insert-after position. That moved
-  `CatalogConfigDeps`' first-time `catalog` / `catalogs` block from just after
-  `workspaces` (where the old whole-file rewrite spliced it) to the end of the
-  file. Two further `modify` behaviors shape `manifestCatalogEdits`: a
-  multi-line object inserted as one value is indented as if it were at the top
-  level, so new objects are built as `{}` plus one edit per entry; and deleting
-  an object's last key leaves a blank line, so sets run before deletes and an
-  emptied catalog is deleted at its own key.[^catalog-utils]
+- A **brand-new** top-level key lands at the end of the manifest unless its
+  edit names a sibling through `insertAfter`. `CatalogConfigDeps` does, so a
+  first-time `catalog` block goes straight after `workspaces` and a first-time
+  `catalogs` block straight after `catalog` when the manifest keeps one,
+  otherwise after `workspaces`. `modify` lays an inserted multi-line value out
+  at its real depth and a delete takes its whole line, so
+  `manifestCatalogEdits` sets a new object as one value and deletes entries
+  directly.[^catalog-utils]
 - Every writer still carries a dependency on `readFileSync` + `JSON.parse` for
   the read half — adopting the decode path would remove that, but only if the
   package ever ships a presence-lenient decode that accepts a nameless,

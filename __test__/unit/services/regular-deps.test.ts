@@ -205,6 +205,10 @@ describe("parseSpecifier", () => {
 	// range that parsed would lose everything after its first version: the upper
 	// bound of ">=1.2.3 <2.0.0", the second arm of an OR set. Returning null makes
 	// every caller leave the range exactly as written.
+	it("returns null for an explicit = pin, leaving it as written", () => {
+		expect(parseSpecifier("=1.2.3")).toBeNull();
+	});
+
 	it("returns null for a bounded compound range", () => {
 		expect(parseSpecifier(">=1.2.3 <2.0.0")).toBeNull();
 	});
