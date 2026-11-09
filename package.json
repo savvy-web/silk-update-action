@@ -59,7 +59,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/plugin": "catalog:effected",
-		"@okfit/plugin": "^0.5.29",
+		"@okfit/plugin": "^0.5.30",
 		"@savvy-web/github-action-builder": "^2.4.25",
 		"@savvy-web/silk": "^4.5.6",
 		"@vitest-agent/plugin": "^6.0.5",
