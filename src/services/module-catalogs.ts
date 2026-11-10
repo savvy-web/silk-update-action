@@ -74,24 +74,16 @@ const unavailable = (reason: ModuleCatalogsUnavailableReason): ModuleCatalogs =>
  * statement about the consumer's manifest rather than about our load.
  *
  * The `import()` argument is a path computed at runtime from the extracted
- * tarball, so it carries a `webpackIgnore` magic comment: without it rspack
- * would compile this call into a context module (a build-time directory glob)
- * and throw `Cannot find module 'file:///…'` in production even though the
- * file exists on disk — the same failure `build.nativeDynamicImports` guards
- * against for third-party packages in `action.config.ts`. That option only
- * matches paths under `node_modules`, so it cannot cover this first-party
- * call site; the magic comment is the direct fix rspack (like webpack)
- * recognizes for any `import(expr)`, first-party or not.
- *
- * This loader deliberately did **not** move upstream with the rest: a
- * kit-level `import()` of a computed path would hand every bundling consumer
- * the context-module problem with no seam to fix it.
+ * tarball. `effected action build` bundles with rolldown, which leaves a
+ * computed `import()` native, so this call needs no annotation to survive
+ * bundling. Keep the specifier computed: a literal `import("pkg")` would be
+ * bundled instead.
  */
 const importPackageEntry = (packageDir: string, entry: string): Effect.Effect<Record<string, unknown>, unknown> =>
 	Effect.tryPromise({
 		try: async () => {
 			const entryUrl = pathToFileURL(join(packageDir, entry)).href;
-			return (await import(/* webpackIgnore: true */ entryUrl)) as Record<string, unknown>;
+			return (await import(entryUrl)) as Record<string, unknown>;
 		},
 		catch: (error) => error,
 	});

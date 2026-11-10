@@ -117,11 +117,13 @@ export const makeAppLayer = (dryRun: boolean, options: { runtimeLive: boolean } 
 	//
 	// `layerWithConfigDependenciesSubprocess`, NOT `layerWithConfigDependencies`:
 	// the in-process variant loads each config dependency's pnpmfile with a
-	// computed dynamic `import()`, which rspack compiles into a context module and
-	// breaks in the bundled dist (see the action.config.ts note on
-	// `nativeDynamicImports`). The subprocess variant passes a static script via
-	// argv, so nothing computed enters the bundle graph — which is the whole
-	// reason this adoption was blocked until effected#288 shipped.
+	// computed dynamic `import()`. Under the old rspack-based builder that import
+	// compiled into a context module and broke the bundled dist, which is why the
+	// subprocess variant (a static script passed via argv) was adopted once
+	// effected#288 shipped. `effected action build` bundles with rolldown, which
+	// keeps a computed `import()` native, so that reason no longer holds; the
+	// subprocess variant stays because it also keeps config-dependency code out
+	// of the action's own process, and swapping it is a runtime change of its own.
 	const workspaceCatalogs = WorkspaceCatalogs.layerWithConfigDependenciesSubprocess().pipe(
 		Layer.provide(Layer.mergeAll(workspaceRoot, lockfileReader)),
 	);

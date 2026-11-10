@@ -13,12 +13,13 @@
  * does not, so a repo receiving its settings through a config dependency can
  * only be read that way.
  *
- * The hook replay must run in a **subprocess** — `layerWithConfigDependenciesSubprocess`,
- * not `layerWithConfigDependencies` — because rspack miscompiles a computed
- * dynamic `import()` into a context module (see the `action.config.ts` note on
- * `nativeDynamicImports`). The subprocess variant passes a static script via
- * argv, so nothing computed enters the bundle graph. It also keeps
- * config-dependency code out of the action's own process.
+ * The hook replay runs in a **subprocess** — `layerWithConfigDependenciesSubprocess`,
+ * not `layerWithConfigDependencies`. It was adopted because the old rspack-based
+ * builder miscompiled the in-process variant's computed dynamic `import()` into
+ * a context module. `effected action build` bundles with rolldown, which keeps a
+ * computed `import()` native, so that reason is historical; the subprocess
+ * variant stays because it keeps config-dependency code out of the action's own
+ * process.
  *
  * **What stays local is the fail-open posture.** The kit fails *typed* with
  * `CatalogAssemblyFailure`, which is correct for a library. This action instead
@@ -31,9 +32,10 @@
  * @module services/release-age
  */
 
+import type { PublishTime } from "@effected/npm";
 import { NpmRegistry, ReleaseAgeGate } from "@effected/npm";
 import { WorkspaceCatalogs } from "@effected/workspaces";
-import { Context, DateTime, Effect, Layer } from "effect";
+import { Context, DateTime, Effect, Layer, Option } from "effect";
 
 export type { PartialReleaseAgeGate } from "@effected/npm";
 
@@ -46,7 +48,13 @@ export type { PartialReleaseAgeGate } from "@effected/npm";
 export const getPublishTimes = (pkg: string): Effect.Effect<Record<string, string>, never, NpmRegistry> =>
 	Effect.gen(function* () {
 		const registry = yield* NpmRegistry;
-		const published = yield* registry.publishTimes(pkg).pipe(Effect.catch(() => Effect.succeed(null)));
+		// `None` (a 404) means no publish times to filter on — the same `{}` an
+		// empty list produced before `publishTimes` answered `Option` — and is not a
+		// failure, so it does not warn.
+		const published = yield* registry.publishTimes(pkg).pipe(
+			Effect.map(Option.getOrElse((): ReadonlyArray<PublishTime> => [])),
+			Effect.catch(() => Effect.succeed(null)),
+		);
 		if (published === null) {
 			yield* Effect.logWarning(`Failed to fetch publish times for ${pkg}; release-age filtering unavailable`);
 			return {};

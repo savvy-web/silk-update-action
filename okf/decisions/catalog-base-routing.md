@@ -8,7 +8,7 @@ tags:
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: catalog-config-deps
     resource: ../../src/services/catalog-config-deps.ts
@@ -22,7 +22,7 @@ sources:
     resource: "https://github.com/spencerbeggs/effected/pull/282"
 integrity:
   generated:
-    body: 67e485d6c2311429
+    body: 1b506b0dafa9b221
 ---
 
 # Route a bun catalog merge on WHY the base tarball could not be read, never collapse every failure to one outcome
@@ -130,11 +130,11 @@ is genuinely absent" reason would need to be added there by hand.
   skip does: writing a version whose catalogs were never actually merged
   would leave the manifest describing a release it never saw.
 - `fetchModuleCatalogs`'s loader — the `import()` of the resolved entry —
-  deliberately did **not** move upstream with the rest of the tarball
-  handling; a kit-level loader over a computed path would hand every
-  bundling consumer the same context-module problem this action's own build
-  has a specific fix for, with no seam to apply it. See
-  [the dynamic import stays local](dynamic-import-stays-local.md).
+  did **not** move upstream with the rest of the tarball handling. The
+  reason recorded at the time was the context-module rewrite of the old
+  rspack-based builder; the rolldown build keeps that computed import native
+  with no annotation, so that reason no longer applies to this action's own
+  build. See [computed dynamic imports](computed-dynamic-imports.md).
 - The kit's own `resolveEntryPoint` is stricter than the resolver this action
   used to hand-roll: it does not fall back to `main`/`index.js` when
   `exports` is present and nothing matches. That is a real, if currently

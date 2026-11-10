@@ -2,23 +2,24 @@
 type: Convention
 title: Never rewrite the dev branch — commit, don't squash, rebase, or force-push
 description: dev is the long-lived feature branch. Commit ordinary commits directly to it; never squash, rebase, or force-push it, because a consumer pinning `@dev` runs the committed dist and that consumer's CI is pinned to whatever dev currently is.
+status: stable
 stale_after: 2027-03-12T00:00:00Z
 tags:
   - release
   - ci
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: branch-sync-workflow
     resource: ../../.github/workflows/branch-sync.yml
   - id: silk-update-workflow
     resource: ../../.github/workflows/silk-update.yml
-  - id: action-config
-    resource: ../../action.config.ts
+  - id: effected-toml
+    resource: ../../effected.toml
 integrity:
   generated:
-    body: ee4079ce15e01b8c
+    body: 37877ee18af6fbb5
 ---
 
 # Never rewrite the dev branch — commit, don't squash, rebase, or force-push
@@ -35,8 +36,9 @@ rewrite of `dev` unsafe.
 
 ## Why
 
-This action is **bundled**: `action.config.ts` drives a build that inlines
-every runtime dependency into `dist/{pre,main,post}.js`,[^action-config] and a
+This action is **bundled**: `effected action build`, configured by
+`effected.toml`, inlines every runtime dependency into
+`dist/{pre,main,post}.js`,[^effected-toml] and a
 consumer workflow that writes `uses: savvy-web/silk-update-action@dev`
 executes that **committed `dist`**, not `node_modules` and not `src/`. `dev`
 is therefore not a private staging area — other repositories' CI is pinned to
@@ -85,4 +87,4 @@ See [the dev-branch glossary entry](../glossary/dev-branch.md) for what
 
 [^branch-sync-workflow]: `.github/workflows/branch-sync.yml`
 [^silk-update-workflow]: `.github/workflows/silk-update.yml`
-[^action-config]: `action.config.ts` (the bundling build)
+[^effected-toml]: `effected.toml` (the bundling build)

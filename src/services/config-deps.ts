@@ -25,7 +25,7 @@ import type { NpmRegistryShape } from "@effected/npm";
 import { NpmRegistry } from "@effected/npm";
 import { ConfigDependencySpec } from "@effected/workspaces";
 import { Yaml } from "@effected/yaml";
-import { Context, Effect, Layer, Result } from "effect";
+import { Context, Effect, Layer, Option, Result } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schema/domain.js";
@@ -74,7 +74,10 @@ export class ConfigDeps extends Context.Service<
  * (rather than failing) when the registry query errors.
  */
 const queryVersions = (packageName: string, registry: NpmRegistryShape): Effect.Effect<ReadonlyArray<string>> =>
-	registry.versions(packageName).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)));
+	registry.versions(packageName).pipe(
+		Effect.map(Option.getOrElse((): ReadonlyArray<string> => [])),
+		Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
+	);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Implementation

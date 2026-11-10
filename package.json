@@ -21,7 +21,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
-		"build:prod": "github-action-builder build && node lib/scripts/assert-native-dynamic-import.mjs",
+		"build:prod": "effected action build",
 		"ci:build": "CI=\"true\" turbo run build:prod --log-order=grouped --output-logs=full --log-prefix=none",
 		"ci:test": "effected schema check lib/scripts/schemastore.config.ts && CI=\"true\" vitest run --coverage",
 		"lint": "biome check --max-diagnostics=none",
@@ -36,15 +36,16 @@
 		"test:coverage": "vitest run --coverage --pass-with-no-tests",
 		"test:watch": "vitest --watch --pass-with-no-tests",
 		"typecheck": "turbo run types:check --log-prefix=none --log-order=grouped",
-		"types:check": "tsc --noEmit",
-		"validate": "github-action-builder validate"
+		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@effect/platform-node": "catalog:effected",
+		"@effected/changesets": "catalog:effected",
 		"@effected/commands": "catalog:effected",
 		"@effected/git": "catalog:effected",
 		"@effected/github": "catalog:effected",
 		"@effected/github-actions": "catalog:effected",
+		"@effected/glob": "catalog:effected",
 		"@effected/lockfiles": "catalog:effected",
 		"@effected/npm": "catalog:effected",
 		"@effected/package-json": "catalog:effected",
@@ -53,17 +54,15 @@
 		"@effected/semver": "catalog:effected",
 		"@effected/workspaces": "catalog:effected",
 		"@effected/yaml": "catalog:effected",
-		"@savvy-web/silk-effects": "^11.0.1",
+		"@savvy-web/silk-effects": "^12.0.0",
 		"effect": "catalog:effected"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/plugin": "catalog:effected",
-		"@okfit/plugin": "^0.5.29",
-		"@savvy-web/github-action-builder": "^2.4.25",
-		"@savvy-web/silk": "^4.5.6",
-		"@vitest-agent/plugin": "^6.0.5",
-		"tsx": "catalog:silk"
+		"@okfit/plugin": "^0.5.32",
+		"@savvy-web/silk": "^5.0.0",
+		"@vitest-agent/plugin": "^6.0.9"
 	},
 	"engines": {
 		"node": ">=24.11.0"

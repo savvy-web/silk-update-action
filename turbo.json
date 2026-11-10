@@ -17,6 +17,7 @@
 				"lib/**/*.mts",
 				"lib/**/*.mjs",
 				"src/**/*.ts",
+				"effected.toml",
 				"action.yml",
 				"README.md",
 				"LICENSE"

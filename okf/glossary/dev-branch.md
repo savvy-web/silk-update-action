@@ -8,15 +8,15 @@ tags:
   - ci
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: branch-sync-workflow
     resource: ../../.github/workflows/branch-sync.yml
-  - id: action-config
-    resource: ../../action.config.ts
+  - id: effected-toml
+    resource: ../../effected.toml
 integrity:
   generated:
-    body: ede1d29b71fc6456
+    body: bf09eb097321ad8d
 ---
 
 # dev (branch)
@@ -29,8 +29,8 @@ force-pushed freely, and nothing external depends on its exact history.
 branch: work is committed to it directly with ordinary commits, not merged in
 from short-lived branches. It is long-lived and it is never rewritten — no
 squash, no rebase, no force-push — because this action is bundled
-(`action.config.ts` inlines every runtime dependency into
-`dist/{pre,main,post}.js`[^action-config]), and a consumer workflow that pins
+(`effected action build`, configured by `effected.toml`, inlines every
+runtime dependency into `dist/{pre,main,post}.js`[^effected-toml]), and a consumer workflow that pins
 `uses: savvy-web/silk-update-action@dev` runs that **committed `dist`**, not
 `node_modules`. Other repositories' CI is pinned to whatever commit currently
 sits at the tip of `dev`, which is the property an ordinary scratch `dev`
@@ -42,5 +42,5 @@ rewriting `dev` itself — see
 See [never rewrite the dev branch](../conventions/never-rewrite-dev.md) for
 the full rule and the consequences of forgetting it.
 
-[^action-config]: `action.config.ts`
+[^effected-toml]: `effected.toml`
 [^branch-sync-workflow]: `.github/workflows/branch-sync.yml`

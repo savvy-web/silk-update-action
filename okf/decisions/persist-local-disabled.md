@@ -1,37 +1,38 @@
 ---
 type: Decision
 title: Keep persistLocal disabled
-description: The builder's persistLocal option, which would commit a duplicate copy of dist/ into .github/actions/local for an act smoke-test loop, stays off because nothing in this repository runs act.
+description: The action build's persistLocal option, which would commit a duplicate copy of dist/ into .github/actions/local for an act smoke-test loop, stays off because nothing in this repository runs act.
 status: draft
 tags:
   - bundle
   - ci
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-10T18:07:49Z
 sources:
-  - id: action-config
-    resource: ../../action.config.ts
+  - id: effected-toml
+    resource: ../../effected.toml
 integrity:
   generated:
-    body: c9692a231b9beb82
+    body: df481b2cc42ecc1d
 ---
 
 # Keep persistLocal disabled
 
 ## Context
 
-`@savvy-web/github-action-builder`'s `persistLocal` option writes a byte-for-byte
+`effected action build`'s `[action.persistLocal]` option writes a byte-for-byte
 copy of the built `dist/{pre,main,post}.js` into a second location
 (`.github/actions/local` here) so a workflow can reference the action by local
 path — the intended use is an `act`-based smoke test that runs the action
 without a published tag. This action is bundled and fetched fresh by every
 consumer on every run, so anything added to the repository's tracked output
-is downloaded by every one of those consumers.[^action-config]
+is downloaded by every one of those consumers.[^effected-toml]
 
 ## Decision
 
-`persistLocal.enabled` stays `false`.[^action-config] Persisting would
+`[action.persistLocal] enabled` stays `false` in
+`effected.toml`.[^effected-toml] Persisting would
 duplicate the committed `dist` output — see
 [dist payload size](../measurements/dist-payload-size.md) for the measured
 byte counts — roughly doubling what every consumer downloads on every run, to
@@ -70,4 +71,4 @@ that runs the action from the local path — would justify re-enabling this.
 Canon alignment on its own is not sufficient justification; the workflow that
 would consume the output has to exist and work first.
 
-[^action-config]: `../../action.config.ts`
+[^effected-toml]: `../../effected.toml`

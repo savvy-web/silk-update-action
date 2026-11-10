@@ -14,7 +14,7 @@ for the architecture (entry points, `program.ts`, steps, services, layers).
 | Touching workspace files | [`okf/conventions/workspace-root-is-required.md`](../okf/conventions/workspace-root-is-required.md) |
 | Writing `package.json` | [`okf/decisions/package-json-modify-only.md`](../okf/decisions/package-json-modify-only.md) |
 | Adding an error, tag or interface field | [`okf/conventions/no-export-without-construction-site.md`](../okf/conventions/no-export-without-construction-site.md) |
-| Changing a computed `import()` | [`okf/gotchas/context-module-only-breaks-in-prod.md`](../okf/gotchas/context-module-only-breaks-in-prod.md) |
+| Changing a computed `import()` | [`okf/decisions/computed-dynamic-imports.md`](../okf/decisions/computed-dynamic-imports.md) |
 | Imports, formatting, commits | [`okf/conventions/code-style.md`](../okf/conventions/code-style.md) |
 
 The kit and Effect v4 are the first answer for any capability: check the

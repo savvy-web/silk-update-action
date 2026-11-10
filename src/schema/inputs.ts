@@ -213,6 +213,18 @@ export const readInputs = Effect.gen(function* () {
 		["upgrade-package-manager", upgradePackageManager, ["true", "false", "auto"]],
 	] as const) {
 		if (!(keywords as ReadonlyArray<string>).includes(value)) {
+			// `Range.parse` reads a blank `||` part as `*` (npm's reading), so a
+			// stray `||` would silently widen this range to every release. Refuse
+			// it here, where it is a typo, before the parse can accept it.
+			if (value.split("||").some((part) => part.trim() === "")) {
+				yield* Effect.fail(
+					new InvalidInputError({
+						field: inputName,
+						reason: "Invalid semver range: a || alternative is empty",
+						value,
+					}),
+				);
+			}
 			yield* Range.parse(value).pipe(
 				Effect.mapError(
 					(e) =>

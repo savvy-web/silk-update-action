@@ -1,28 +1,36 @@
 ---
 type: Decision
 title: A first-party computed dynamic import stays local, guarded by a build-time assertion
-description: The one dynamic import this action itself performs — loading a config dependency's extracted tarball entry — cannot be declared to the bundler's nativeDynamicImports list, so it carries an inline webpackIgnore comment instead, verified against the built dist/main.js after every build.
-status: draft
+description: "Superseded by computed-dynamic-imports: under the rspack-based github-action-builder, the module-catalogs computed import() carried an inline webpackIgnore comment and a post-build script checked dist/main.js for a context-module rewrite; the rolldown build needs neither."
+status: deprecated
 tags:
   - bundle
 generated:
   by: okfit/claude-code
-  at: 2026-11-01T19:00:51Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: action-config
-    resource: ../../action.config.ts
+    resource: "https://github.com/savvy-web/silk-update-action/blob/fcbb6de/action.config.ts"
   - id: module-catalogs
     resource: ../../src/services/module-catalogs.ts
   - id: assert-native-dynamic-import
-    resource: ../../lib/scripts/assert-native-dynamic-import.mjs
+    resource: "https://github.com/savvy-web/silk-update-action/blob/fcbb6de/lib/scripts/assert-native-dynamic-import.mjs"
   - id: effected-242
     resource: "https://github.com/spencerbeggs/effected/issues/242"
 integrity:
   generated:
-    body: 02f64f6c03e6499e
+    body: 81bb43ebcc4ed257
 ---
 
 # A first-party computed dynamic import stays local, guarded by a build-time assertion
+
+> **Deprecated.** This choice was specific to the rspack-based
+> `@savvy-web/github-action-builder`. The action now builds with
+> `effected action build` over rolldown, which keeps a computed `import()`
+> native; `action.config.ts`, the `webpackIgnore` comment and
+> `assert-native-dynamic-import.mjs` are gone. See
+> [computed dynamic imports](computed-dynamic-imports.md) for the choice that
+> replaces it. The text below records the superseded choice as it stood.
 
 ## Context
 
@@ -113,7 +121,7 @@ context-module rewrite pattern (`await l(5252)(t)`,
   upstream, not a new entry in `nativeDynamicImports` — that path is known to
   fail the build if attempted.
 
-[^action-config]: `action.config.ts`
+[^action-config]: <https://github.com/savvy-web/silk-update-action/blob/fcbb6de/action.config.ts>
 [^module-catalogs]: `src/services/module-catalogs.ts`
-[^assert-native-dynamic-import]: `lib/scripts/assert-native-dynamic-import.mjs`
+[^assert-native-dynamic-import]: <https://github.com/savvy-web/silk-update-action/blob/fcbb6de/lib/scripts/assert-native-dynamic-import.mjs>
 [^effected-242]: <https://github.com/spencerbeggs/effected/issues/242>

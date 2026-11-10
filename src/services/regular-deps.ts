@@ -16,7 +16,7 @@ import type { PackageFieldEdit, PackageJsonFileShape } from "@effected/package-j
 import { PackageJsonFile } from "@effected/package-json";
 import type { WorkspaceDiscoveryShape } from "@effected/workspaces";
 import { WorkspaceDiscovery } from "@effected/workspaces";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schema/domain.js";
@@ -79,7 +79,10 @@ export class RegularDeps extends Context.Service<
  * package never aborts the whole batch.
  */
 const queryVersions = (packageName: string, registry: NpmRegistryShape): Effect.Effect<ReadonlyArray<string>> =>
-	registry.versions(packageName).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)));
+	registry.versions(packageName).pipe(
+		Effect.map(Option.getOrElse((): ReadonlyArray<string> => [])),
+		Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
+	);
 
 /**
  * Writable dependency sections, in priority order. peerDependencies are
