@@ -60,7 +60,7 @@ pnpm run lint / lint:fix           # Biome check / auto-fix
 pnpm run typecheck                 # tsc via Turbo
 pnpm run test / test:watch         # Vitest
 pnpm run test:coverage             # Coverage (aggregate gate — see okf/gotchas/aggregate-coverage-gate.md)
-pnpm run build / build:prod        # Bundle via github-action-builder
+pnpm run build / build:prod        # Bundle via effected action build (effected.toml [action])
 pnpm run schema:build              # Regenerate schemas/<label>/output.json via effected schema
 pnpm run schema:check              # Drift guard (runs before vitest in ci:test)
 pnpm run lint:md                   # markdownlint-cli2 (docs + this file)

@@ -301,9 +301,10 @@ const processDep = (
 		}
 
 		const registry = yield* NpmRegistry;
-		const versions = yield* registry
-			.versions(name)
-			.pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)));
+		const versions = yield* registry.versions(name).pipe(
+			Effect.map(Option.getOrElse((): ReadonlyArray<string> => [])),
+			Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
+		);
 
 		if (versions.length === 0) {
 			yield* Effect.logWarning(`CatalogConfigDeps: could not query versions for "${name}", skipping`);

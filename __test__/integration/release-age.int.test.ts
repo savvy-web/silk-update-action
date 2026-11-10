@@ -18,7 +18,7 @@ import {
 	WorkspaceDiscovery,
 	WorkspaceRoot,
 } from "@effected/workspaces";
-import { DateTime, Effect, Layer, References } from "effect";
+import { DateTime, Effect, Layer, Option, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ReleaseAge, getPublishTimes } from "../../src/services/release-age.js";
@@ -28,9 +28,8 @@ import { ReleaseAge, getPublishTimes } from "../../src/services/release-age.js";
  * binds the temp directory, everything else is live.
  *
  * `layerWithConfigDependenciesSubprocess`, not the in-process variant: that is
- * the one the action ships, because rspack miscompiles the in-process loader's
- * computed dynamic import. Testing the other one would prove nothing about the
- * bundle.
+ * the one the action ships (see `src/layers/app.ts`). Testing the other one
+ * would prove nothing about what runs in production.
  */
 const catalogsAt = (root: string): Layer.Layer<WorkspaceCatalogs> => {
 	const platform = NodeServices.layer;
@@ -309,11 +308,13 @@ describe("release-age", () => {
 			NpmRegistry.layerTest({
 				publishTimes: () =>
 					Effect.succeed(
-						entries.map((entry) =>
-							PublishTime.make({
-								version: entry.version,
-								publishedAt: DateTime.fromDateUnsafe(new Date(entry.publishedAt)),
-							}),
+						Option.some(
+							entries.map((entry) =>
+								PublishTime.make({
+									version: entry.version,
+									publishedAt: DateTime.fromDateUnsafe(new Date(entry.publishedAt)),
+								}),
+							),
 						),
 					),
 			});
@@ -343,6 +344,16 @@ describe("release-age", () => {
 
 			expect(times).toEqual({});
 		});
+
+		it("returns an empty record when the registry does not know the package", async () => {
+			// `publishTimes` answers `None` for a 404. That is "nothing to filter on",
+			// the same `{}` an empty list produced before the read answered `Option`.
+			const absent = NpmRegistry.layerTest({ publishTimes: () => Effect.succeed(Option.none()) });
+
+			const times = await runWith(getPublishTimes("not-a-package"), absent);
+
+			expect(times).toEqual({});
+		});
 	});
 
 	describe("ReleaseAge service", () => {
@@ -361,8 +372,10 @@ describe("release-age", () => {
 						return Effect.fail(new RegistryReadError({ kind: "transport", package: pkg, registry: DEFAULT_REGISTRY }));
 					}
 					return Effect.succeed(
-						Object.entries(times).map(([version, at]) =>
-							PublishTime.make({ version, publishedAt: DateTime.fromDateUnsafe(new Date(at)) }),
+						Option.some(
+							Object.entries(times).map(([version, at]) =>
+								PublishTime.make({ version, publishedAt: DateTime.fromDateUnsafe(new Date(at)) }),
+							),
 						),
 					);
 				},

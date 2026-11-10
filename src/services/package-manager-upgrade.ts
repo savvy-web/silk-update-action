@@ -401,9 +401,13 @@ const upgradePackageManagerImpl = (
 		// Query available versions via NpmRegistry, which redirects npm's cache to
 		// a runner-writable directory — a raw `npm view` here hits the partially
 		// root-owned ~/.npm on GitHub's macOS runners and dies EACCES.
-		const allVersions = yield* registry
-			.versions(pm)
-			.pipe(Effect.mapError((e) => fsReadError("npm registry", `Failed to query ${pm} versions: ${e.message}`)));
+		const allVersions = yield* registry.versions(pm).pipe(
+			// `None` is a 404 — the package manager is not on the registry at all.
+			// No version can satisfy the range, so it lands on `unsatisfiable`
+			// below, exactly as the pre-Option empty list did.
+			Effect.map(Option.getOrElse((): ReadonlyArray<string> => [])),
+			Effect.mapError((e) => fsReadError("npm registry", `Failed to query ${pm} versions: ${e.message}`)),
+		);
 
 		const resolved = yield* resolveLatestSatisfying(allVersions, targetRange);
 		if (!resolved) {

@@ -1,0 +1,29 @@
+# `effected action build` (from @effected/plugin) reads the [action] table.
+# Output is unchanged from the old builder: dist/pre.js, dist/main.js and
+# dist/post.js, which action.yml's runs.pre/main/post already name.
+
+[action.entries]
+pre = "src/pre.ts"
+main = "src/main.ts"
+post = "src/post.ts"
+
+# There is no nativeDynamicImports key. Rolldown leaves a computed `import()`
+# native on its own, which covers both of the fully dynamic imports this action
+# reaches: @changesets/apply-release-plan loading the configured changelog
+# module, and src/services/module-catalogs.ts loading a config dependency's
+# extracted tarball entry. Rolldown has no context-module rewrite, so the old
+# post-build assert-native-dynamic-import.mjs guard is gone with the builder.
+#
+# importCheck stays on (the default): every entry guards its program on
+# GITHUB_ACTIONS, so importing a bundle in a fresh Node runs nothing.
+[action.build]
+minify = true
+
+# Disabled on purpose. The action is fetched by every consumer on every run, and
+# a committed local copy roughly doubles the download weight (measured: persisting
+# main+pre+post added ~2.0 MB beside the ~2.0 MB already in dist/) for a local
+# `act` loop nobody here exercises. The act scaffolding was removed rather than
+# fed; do not re-enable this without a real consumer of the output.
+[action.persistLocal]
+enabled = false
+path = ".github/actions/local"
