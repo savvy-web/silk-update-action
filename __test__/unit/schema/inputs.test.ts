@@ -219,6 +219,27 @@ describe("readInputs — validation", () => {
 		expect(Exit.isFailure(exit)).toBe(true);
 	});
 
+	// `@effected/semver` reads an empty `||` part as `*`, as npm does, so these
+	// all parse and each matches every version. A stray `||` is a typo that
+	// would otherwise widen a pinned runtime or package-manager range to "any
+	// release", including the next major, with no error.
+	it.each([
+		["upgrade-runtime-node", "^24.0.0 ||"],
+		["upgrade-runtime-deno", "|| ^2.0.0"],
+		["upgrade-runtime-bun", "^1.0.0 || || ^2.0.0"],
+		["upgrade-package-manager", "||"],
+	])("rejects a blank || part in %s (%s), naming that input", async (name, range) => {
+		const exit = await read({ dependencies: "effect", [name]: range });
+
+		expect(failedField(exit)).toBe(name);
+	});
+
+	it("still accepts a well-formed || range", async () => {
+		const inputs = await readOrThrow({ dependencies: "effect", "upgrade-runtime-node": "^22.0.0 || ^24.0.0" });
+
+		expect(inputs).toBeDefined();
+	});
+
 	it("rejects a retry-unmatched budget that does not fit inside timeout", async () => {
 		// Two retries wait 3 + 6 = 9 minutes; the default timeout is 8. Rejected
 		// rather than clamped, and named against retry-unmatched so the reader
