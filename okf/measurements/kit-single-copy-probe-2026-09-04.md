@@ -11,7 +11,7 @@ justifies:
   - ../decisions/platform-stays-in-requirement-channel.md
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-10T18:05:20Z
 sources:
   - id: pnpm-lock
     resource: ../../pnpm-lock.yaml
@@ -21,7 +21,7 @@ sources:
     resource: ../../package.json
 integrity:
   generated:
-    body: 78c530aea59158f8
+    body: 0b2a2e26fe0e21c5
 ---
 
 # Kit single-copy probe
@@ -100,7 +100,13 @@ unchanged: `@effected/workspaces/WorkspaceCatalogs` → 1,
   possible because `@savvy-web/github-action-builder` bundles from
   `dependencies`, not `devDependencies` — so a dev-tooling-only duplicate is
   invisible to the shipped artifact even while `pnpm why` genuinely reports
-  two resolved versions.
+  two resolved versions. (That was the builder at the time of measurement;
+  the action now builds with `effected action build` over rolldown. On
+  2026-11-10 the fully-qualified tag ids
+  `@effected/workspaces/WorkspaceCatalogs` and `@effected/npm/NpmRegistry`
+  each still occurred exactly once in the minified `dist/main.js`, so the
+  tag-id probe still works against the new output; the full probe with its
+  controls was not re-run.)
 - **What the probe is for, restated:** a resolved-copy count alone
   (`pnpm why`) answers "does the graph contain more than one version" but not
   "does the shipped bundle contain more than one copy." Both questions matter

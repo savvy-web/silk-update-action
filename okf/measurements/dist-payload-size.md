@@ -10,7 +10,7 @@ justifies:
   - ../decisions/persist-local-disabled.md
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-10T18:05:20Z
 sources:
   - id: dist-main
     resource: ../../dist/main.js
@@ -22,7 +22,7 @@ sources:
     resource: ../../action.yml
 integrity:
   generated:
-    body: 9ac1b7a15ee17a08
+    body: b76d75d985c6eeb8
 ---
 
 # Committed dist payload size
@@ -30,9 +30,10 @@ integrity:
 ## Inputs
 
 The three bundled entry points this repository commits to `dist/`
-(`main.js`, `pre.js`, `post.js`), plus `action.yml`, which
-`@savvy-web/github-action-builder`'s `persistLocal` option would also copy
-into `.github/actions/local` if enabled.
+(`main.js`, `pre.js`, `post.js`), plus `action.yml`, which the build's
+`persistLocal` option would also copy into `.github/actions/local` if
+enabled. The numbers below were taken when the build was
+`@savvy-web/github-action-builder` over rspack.
 
 ## Method
 
@@ -80,3 +81,12 @@ measured.
 
 Re-derive with `cat dist/*.js | wc -c` and `wc -c action.yml` directly; do not
 carry either number in this table forward without re-running both commands.
+
+## Builder change
+
+The action now builds with `effected action build` (rolldown, via
+`@effected/bundler`, `minify = true` in `effected.toml`), so the table above
+measures a build that no longer exists. A rebuild on 2026-11-10 produced
+`dist/main.js` 1,319,432 bytes, `dist/pre.js` 340,090 and `dist/post.js`
+340,027 (`ls -la dist/*.js`). The `persistLocal` doubling estimate was not
+re-measured under the new build.

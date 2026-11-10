@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-10
+
+* Updated Committed dist payload size
+* Updated Kit single-copy probe
+
 ## 2026-11-06
 
 * Updated Action outputs
