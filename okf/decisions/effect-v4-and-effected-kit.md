@@ -5,7 +5,7 @@ description: Why domain logic is Effect services over Context.Service/Layer, and
 status: draft
 generated:
   by: okfit/claude-code
-  at: 2026-11-01T18:48:23Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: package-json
     resource: ../../package.json
@@ -15,7 +15,7 @@ sources:
     resource: ../../src/services/branch.ts
 integrity:
   generated:
-    body: 42fbc95de988d81e
+    body: 5d4231ec6a3f124c
 ---
 
 # Build on Effect v4 and the @effected kit, not plain TypeScript or one all-in-one library
@@ -66,7 +66,7 @@ registry, subprocess execution, Markdown rendering — behind one dependency, so
 any consumer of one part paid for all of them, including a transitive
 `cyclonedx` tree this action once had to teach its bundler to ignore (that
 `build.ignore` entry and the cyclonedx dependency chain are gone from
-`package.json` and `action.config.ts` today).[^package-json] The mapping from
+`package.json` and from the build configuration today).[^package-json] The mapping from
 the deleted surface to its replacement:
 
 | Deleted surface | Replacement |

@@ -4,6 +4,16 @@
 
 * Updated Committed dist payload size
 * Updated Kit single-copy probe
+* Added A computed dynamic import relies on rolldown keeping it native, with no annotation and no post-build guard
+* Updated A first-party computed dynamic import stays local, guarded by a build-time assertion
+* Updated A miscompiled computed dynamic import passes every check except the built bundle
+* Updated Build on Effect v4 and the @effected kit, not plain TypeScript or one all-in-one library
+* Updated Bump the @effected kit
+* Updated Keep persistLocal disabled
+* Updated Never rewrite the dev branch — commit, don't squash, rebase, or force-push
+* Updated Release-age gate discovery fails open
+* Updated Route a bun catalog merge on WHY the base tarball could not be read, never collapse every failure to one outcome
+* Updated dev (branch)
 
 ## 2026-11-06
 

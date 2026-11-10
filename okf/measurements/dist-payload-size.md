@@ -10,7 +10,7 @@ justifies:
   - ../decisions/persist-local-disabled.md
 generated:
   by: okfit/claude-code
-  at: 2026-11-10T18:05:20Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: dist-main
     resource: ../../dist/main.js
@@ -22,7 +22,7 @@ sources:
     resource: ../../action.yml
 integrity:
   generated:
-    body: b76d75d985c6eeb8
+    body: dbb77a9443751fb1
 ---
 
 # Committed dist payload size
@@ -86,7 +86,7 @@ carry either number in this table forward without re-running both commands.
 
 The action now builds with `effected action build` (rolldown, via
 `@effected/bundler`, `minify = true` in `effected.toml`), so the table above
-measures a build that no longer exists. A rebuild on 2026-11-10 produced
-`dist/main.js` 1,319,432 bytes, `dist/pre.js` 340,090 and `dist/post.js`
-340,027 (`ls -la dist/*.js`). The `persistLocal` doubling estimate was not
-re-measured under the new build.
+measures a build that no longer exists. The dist committed on 2026-11-10
+(commit `ca76e5e`) measured `dist/main.js` 1,319,564 bytes, `dist/pre.js`
+340,090 and `dist/post.js` 340,027, total 1,999,681 (`wc -c dist/*.js`). The `persistLocal`
+doubling estimate was not re-measured under the new build.

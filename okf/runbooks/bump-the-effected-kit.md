@@ -9,7 +9,7 @@ tags:
 resource: ../../pnpm-workspace.yaml
 generated:
   by: okfit/claude-code
-  at: 2026-11-02T21:32:52Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
@@ -19,7 +19,7 @@ sources:
     resource: ../../.repos/config.json
 integrity:
   generated:
-    body: 7de1d1354987ebbe
+    body: a6e9a1d5bd0c4dc3
 ---
 
 # Bump the @effected kit
@@ -84,7 +84,8 @@ move onto it.
    a stale transitive inside one copy — and the compiler error names only
    the missing type, never which of the three produced it.
 6. `pnpm test`.
-7. `pnpm build:prod`.
+7. `pnpm build:prod` (`effected action build`, which bundles with rolldown
+   and validates the action as part of the build).
 8. Probe the rebuilt bundle for an unexpected second copy: grep the
    **fully-qualified tag id** (for example
    `@effected/workspaces/WorkspaceCatalogs`) in `dist/main.js`, not the bare

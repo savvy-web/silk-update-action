@@ -8,7 +8,7 @@ tags:
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: release-age-service
     resource: ../../src/services/release-age.ts
@@ -20,7 +20,7 @@ sources:
     resource: "https://github.com/spencerbeggs/effected/issues/292"
 integrity:
   generated:
-    body: 2646783829a024d3
+    body: e22eece68bb15f1b
 ---
 
 # Release-age gate discovery fails open
@@ -41,14 +41,15 @@ hooks matters because `pnpm config get` does not reflect what a config
 dependency contributes — a repository receiving its release-age policy
 through a plugin can only be read by actually running that plugin's hook.
 
-The hook replay must run in a **subprocess**
+The hook replay runs in a **subprocess**
 (`layerWithConfigDependenciesSubprocess`, not the in-process
-`layerWithConfigDependencies`): the in-process variant loads each pnpmfile
-with a computed dynamic `import()`, which this action's bundler compiles into
-a context module and breaks in the shipped `dist`. The subprocess variant
-passes a static script over argv, so nothing computed enters the bundle
-graph, and it also keeps arbitrary config-dependency code out of the action's
-own process.[^layers-app]
+`layerWithConfigDependencies`), because the subprocess variant keeps
+arbitrary config-dependency code out of the action's own process.[^layers-app]
+It was adopted when the rspack-based builder compiled the in-process
+variant's computed dynamic `import()` into a context module that broke the
+shipped `dist`; the rolldown build keeps that import native (see
+[computed dynamic imports](computed-dynamic-imports.md)), so that reason is
+historical, and swapping the loader is out of scope.[^layers-app][^release-age-service]
 
 ## Decision
 

@@ -1,29 +1,38 @@
 ---
 type: Gotcha
 title: A miscompiled computed dynamic import passes every check except the built bundle
-description: rspack rewriting a runtime-computed import() into a webpack context module typechecks, lints, and passes the whole vitest suite, because vitest runs the TypeScript source rather than dist/main.js — the failure exists only in the artifact nothing but a build-time script inspects.
-status: draft
+description: "Retired with the rspack-based builder: rspack rewriting a runtime-computed import() into a webpack context module passed typecheck, lint and vitest and broke only dist/main.js; the rolldown build has no such rewrite, so the trap no longer exists here."
+status: deprecated
 stale_after: 2027-03-13T00:00:00Z
 tags:
   - bundle
   - ci
-resource: ../../action.config.ts
+resource: "https://github.com/savvy-web/silk-update-action/blob/fcbb6de/action.config.ts"
 generated:
   by: okfit/claude-code
-  at: 2026-11-01T19:00:51Z
+  at: 2026-11-10T18:07:49Z
 sources:
   - id: action-config
-    resource: ../../action.config.ts
+    resource: "https://github.com/savvy-web/silk-update-action/blob/fcbb6de/action.config.ts"
   - id: assert-script
-    resource: ../../lib/scripts/assert-native-dynamic-import.mjs
+    resource: "https://github.com/savvy-web/silk-update-action/blob/fcbb6de/lib/scripts/assert-native-dynamic-import.mjs"
   - id: module-catalogs
     resource: ../../src/services/module-catalogs.ts
 integrity:
   generated:
-    body: 7b90ba6064137ca8
+    body: 80a49dd8cd4599a0
 ---
 
 # A miscompiled computed dynamic import passes every check except the built bundle
+
+> **Deprecated.** This trap belonged to the rspack-based
+> `@savvy-web/github-action-builder`. `effected action build` bundles with
+> rolldown, which leaves a computed `import()` native and has no
+> context-module rewrite, so there is nothing for a green test run to hide;
+> the `assert-native-dynamic-import.mjs` guard and the `webpackIgnore`
+> comment described below are gone. See
+> [computed dynamic imports](../decisions/computed-dynamic-imports.md) for
+> the current choice. The text below records the trap as it stood.
 
 ## What you see
 
@@ -93,6 +102,6 @@ behavior changing.[^assert-script]
   for why this call site cannot be declared to `nativeDynamicImports` and
   instead carries its own inline `webpackIgnore` comment.
 
-[^action-config]: `../../action.config.ts`
-[^assert-script]: `../../lib/scripts/assert-native-dynamic-import.mjs`
+[^action-config]: <https://github.com/savvy-web/silk-update-action/blob/fcbb6de/action.config.ts>
+[^assert-script]: <https://github.com/savvy-web/silk-update-action/blob/fcbb6de/lib/scripts/assert-native-dynamic-import.mjs>
 [^module-catalogs]: `../../src/services/module-catalogs.ts`
