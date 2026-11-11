@@ -1,5 +1,13 @@
 # silk-update-action
 
+## 4.15.6
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @savvy-web/silk-effects | dependency | updated | ^12.0.0 | ^12.1.1 |
+
 ## 4.15.5
 
 ### Dependencies
