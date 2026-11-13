@@ -40,6 +40,7 @@
 	},
 	"dependencies": {
 		"@effect/platform-node": "catalog:effected",
+		"@effected/bun": "catalog:effected",
 		"@effected/changesets": "catalog:effected",
 		"@effected/commands": "catalog:effected",
 		"@effected/git": "catalog:effected",
@@ -49,12 +50,13 @@
 		"@effected/lockfiles": "catalog:effected",
 		"@effected/npm": "catalog:effected",
 		"@effected/package-json": "catalog:effected",
+		"@effected/pnpm": "catalog:effected",
 		"@effected/runtimes": "catalog:effected",
 		"@effected/schemastore": "catalog:effected",
 		"@effected/semver": "catalog:effected",
 		"@effected/workspaces": "catalog:effected",
 		"@effected/yaml": "catalog:effected",
-		"@savvy-web/silk-effects": "^12.1.2",
+		"@savvy-web/silk-effects": "^13.0.0",
 		"effect": "catalog:effected"
 	},
 	"devDependencies": {

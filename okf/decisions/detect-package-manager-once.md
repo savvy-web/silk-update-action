@@ -8,7 +8,7 @@ tags:
   - compat
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-13T19:00:36Z
 sources:
   - id: package-manager-service
     resource: ../../src/services/package-manager.ts
@@ -18,7 +18,7 @@ sources:
     resource: ../../src/steps/config-dependencies.ts
 integrity:
   generated:
-    body: c719c94c4ee55bd6
+    body: 66ce4084f17bc943
 ---
 
 # Detect the package manager once, and dispatch every step on it
@@ -56,9 +56,9 @@ share the same marker checks (`pnpm-workspace.yaml`, `package.json`'s
 `PackageManagerDetectionError` are mapped to this action's own
 `InvalidInputError` through one shared handler rather than two.[^package-manager-service]
 
-Yarn is detected upstream and explicitly rejected here with
-`InvalidInputError`: nothing in the config-dependency, install or upgrade
-paths is wired or tested for it.[^package-manager-service] See
+Yarn is refused upstream: the kit's detector fails a yarn root with
+`UnsupportedPackageManagerError`, which is mapped here to
+`InvalidInputError`.[^package-manager-service] See
 [yarn is rejected](../limitations/yarn-is-rejected.md) and
 [npm has no config dependencies](../limitations/npm-has-no-config-dependencies.md).
 

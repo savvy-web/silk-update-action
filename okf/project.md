@@ -5,7 +5,7 @@ description: What this project is, its boundaries, and its non-goals.
 status: draft
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-13T19:00:36Z
 sources:
   - id: action-yml
     resource: ../action.yml
@@ -13,7 +13,7 @@ sources:
     resource: ../package.json
 integrity:
   generated:
-    body: cd0d834551f9b1dd
+    body: 8fa184907ceced71
 ---
 
 # silk-update-action
@@ -78,9 +78,9 @@ pieces are composed.
 
 - **Not a Dependabot replacement.** It is complementary — Dependabot still
   covers what it already covers; this action fills the config-dependency gap.
-- **No yarn support.** Yarn is detected upstream by the workspace detector but
-  rejected here with a typed input error, because nothing in the
-  config-dependency, install, or upgrade paths is wired or tested for it.
+- **No yarn support.** The `@effected` kit does not model yarn, and its
+  workspace detector refuses a yarn root; this action surfaces that refusal as
+  a typed input error inside the check run.
 - **No config-dependency reproduction for npm.** npm has no `catalog:`
   protocol to merge into, so config-dependency updates are skipped under npm
   with a warning rather than simulated.

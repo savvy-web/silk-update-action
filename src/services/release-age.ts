@@ -33,11 +33,12 @@
  */
 
 import type { PublishTime } from "@effected/npm";
-import { NpmRegistry, ReleaseAgeGate } from "@effected/npm";
+import { NpmRegistry } from "@effected/npm";
+import { ReleaseAgeGate } from "@effected/pnpm";
 import { WorkspaceCatalogs } from "@effected/workspaces";
 import { Context, DateTime, Effect, Layer, Option } from "effect";
 
-export type { PartialReleaseAgeGate } from "@effected/npm";
+export type { PartialReleaseAgeGate } from "@effected/pnpm";
 
 /**
  * Fetch a package's publish times, normalized to `version → ISO-8601`.

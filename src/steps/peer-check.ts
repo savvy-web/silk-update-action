@@ -20,7 +20,7 @@
  * persists resolution-affecting config into the lockfile and discards
  * reporting-affecting config — `peerDependencyRules` appears nowhere in a
  * lockfile. Supplying them is what makes a verdict possible at all, and
- * supplying `NoPeerDependencyRules` is an assertion ("I looked, there are
+ * supplying `PeerDependencyRules.empty` is an assertion ("I looked, there are
  * none"), not a default.
  *
  * **The same holds for the workspace join.** A `link:` edge to a workspace
