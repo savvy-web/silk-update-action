@@ -19,6 +19,13 @@ sources:
 integrity:
   generated:
     body: 66ce4084f17bc943
+  verified:
+    by: human:spencer
+    at: 2026-11-13T19:03:12Z
+    content: 4f5b6ebc28fae340
+verified:
+  - by: human:spencer
+    at: 2026-11-13T19:03:12Z
 ---
 
 # Detect the package manager once, and dispatch every step on it
