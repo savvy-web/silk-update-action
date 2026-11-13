@@ -45,10 +45,10 @@ import {
 	PackageManagerInstallerError,
 } from "@effected/github-actions";
 import { PackageJsonFile } from "@effected/package-json";
+import { PeerDependencyRules } from "@effected/pnpm";
 import type { WorkspacePackage } from "@effected/workspaces";
 import {
 	CatalogSet,
-	NoPeerDependencyRules,
 	PackageManagerDetector,
 	WorkspaceCatalogs,
 	WorkspaceDiscovery,
@@ -318,11 +318,11 @@ const makeHarness = (options: HarnessOptions = {}) => {
 		: PackageManagerUpgrade.layer.pipe(Layer.provide(Layer.merge(npmRegistry, packageJsonFile)));
 
 	// Peer-suppression rules the peer-check step reads. Asserting
-	// NoPeerDependencyRules ("I looked, there are none") rather than omitting,
+	// PeerDependencyRules.empty ("I looked, there are none") rather than omitting,
 	// so the report is VERIFIED and the gate's verdict is driven by the lockfile
 	// rather than by an `unverified` short-circuit.
 	const catalogs = WorkspaceCatalogs.layerTest({
-		peerDependencyRules: () => Effect.succeed(NoPeerDependencyRules),
+		peerDependencyRules: () => Effect.succeed(PeerDependencyRules.empty),
 		set: () => Effect.succeed(CatalogSet.empty()),
 	});
 

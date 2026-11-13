@@ -11,9 +11,9 @@
 
 import { readFileSync } from "node:fs";
 import { Lockfile } from "@effected/lockfiles";
+import { PeerDependencyRules } from "@effected/pnpm";
 import {
 	CatalogSet,
-	NoPeerDependencyRules,
 	PublishConfig,
 	WorkspaceCatalogs,
 	WorkspaceDiscovery,
@@ -48,7 +48,7 @@ const publishDirLockfile = parseFixture("pnpm-lock.publish-dir-link.yaml");
 
 /** A catalogs double that answers with rules; unstubbed members die naming themselves. */
 const withRules = WorkspaceCatalogs.layerTest({
-	peerDependencyRules: () => Effect.succeed(NoPeerDependencyRules),
+	peerDependencyRules: () => Effect.succeed(PeerDependencyRules.empty),
 	set: () => Effect.succeed(CatalogSet.empty()),
 });
 
@@ -189,7 +189,7 @@ describe("peerCheckStep", () => {
 				}),
 			peerDependencyRules: () =>
 				state.refreshed
-					? Effect.succeed(NoPeerDependencyRules)
+					? Effect.succeed(PeerDependencyRules.empty)
 					: Effect.fail({ _tag: "CatalogAssemblyError", source: "stale-memo" } as never),
 			set: () => Effect.succeed(CatalogSet.empty()),
 		});
@@ -237,7 +237,7 @@ describe("peerCheckStep", () => {
 	// empty stand-in, and never a failed run.
 	it("still produces a verdict when the catalogs lookup errors", async () => {
 		const setFails = WorkspaceCatalogs.layerTest({
-			peerDependencyRules: () => Effect.succeed(NoPeerDependencyRules),
+			peerDependencyRules: () => Effect.succeed(PeerDependencyRules.empty),
 			set: () => Effect.fail({ _tag: "CatalogAssemblyError", source: "hooks" } as never),
 		});
 		const result = await run("no-auto-merge", aliasLockfile, setFails);

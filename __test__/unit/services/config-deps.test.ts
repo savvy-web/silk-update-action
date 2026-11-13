@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NpmRegistry, ReleaseAgeGate } from "@effected/npm";
+import { NpmRegistry } from "@effected/npm";
+import { ReleaseAgeGate } from "@effected/pnpm";
 import { Yaml } from "@effected/yaml";
 import { Effect, Layer, References } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

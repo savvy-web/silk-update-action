@@ -1,14 +1,14 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { BunExtension } from "@effected/bun";
 import type {
-	BunExtension,
 	ImporterDependency,
 	LockfileImporter,
 	Lockfile as LockfileModel,
-	PnpmExtension,
 	ResolvedPackage,
 } from "@effected/lockfiles";
+import type { PnpmExtension } from "@effected/pnpm";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { WorkspaceDiscovery } from "@effected/workspaces";
 import { Effect, Layer, Logger, References, Result } from "effect";

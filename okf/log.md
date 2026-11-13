@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-13
+
+* Updated Detect the package manager once, and dispatch every step on it
+* Updated Yarn is refused at detection, not supported
+* Updated silk-update-action
+
 ## 2026-11-10
 
 * Updated Committed dist payload size

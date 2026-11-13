@@ -13,8 +13,8 @@ import { InvalidInputError } from "../errors/errors.js";
 /**
  * The package managers this action supports.
  *
- * Yarn is detected upstream but not supported here: nothing in the config-dep,
- * install or upgrade paths is wired or tested for it.
+ * The same set as the kit's `PackageManagerName`: the kit dropped yarn, and
+ * its detector refuses a yarn root with `UnsupportedPackageManagerError`.
  */
 export type SupportedPm = "pnpm" | "bun" | "npm";
 
@@ -65,20 +65,21 @@ export const detectPackageManager = (
 
 		const startDir = cwd ?? process.cwd();
 		const root = yield* workspaceRoot.find(startDir);
+		// The kit refuses yarn itself: detection fails `UnsupportedPackageManagerError`
+		// rather than naming it, so `detected.name` is only ever a supported manager.
 		const detected = yield* detector.detect(root);
-
-		if (detected.name === "yarn") {
-			return yield* Effect.fail(
-				new InvalidInputError({
-					field: "workspace",
-					reason: "Detected yarn, which this action does not support. Supported: pnpm, bun, npm.",
-					value: root,
-				}),
-			);
-		}
 
 		return { pm: detected.name, version: Option.getOrUndefined(detected.version), root, evidence: detected.evidence };
 	}).pipe(
+		Effect.catchTag("UnsupportedPackageManagerError", (error) =>
+			Effect.fail(
+				new InvalidInputError({
+					field: "workspace",
+					reason: `Detected ${error.manager} (from ${error.evidence}), which this action does not support. Supported: pnpm, bun, npm.`,
+					value: error.root,
+				}),
+			),
+		),
 		Effect.mapError((error) =>
 			error instanceof InvalidInputError
 				? error
