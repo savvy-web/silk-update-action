@@ -1,5 +1,13 @@
 # silk-update-action
 
+## 4.15.11
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/runtimes | dependency | updated | ^0.19.2 | ^0.19.3 |
+
 ## 4.15.10
 
 ### Dependencies
