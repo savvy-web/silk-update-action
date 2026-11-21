@@ -38,6 +38,10 @@ The pre phase provisions the GitHub App installation token before any updates ru
 
 The main phase reads the token the pre phase provisioned and runs the dependency-update workflow. The steps below run in order, and steps tied to an absent input are skipped.
 
+### Reading the job log
+
+The job log is grouped into four bold phase headings: **Setup**, **Update**, **Install** and **Publish**. Under each heading, every step writes one result line: `✓` for a success, `⚠` for a success that logged a warning or an error, and `✗` for a failure, followed by the step's duration. On success, a step's detail, including the line saying why it was skipped, is folded under that result line. A failed step's detail is written unfolded. Warnings and errors also appear as annotations as soon as they happen. A step that runs longer than 30 seconds, such as a slow install, stops holding its output back and streams it live. With step debug logging enabled, every step streams live from the start. The pre and post phases each write one step, for provisioning and revoking the GitHub App token.
+
 ### Parse inputs
 
 - Parses and validates all action inputs. An input that is present but malformed fails the run here, naming the input; an absent input takes its documented default

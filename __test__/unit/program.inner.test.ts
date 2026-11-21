@@ -36,6 +36,7 @@ import type { StatusEntry } from "@effected/git";
 import { Git } from "@effected/git";
 import type { CommitSummary } from "@effected/github";
 import { CheckRun, CommitSummary as CommitSummaryClass, InstallationToken } from "@effected/github";
+import type { StepLogEntry } from "@effected/github-actions";
 import {
 	ActionLogger,
 	ActionOutputs,
@@ -185,6 +186,12 @@ interface Spies {
 }
 
 interface HarnessOptions {
+	/**
+	 * Record the step log instead of passing steps through. The recording double
+	 * keeps every line below Warn as step detail rather than forwarding it, so a
+	 * test that reads the info stream through `messages()` must leave this off.
+	 */
+	readonly recordSteps?: boolean;
 	/** Updates `ConfigDeps` / `CatalogConfigDeps` report (drives the install gate). */
 	readonly configUpdates?: ReadonlyArray<DependencyUpdateResult>;
 	/** Updates `RegularDeps` reports (drives the install gate). */
@@ -227,6 +234,8 @@ const update = (dependency: string, from: string, to: string): DependencyUpdateR
  */
 const makeHarness = (options: HarnessOptions = {}) => {
 	const outputs = new Map<string, string>();
+	/** The phases and steps the run opened, with each step's outcome. */
+	const stepLog = ActionLogger.recording();
 	/** Directories handed to `ActionOutputs.addPath`, in order. */
 	const addedPaths: string[] = [];
 	/** Check runs created, and the verdict each was concluded with. */
@@ -373,8 +382,9 @@ const makeHarness = (options: HarnessOptions = {}) => {
 				),
 			summary: () => Effect.void,
 		}),
-		// `emitRunResult` logs the document in a group before setting it.
-		ActionLogger.layerTest(),
+		// The step log is recorded, so a test can assert the phases and steps the
+		// run opened; `emitRunResult` also logs the document in a group.
+		options.recordSteps === true ? stepLog.layer : ActionLogger.layerTest(),
 		// withCheckRun concludes on EVERY exit path now, defaulting to
 		// success/failure, and a verdict recorded via `conclude` wins.
 		CheckRun.layerTest({
@@ -452,6 +462,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
 
 	return {
 		spies,
+		steps: stepLog.entries,
 		outputs,
 		addedPaths,
 		checkRunState,
@@ -1303,5 +1314,87 @@ describe("innerProgram — foreign commits on the update branch", () => {
 		expect(harness.outputs.get("has-changes")).toBe("false");
 		expect(harness.outputs.get("updates-count")).toBe("0");
 		expect(findLine("Warn", "Step: branch", "SKIPPED")).toBeDefined();
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Step log: phases and steps
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** `phase:<title>` and `<outcome>:<name>` for each top-level entry, in order. */
+const outline = (entries: ReadonlyArray<StepLogEntry>): string[] =>
+	entries.map((e) => (e.kind === "phase" ? `phase:${e.title}` : `${e.outcome}:${e.name}`));
+
+const stepNamed = (entries: ReadonlyArray<StepLogEntry>, name: string) =>
+	entries.find((e): e is Extract<StepLogEntry, { kind: "step" }> => e.kind === "step" && e.name === name);
+
+describe("innerProgram — step log", () => {
+	it("opens four phases with one step per unit of work, in run order", async () => {
+		writeFixture("pnpm");
+		const harness = makeHarness({ recordSteps: true, gitStatus: ["package.json"] });
+
+		const exit = await runInner(harness, baseInputs(), true);
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		expect(outline(harness.steps())).toEqual([
+			"phase:Setup",
+			"success:Detect package manager",
+			"success:Configure git status",
+			"success:Prepare branch",
+			"phase:Update",
+			"success:Snapshot lockfile (before)",
+			"success:Upgrade package manager",
+			"success:Upgrade runtimes",
+			"success:Update config dependencies",
+			"success:Update dependencies",
+			"success:Sync peer dependencies",
+			"phase:Install",
+			"success:Install",
+			"success:Format workspace",
+			"success:Run custom commands",
+			"phase:Publish",
+			"success:Snapshot lockfile (after)",
+			// The pnpm fixture writes no lockfile, so both snapshots are null and
+			// the comparison warns. A step that logs a warning still succeeds, and
+			// its line carries ⚠ rather than ✓.
+			"warning:Compare lockfiles",
+			"success:Detect changes",
+			"success:Write changesets",
+			"success:Check peers",
+			"success:Commit and pull request (dry run)",
+		]);
+		// The step module's own decision lines are the step's detail.
+		expect(stepNamed(harness.steps(), "Install")?.detail.join("\n")).toContain("Step: install — SKIPPED");
+		expect(stepNamed(harness.steps(), "Install")?.summary).toBe("Install · nothing to install");
+		expect(stepNamed(harness.steps(), "Detect changes")?.summary).toBe("Working tree · 1 file modified");
+	});
+
+	it("stops after Detect changes when there is nothing to publish", async () => {
+		writeFixture("pnpm");
+		const harness = makeHarness({ recordSteps: true });
+
+		const exit = await runInner(harness, baseInputs(), true);
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		const names = outline(harness.steps());
+		expect(names.at(-1)).toBe("success:Detect changes");
+		expect(names).not.toContain("success:Write changesets");
+	});
+
+	it("marks the custom-commands step as a warning, counting the failure, and opens no Publish phase", async () => {
+		writeFixture("pnpm");
+		const harness = makeHarness({
+			recordSteps: true,
+			gitStatus: ["package.json"],
+			commands: new Map([["sh -c exit 1", { exit: 1, stdout: "", stderr: "boom" }]]),
+		});
+
+		const exit = await runInner(harness, baseInputs({ run: ["exit 1"] }), true);
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		const step = stepNamed(harness.steps(), "Run custom commands");
+		expect(step?.outcome).toBe("warning");
+		expect(step?.summary).toBe("Custom commands · 0 passed, 1 failed");
+		expect(outline(harness.steps())).not.toContain("phase:Publish");
 	});
 });

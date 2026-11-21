@@ -8,8 +8,8 @@
  */
 
 import type { GitHubApp } from "@effected/github";
-import type { ActionEnvironment, ActionOutputs, ActionState } from "@effected/github-actions";
-import { ActionEnvironment as ActionEnvironmentTag, ActionInput } from "@effected/github-actions";
+import type { ActionEnvironment, ActionOutputs, ActionState, StepLogEntry } from "@effected/github-actions";
+import { ActionEnvironment as ActionEnvironmentTag, ActionInput, ActionLogger } from "@effected/github-actions";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import { pre } from "../../src/pre.js";
@@ -28,14 +28,17 @@ interface Fixtures {
 	stateState: ActionStateRecording;
 	appState: GitHubAppRecording;
 	outputsState: ActionOutputsRecording;
-	layer: Layer.Layer<ActionOutputs | ActionState | GitHubApp | ActionEnvironment>;
+	steps: () => ReadonlyArray<StepLogEntry>;
+	layer: Layer.Layer<ActionOutputs | ActionState | GitHubApp | ActionEnvironment | ActionLogger>;
 }
 
 const makeFixtures = (): Fixtures => {
 	const stateState = emptyActionState();
 	const appState = emptyGitHubApp();
 	const outputsState = emptyActionOutputs();
+	const log = ActionLogger.recording();
 	const layer = Layer.mergeAll(
+		log.layer,
 		actionOutputsTestLayer(outputsState),
 		actionStateTestLayer(stateState),
 		gitHubAppTestLayer(appState),
@@ -43,7 +46,7 @@ const makeFixtures = (): Fixtures => {
 		// repositoryOwner from here to scope the installation lookup.
 		ActionEnvironmentTag.layerTest(),
 	);
-	return { stateState, appState, outputsState, layer };
+	return { stateState, appState, outputsState, steps: log.entries, layer };
 };
 
 const runPre = (fixtures: Fixtures): Promise<void> =>
@@ -66,6 +69,15 @@ describe("pre", () => {
 		const fixtures = makeFixtures();
 		await runPre(fixtures);
 		expect(fixtures.appState.generateCalls).toHaveLength(1);
+	});
+
+	it("provisions the token inside one step that succeeds", async () => {
+		const fixtures = makeFixtures();
+		await runPre(fixtures);
+		const [entry, ...rest] = fixtures.steps();
+		expect(rest).toHaveLength(0);
+		expect(entry).toMatchObject({ kind: "step", name: "Provision GitHub App token", outcome: "success" });
+		expect(entry?.kind === "step" ? entry.summary : "").toMatch(/^GitHub App token.* · expires /);
 	});
 
 	it("persists the start time and the token envelope to ActionState", async () => {

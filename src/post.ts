@@ -9,7 +9,7 @@
  */
 
 import { GitHubApp } from "@effected/github";
-import { Action, ActionState, GitHubToken } from "@effected/github-actions";
+import { Action, ActionLogger, ActionState, GitHubToken } from "@effected/github-actions";
 import { Effect, Option } from "effect";
 import { STATE_KEYS, StartTimeState } from "./state.js";
 
@@ -25,9 +25,14 @@ export const post = Effect.gen(function* () {
 	}
 
 	// Token revocation. dispose is a no-op if pre never provisioned a token.
-	yield* Effect.logInfo("Revoking GitHub App installation token...");
-	yield* GitHubToken.dispose().pipe(
-		Effect.catch((e) => Effect.logWarning(`Token revocation failed: ${e instanceof Error ? e.message : String(e)}`)),
+	// A failed revocation is a warning, not a failure: the step's line turns ⚠
+	// and the warning goes out as an annotation.
+	const logger = yield* ActionLogger;
+	yield* logger.step(
+		"Revoke GitHub App token",
+		GitHubToken.dispose().pipe(
+			Effect.catch((e) => Effect.logWarning(`Token revocation failed: ${e instanceof Error ? e.message : String(e)}`)),
+		),
 	);
 }).pipe(
 	// Defense-in-depth: post-action failures should never fail the workflow.

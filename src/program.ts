@@ -9,9 +9,9 @@
  */
 
 import { CheckRun, CheckRunOutput } from "@effected/github";
-import { ActionEnvironment, ActionOutputs } from "@effected/github-actions";
+import { ActionEnvironment, ActionLogger, ActionOutputs } from "@effected/github-actions";
 import { Duration, Effect, Option, References } from "effect";
-import { resultLines, runContextLines } from "./format.js";
+import { INSTALL_LABEL, resultLines, runContextLines } from "./format.js";
 import { makeAppLayer } from "./layers/app.js";
 import type {
 	CatalogDelta,
@@ -81,6 +81,9 @@ const buildRunResult = (params: {
 	changesets: params.changesets,
 	pullRequest: params.pullRequest,
 });
+
+/** `1 update`, `3 updates`: the count words every step summary uses. */
+const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 /**
  * Main action program (the `main` phase).
@@ -191,6 +194,19 @@ export const innerProgram = (
 		Effect.gen(function* () {
 			const outputs = yield* ActionOutputs;
 			const checkRunService = yield* CheckRun;
+			// The run's log is a step log: four phases, each holding one step per
+			// unit of work. A step folds its detail (every info and debug line the
+			// step module writes) behind one result line, and writes it unfolded
+			// when the step fails. Warnings and errors still go out as annotations
+			// the moment they happen.
+			//
+			// Each phase is opened as `logger.phase(title, Effect.void)` rather than
+			// by wrapping its steps: a phase writes its heading when it starts and
+			// nothing when it ends, so the output is the same, and the early exits
+			// below (foreign commits, failed commands, no changes) can keep
+			// returning from this one generator instead of threading a result out
+			// of a nested one.
+			const logger = yield* ActionLogger;
 
 			// Create check run for visibility
 			const checkRunName = dryRun ? "Dependency Updates (Dry Run)" : "Dependency Updates";
@@ -203,7 +219,12 @@ export const innerProgram = (
 					// for the same reason — so an unsupported workspace (yarn, or no
 					// workspace root at all) fails with a check run in the GitHub UI
 					// rather than an invisible early exit.
-					const { detected, evidence, packageCount } = yield* detectPackageManagerStep();
+					yield* logger.phase("Setup", Effect.void);
+					const { detected, evidence, packageCount } = yield* logger.step(
+						"Detect package manager",
+						detectPackageManagerStep(),
+						{ summary: (r) => `Package manager · ${r.detected.pm} at ${r.detected.root}` },
+					);
 					const lockfileName = LOCKFILE_NAMES[detected.pm];
 
 					for (const line of runContextLines({
@@ -224,14 +245,18 @@ export const innerProgram = (
 					// ── git config ──────────────────────────────────────────────────
 					// Before ANY status read, and once for the whole run, so this run's
 					// change verdict and the commit's contents cannot disagree.
-					yield* configureStatusStep(detected.root);
+					yield* logger.step("Configure git status", configureStatusStep(detected.root));
 
 					// ── branch ────────────────────────────────────────────────────
-					const branchOutcome = yield* branchStep(
-						inputs.branch,
-						inputs.sourceBranch,
-						inputs.targetBranch,
-						detected.root,
+					const branchOutcome = yield* logger.step(
+						"Prepare branch",
+						branchStep(inputs.branch, inputs.sourceBranch, inputs.targetBranch, detected.root),
+						{
+							summary: (o) =>
+								o._tag === "ForeignCommits"
+									? `Branch · ${inputs.branch} has ${count(o.commits.length, "foreign commit")}, left as is`
+									: `Branch · ${inputs.branch} ready`,
+						},
 					);
 					if (branchOutcome._tag === "ForeignCommits") {
 						// Someone else pushed to the update branch (#296). The reset would
@@ -280,13 +305,22 @@ export const innerProgram = (
 					// the action can be invoked from a subdirectory of the workspace, and a
 					// helper defaulting to `process.cwd()` would then read (and rewrite) the
 					// wrong manifests, or none at all.
-					const lockfileBefore = yield* lockfileSnapshotStep("before", detected.pm, detected.root);
+					yield* logger.phase("Update", Effect.void);
+					const lockfileBefore = yield* logger.step(
+						"Snapshot lockfile (before)",
+						lockfileSnapshotStep("before", detected.pm, detected.root),
+					);
 
 					// ── package manager ─────────────────────────────────────────────
-					const pmOutcome = yield* upgradePackageManagerStep(
-						inputs["upgrade-package-manager"],
-						detected.pm,
-						detected.root,
+					const pmOutcome = yield* logger.step(
+						"Upgrade package manager",
+						upgradePackageManagerStep(inputs["upgrade-package-manager"], detected.pm, detected.root),
+						{
+							summary: (r) =>
+								r.pin !== null
+									? `Package manager · pinned ${r.pin}`
+									: `Package manager · ${r.skipReason ?? "already current"}`,
+						},
 					);
 					const configUpdatesFromPackageManager = pmOutcome.updates;
 					const pmSkipReason = pmOutcome.skipReason;
@@ -299,17 +333,27 @@ export const innerProgram = (
 					const pmBinDir =
 						pmOutcome.pin === null
 							? Option.none<string>()
-							: yield* activatePackageManagerStep(pmOutcome.pin, pmOutcome.integrity);
+							: yield* logger.step(
+									"Activate package manager",
+									activatePackageManagerStep(pmOutcome.pin, pmOutcome.integrity),
+									{ summary: () => `Activate · ${pmOutcome.pin}` },
+								);
 
 					// ── runtimes ─────────────────────────────────────────────────────
-					const runtimeUpdates = (yield* upgradeRuntimesStep(inputs.runtime, detected.root)).updates;
+					const runtimeUpdates = (yield* logger.step(
+						"Upgrade runtimes",
+						upgradeRuntimesStep(inputs.runtime, detected.root),
+						{ summary: (r) => `Runtimes · ${count(r.updates.length, "update")}` },
+					)).updates;
 
 					// ── config dependencies ─────────────────────────────────────────
-					const configResult = yield* configDependenciesStep(
-						inputs["config-dependencies"],
-						inputs.dependencies,
-						detected.pm,
-						detected.root,
+					const configResult = yield* logger.step(
+						"Update config dependencies",
+						configDependenciesStep(inputs["config-dependencies"], inputs.dependencies, detected.pm, detected.root),
+						{
+							summary: (r) =>
+								`Config dependencies · ${count(r.updates.length, "update")}, ${count(r.deltas.length, "catalog change")}`,
+						},
 					);
 					const configUpdates = configResult.updates;
 					const configDeltas = configResult.deltas;
@@ -329,17 +373,20 @@ export const innerProgram = (
 					let withholdAutoMerge = false;
 
 					// ── regular dependencies ────────────────────────────────────────
-					const regularUpdates = (yield* regularDependenciesStep(
-						inputs.dependencies,
-						inputs["config-dependencies"],
-						detected.pm,
-						detected.root,
+					const regularUpdates = (yield* logger.step(
+						"Update dependencies",
+						regularDependenciesStep(inputs.dependencies, inputs["config-dependencies"], detected.pm, detected.root),
+						{ summary: (r) => `Dependencies · ${count(r.updates.length, "update")}` },
 					)).updates;
 
 					// ── peer sync ────────────────────────────────────────────────────
-					const peerResult = yield* peerSyncStep(
-						{ lock: inputs["peer-lock"], minor: inputs["peer-minor"] },
-						regularUpdates,
+					const peerResult = yield* logger.step(
+						"Sync peer dependencies",
+						peerSyncStep({ lock: inputs["peer-lock"], minor: inputs["peer-minor"] }, regularUpdates),
+						{
+							summary: (r) =>
+								r.configured ? `Peer sync · ${count(r.updates.length, "update")}` : "Peer sync · not configured",
+						},
 					);
 					const peerUpdates = peerResult.updates;
 					const peerConfigured = peerResult.configured;
@@ -350,10 +397,18 @@ export const innerProgram = (
 						regularUpdates.length > 0 ||
 						configUpdatesFromPackageManager.length > 0 ||
 						peerUpdates.length > 0;
-					yield* installStep(shouldInstall, detected.pm, detected.root, inputs["retry-unmatched"], pmBinDir);
+					yield* logger.phase("Install", Effect.void);
+					yield* logger.step(
+						"Install",
+						installStep(shouldInstall, detected.pm, detected.root, inputs["retry-unmatched"], pmBinDir),
+						{
+							summary: () =>
+								shouldInstall ? `Install · ${INSTALL_LABEL[detected.pm]}` : "Install · nothing to install",
+						},
+					);
 
 					// ── workspace formatting ────────────────────────────────────────
-					yield* formatWorkspaceStep(detected.pm, detected.root);
+					yield* logger.step("Format workspace", formatWorkspaceStep(detected.pm, detected.root));
 
 					// Aggregated HERE, above the custom-commands step, not below it.
 					// Every source is already resolved by this point, and the failure
@@ -372,7 +427,16 @@ export const innerProgram = (
 					// The step reports what happened; concluding the check run and
 					// publishing outputs stay here, because the run's verdict is a
 					// composition concern.
-					const commandsResult = yield* customCommandsStep(inputs.run, detected.root, pmBinDir);
+					const commandsResult = yield* logger.step(
+						"Run custom commands",
+						customCommandsStep(inputs.run, detected.root, pmBinDir),
+						{
+							summary: (r) =>
+								r === null
+									? "Custom commands · none configured"
+									: `Custom commands · ${r.successful.length} passed, ${r.failed.length} failed`,
+						},
+					);
 					if (commandsResult !== null && commandsResult.failed.length > 0) {
 						yield* conclude(
 							"failure",
@@ -420,17 +484,29 @@ export const innerProgram = (
 					}
 
 					// ── lockfile snapshot (after) ───────────────────────────────────
-					const lockfileAfter = yield* lockfileSnapshotStep("after", detected.pm, detected.root);
+					yield* logger.phase("Publish", Effect.void);
+					const lockfileAfter = yield* logger.step(
+						"Snapshot lockfile (after)",
+						lockfileSnapshotStep("after", detected.pm, detected.root),
+					);
 
 					// ── changes ──────────────────────────────────────────────────────
-					const changes = yield* compareLockfiles(lockfileBefore, lockfileAfter, detected.root);
+					const changes = yield* logger.step(
+						"Compare lockfiles",
+						compareLockfiles(lockfileBefore, lockfileAfter, detected.root),
+						{ summary: (c) => `Lockfile · ${count(c.length, "change")}` },
+					);
 					yield* Effect.logDebug(`Detected changes: ${JSON.stringify(changes)}`);
 
 					yield* Effect.logDebug(
 						`Total updates: ${allUpdates.length} (config: ${configUpdates.length + configUpdatesFromPackageManager.length}, dev: ${regularUpdates.length}, peer: ${peerUpdates.length})`,
 					);
 
-					const { entries: changedEntries, hasChanges } = yield* detectChangesStep(detected.root);
+					const { entries: changedEntries, hasChanges } = yield* logger.step(
+						"Detect changes",
+						detectChangesStep(detected.root),
+						{ summary: (r) => `Working tree · ${count(r.entries.length, "file")} modified` },
+					);
 
 					yield* Effect.logInfo(
 						`Step: changes — ${allUpdates.length} dependency change(s), ${changes.length} lockfile change(s), ${changedEntries.length} file(s) modified`,
@@ -476,7 +552,16 @@ export const innerProgram = (
 					}
 
 					// ── changesets ───────────────────────────────────────────────────
-					const changesetsResult = yield* changesetsStep(inputs.changesets, inputs.targetBranch, detected.root);
+					const changesetsResult = yield* logger.step(
+						"Write changesets",
+						changesetsStep(inputs.changesets, inputs.targetBranch, detected.root),
+						{
+							summary: (r) =>
+								r.skipReason !== null
+									? `Changesets · skipped: ${r.skipReason}`
+									: `Changesets · ${count(r.files.length, "file")} written`,
+						},
+					);
 					const changesetFiles = changesetsResult.files;
 					const changesetsSkipReason = changesetsResult.skipReason;
 
@@ -484,11 +569,13 @@ export const innerProgram = (
 					// Runs against the "after" snapshot -- the lockfile this PR will
 					// carry -- and only on the path that actually opens a PR, so a
 					// no-changes run never spawns the config-dependency hook replay.
-					const peerCheckResult = yield* peerCheckStep(
-						inputs["check-peers"],
-						lockfileAfter,
-						detected.root,
-						inputs["auto-merge"] !== "",
+					const peerCheckResult = yield* logger.step(
+						"Check peers",
+						peerCheckStep(inputs["check-peers"], lockfileAfter, detected.root, inputs["auto-merge"] !== ""),
+						{
+							summary: (r) =>
+								`Peers · ${count(r.issues.length, "issue")}${r.decision.withhold ? ", auto-merge withheld" : ""}`,
+						},
 					);
 					peerIssues = peerCheckResult.issues;
 					withholdAutoMerge = peerCheckResult.decision.withhold;
@@ -506,25 +593,34 @@ export const innerProgram = (
 								};
 
 					// ── commit and pull request ─────────────────────────────────────
-					const { pullRequest: pr } = yield* commitAndPrStep({
-						branch: inputs.branch,
-						targetBranch: inputs.targetBranch,
-						// Withholding is a SEPARATE call being skipped, not a different
-						// merge method: the PR still opens, it just cannot merge itself.
-						autoMerge: withholdAutoMerge ? "" : inputs["auto-merge"],
-						updates: allUpdates,
-						changesets: changesetFiles,
-						deltas: configDeltas,
-						peerIssues,
-						peerGate: {
-							withheld: withholdAutoMerge,
-							reason: peerCheckResult.decision.reason,
-							unverifiedReasons: peerCheckResult.unverifiedReasons,
+					const { pullRequest: pr } = yield* logger.step(
+						dryRun ? "Commit and pull request (dry run)" : "Commit and pull request",
+						commitAndPrStep({
+							branch: inputs.branch,
+							targetBranch: inputs.targetBranch,
+							// Withholding is a SEPARATE call being skipped, not a different
+							// merge method: the PR still opens, it just cannot merge itself.
+							autoMerge: withholdAutoMerge ? "" : inputs["auto-merge"],
+							updates: allUpdates,
+							changesets: changesetFiles,
+							deltas: configDeltas,
+							peerIssues,
+							peerGate: {
+								withheld: withholdAutoMerge,
+								reason: peerCheckResult.decision.reason,
+								unverifiedReasons: peerCheckResult.unverifiedReasons,
+							},
+							changedFileCount: changedEntries.length,
+							workspaceRoot: detected.root,
+							dryRun,
+						}),
+						{
+							summary: (r) =>
+								r.pullRequest === null
+									? "Pull request · none opened"
+									: `Pull request · #${r.pullRequest.number} ${r.pullRequest.url}`,
 						},
-						changedFileCount: changedEntries.length,
-						workspaceRoot: detected.root,
-						dryRun,
-					});
+					);
 
 					// ── Result ───────────────────────────────────────────────────────
 					for (const line of resultLines({
