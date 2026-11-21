@@ -1,5 +1,44 @@
 # silk-update-action
 
+## 4.16.0
+
+### Features
+
+#### Phased job log
+
+- The job log is now grouped into four phase headings: Setup, Update, Install and Publish. Each step writes one result line, marked `✓`, `⚠` or `✗`, with its duration and a short summary such as `Dependencies · 3 updates` or `Pull request · #42`.
+
+- A step that succeeds folds its detail, including the reason it was skipped, under its result line
+
+- A failed step writes its detail unfolded, and warnings and errors still appear as annotations right away
+
+- Install and the `run` commands write their command line, output and exit code as their step's detail, so a failed install or test run shows its output in the log
+
+- A step running longer than 30 seconds, such as a slow install, streams its output live; with step debug logging on, every step streams from the start
+
+- The pre and post phases each write one step, for provisioning and revoking the GitHub App token, and a failed revocation shows as `⚠` without failing the job
+
+- Inputs, outputs and the `result` document are unchanged.
+
+### Refactoring
+
+- Lockfile changes are now computed by the kit's `LockfileDiff.compare` instead of a local diff. The reported rows keep the same rules: specifier moves only, catalog changes per consuming package, and no rows for importers that appear or disappear whole. A bun catalog entry's resolved version now comes from the version its consumers actually resolved to, rather than a name lookup across the package list
+- `pnpm-workspace.yaml` is formatted with silk's own `PnpmWorkspace` sort and format functions, so the bytes the action commits match what the consumer's lint hook writes without a local copy of its rules. `configDependencies` keys are still sorted, which silk leaves alone
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effect/platform-node | dependency | updated | 4.1.4 | 4.1.5 |
+| @effected/changesets | dependency | updated | ^0.6.1 | ^0.6.2 |
+| @effected/git | dependency | updated | ^0.32.0 | ^0.34.0 |
+| @effected/github | dependency | updated | ^0.33.0 | ^0.34.0 |
+| @effected/github-actions | dependency | updated | ^0.35.0 | ^0.37.0 |
+| @effected/runtimes | dependency | updated | ^0.19.2 | ^0.19.3 |
+| @effected/workspaces | dependency | updated | ^0.48.1 | ^0.49.0 |
+| @savvy-web/silk-effects | dependency | updated | ^13.0.1 | ^14.0.0 |
+| effect | dependency | updated | 4.1.4 | 4.1.5 |
+
 ## 4.15.11
 
 ### Dependencies
