@@ -4,8 +4,8 @@
  * Gated by the caller on whether anything actually changed — an install with
  * nothing to install is logged as a skip with that reason, never silence.
  *
- * **Failure posture: fail-the-job.** `runInstall` uses `Run.text`, which fails
- * typed on a non-zero exit, so an install failure aborts the run rather than
+ * **Failure posture: fail-the-job.** `runInstall` fails typed on a non-zero
+ * exit (`CommandFailedError`), so an install failure aborts the run rather than
  * committing a lockfile that does not match the manifests. The one exception is
  * a version the registry has not started serving yet (npm's publish-time scan
  * holds new versions back for minutes): that failure is retried on the
@@ -16,9 +16,8 @@
 
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import type { CommandFailedError, CommandOutputError } from "@effected/commands";
-import { Run } from "@effected/commands";
-import { ChildEnv } from "@effected/github-actions";
+import { CommandFailedError, CommandOutput } from "@effected/commands";
+import { ActionLogger, ChildEnv } from "@effected/github-actions";
 import { Effect, Option, Schedule } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
@@ -72,7 +71,7 @@ export const runInstall = (
 	workspaceRoot: string,
 	retries = 0,
 	binDir: Option.Option<string> = Option.none(),
-): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
+): Effect.Effect<void, CommandFailedError, ChildProcessSpawner.ChildProcessSpawner> =>
 	runInstallOnce(pm, workspaceRoot, binDir).pipe(Effect.retry(unmatchedPolicy(retries)));
 
 /**
@@ -95,11 +94,11 @@ export const spawnOptions = (binDir: Option.Option<string>) =>
  * halted schedule never reaches it, so nothing is announced on the attempt
  * that gives up.
  */
-const unmatchedPolicy = (retries: number): Schedule.Schedule<number, CommandFailedError | CommandOutputError> =>
+const unmatchedPolicy = (retries: number): Schedule.Schedule<number, CommandFailedError> =>
 	unmatchedSchedule.pipe(
 		Schedule.while(
-			({ input, attempt }: Schedule.Metadata<number, CommandFailedError | CommandOutputError>) =>
-				attempt <= retries && input._tag === "CommandFailedError" && isUnmatchedVersion(input),
+			({ input, attempt }: Schedule.Metadata<number, CommandFailedError>) =>
+				attempt <= retries && isUnmatchedVersion(input),
 		),
 		Schedule.tap(({ input, attempt }) =>
 			Effect.logWarning(
@@ -109,18 +108,51 @@ const unmatchedPolicy = (retries: number): Schedule.Schedule<number, CommandFail
 		),
 	);
 
+/**
+ * Run one command through `ActionLogger.command`, so its command line, every
+ * output line and its exit code are the enclosing step's detail: folded when
+ * the step succeeds, unfolded when it fails, and live once the step outlives
+ * its window.
+ *
+ * Resolves with both streams whatever the exit code. A spawn that never
+ * started, or output that could not be read, fails as a `spawn`
+ * `CommandFailedError`, the same shape `@effected/commands` gives it.
+ */
+export const runLogged = (
+	command: ChildProcess.Command,
+	display?: string,
+): Effect.Effect<CommandOutput, CommandFailedError, ChildProcessSpawner.ChildProcessSpawner> =>
+	ActionLogger.command(command, display === undefined ? {} : { display }).pipe(
+		Effect.map(({ stdout, stderr, exitCode }) => new CommandOutput({ stdout, stderr, exitCode })),
+		Effect.mapError((cause) => CommandFailedError.spawn(command, cause)),
+	);
+
+/**
+ * {@link runLogged}, failing typed on a non-zero exit.
+ *
+ * The failure is `CommandFailedError.nonZero` carrying both streams, which is
+ * what the unmatched-version retry reads: npm writes `code ETARGET` to stderr,
+ * pnpm and bun write their codes to stdout.
+ */
+const runOrFail = (
+	command: ChildProcess.Command,
+): Effect.Effect<void, CommandFailedError, ChildProcessSpawner.ChildProcessSpawner> =>
+	runLogged(command).pipe(
+		Effect.flatMap((output) =>
+			output.succeeded ? Effect.void : Effect.fail(CommandFailedError.nonZero(command, output)),
+		),
+	);
+
 /** One clean-and-install pass, no retry. */
 const runInstallOnce = (
 	pm: SupportedPm,
 	workspaceRoot: string,
 	binDir: Option.Option<string>,
-): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
+): Effect.Effect<void, CommandFailedError, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.gen(function* () {
-		// Run.text fails typed on a non-zero exit, preserving the old `exec`
-		// contract that an install failure aborts the run.
 		const options = spawnOptions(binDir);
 		const run = (executable: string, args: ReadonlyArray<string>) =>
-			Run.text(ChildProcess.make(executable, [...args], options).pipe(ChildProcess.setCwd(workspaceRoot)));
+			runOrFail(ChildProcess.make(executable, [...args], options).pipe(ChildProcess.setCwd(workspaceRoot)));
 
 		switch (pm) {
 			case "pnpm":
@@ -152,7 +184,7 @@ export const installStep = (
 	workspaceRoot: string,
 	retries: number,
 	binDir: Option.Option<string> = Option.none(),
-): Effect.Effect<void, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
+): Effect.Effect<void, CommandFailedError, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.gen(function* () {
 		if (!shouldInstall) {
 			yield* Effect.logInfo(

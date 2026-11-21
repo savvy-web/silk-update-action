@@ -6,8 +6,8 @@ importers:
   .:
     configDependencies:
       '@effected/pnpm-plugin-effected':
-        specifier: 0.27.1
-        version: 0.27.1
+        specifier: 0.27.2
+        version: 0.27.2
       '@savvy-web/pnpm-plugin-silk':
         specifier: 0.55.0
         version: 0.55.0
@@ -18,8 +18,8 @@ importers:
 
 packages:
 
-  '@effected/pnpm-plugin-effected@0.27.1':
-    resolution: {integrity: sha512-KknS1GyIlwmkKZDShsIZ7acP4VNy8uyv7DgxkP20LLFFkQ+T78TDAHfgx0xmuPKbDoirnr0/KwSk6fO2z1HFMg==}
+  '@effected/pnpm-plugin-effected@0.27.2':
+    resolution: {integrity: sha512-3V8l+4RRubAV0369Kc5BxytyBcU+7AX671WHUfUWuDlh1ZHW8DFTnuRGQXxTihK3m4oGf9ZR+ZNLnYIIuic7fg==}
 
   '@pnpm/exe.android-arm64@12.22.0':
     resolution: {integrity: sha512-n0kwk3uOtWGaSMJWUuxG8fLefRonw8jR27dhGzMcDz79Um37QKPLEGZAZF37iASbb2yBBQFl4hue6/SfQnmIdA==}
@@ -113,7 +113,7 @@ packages:
 
 snapshots:
 
-  '@effected/pnpm-plugin-effected@0.27.1': {}
+  '@effected/pnpm-plugin-effected@0.27.2': {}
 
   '@pnpm/exe.android-arm64@12.22.0':
     optional: true
@@ -205,8 +205,8 @@ catalogs:
       specifier: ^0.34.0
       version: 0.34.0
     '@effected/github-actions':
-      specifier: ^0.36.1
-      version: 0.36.1
+      specifier: ^0.37.0
+      version: 0.37.0
     '@effected/glob':
       specifier: ^0.23.0
       version: 0.23.0
@@ -278,7 +278,7 @@ overrides:
   '@effect/vitest@^4.0.0': 4.1.5
   effect@^4.0.0: 4.1.5
 
-pnpmfileChecksum: sha256-AAeRS+E5wogroU9Sm1AVPaQqa0awMa5P0KcTsEl0tng=
+pnpmfileChecksum: sha256-mdxsCe5pi/C72qfNyYeGj9duZyulVyQNdpA8GkTAI0k=
 
 importers:
 
@@ -304,7 +304,7 @@ importers:
         version: 0.34.0(effect@4.1.5)
       '@effected/github-actions':
         specifier: catalog:effected
-        version: 0.36.1(@effect/platform-node@4.1.5(effect@4.1.5)(redis@6.3.1))(@effected/jsonc@0.25.0(effect@4.1.5))(@effected/toml@0.20.0(effect@4.1.5))(effect@4.1.5)(supports-color@8.1.1)
+        version: 0.37.0(@effect/platform-node@4.1.5(effect@4.1.5)(redis@6.3.1))(@effected/jsonc@0.25.0(effect@4.1.5))(@effected/toml@0.20.0(effect@4.1.5))(effect@4.1.5)(supports-color@8.1.1)
       '@effected/glob':
         specifier: catalog:effected
         version: 0.23.0(effect@4.1.5)
@@ -699,8 +699,8 @@ packages:
     peerDependencies:
       effect: 4.1.5
 
-  '@effected/github-actions@0.36.1':
-    resolution: {integrity: sha512-Mywp0VpKf/aRumdbeGbRwED9af4QnLWKoxF4h3odvQMb8asKqvSZXqkrpnw5zhAeUByTCFBG4WGuDMcDoerQZw==}
+  '@effected/github-actions@0.37.0':
+    resolution: {integrity: sha512-WhFovP4RhDAPIIqCfQTBPAaomP2uOvFBhQS/LMXGOuQ7y2+iSqzcVfhqKNl90NQvDE//f0F0AWMa5zu2PUYwWA==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@effect/platform-node': 4.1.5
@@ -3777,7 +3777,7 @@ snapshots:
     dependencies:
       effect: 4.1.5
 
-  '@effected/github-actions@0.36.1(@effect/platform-node@4.1.5(effect@4.1.5)(redis@6.3.1))(@effected/jsonc@0.25.0(effect@4.1.5))(@effected/toml@0.20.0(effect@4.1.5))(effect@4.1.5)(supports-color@8.1.1)':
+  '@effected/github-actions@0.37.0(@effect/platform-node@4.1.5(effect@4.1.5)(redis@6.3.1))(@effected/jsonc@0.25.0(effect@4.1.5))(@effected/toml@0.20.0(effect@4.1.5))(effect@4.1.5)(supports-color@8.1.1)':
     dependencies:
       '@effect/platform-node': 4.1.5(effect@4.1.5)(redis@6.3.1)
       '@effected/crypto': 0.7.0(effect@4.1.5)

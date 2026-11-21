@@ -1395,6 +1395,39 @@ describe("innerProgram — step log", () => {
 		const step = stepNamed(harness.steps(), "Run custom commands");
 		expect(step?.outcome).toBe("warning");
 		expect(step?.summary).toBe("Custom commands · 0 passed, 1 failed");
+		// The command runs through ActionLogger.command: the line shows the
+		// command as the workflow wrote it, not its `sh -c` wrapper, and the
+		// child's stderr and exit code are the step's detail.
+		expect(step?.detail).toEqual(expect.arrayContaining(["$ exit 1", "boom", "exit 1"]));
 		expect(outline(harness.steps())).not.toContain("phase:Publish");
+		// The check run still quotes the collected stderr.
+		expect(harness.checkRunState.runs[0]?.output?.summary).toContain("boom");
+	});
+
+	it("writes the install commands and their output as the Install step's detail", async () => {
+		writeFixture("pnpm");
+		const harness = makeHarness({
+			recordSteps: true,
+			regularUpdates: [update("effect", "^3.0.0", "^3.1.0")],
+			commands: new Map([
+				["pnpm install --frozen-lockfile=false", { exit: 0, stdout: "Packages: +1\nDone", stderr: "" }],
+			]),
+		});
+
+		const exit = await runInner(harness, baseInputs({ dependencies: ["effect"] }), true);
+
+		expect(Exit.isSuccess(exit)).toBe(true);
+		const step = stepNamed(harness.steps(), "Install");
+		expect(step?.outcome).toBe("success");
+		expect(step?.detail).toEqual(
+			expect.arrayContaining([
+				"$ pnpm clean --lockfile",
+				// The kit's command line quotes an argument holding `=`.
+				"$ pnpm install '--frozen-lockfile=false'",
+				"Packages: +1",
+				"Done",
+				"exit 0",
+			]),
+		);
 	});
 });

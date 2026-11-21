@@ -14,11 +14,10 @@
  * @module steps/custom-commands
  */
 
-import { Run } from "@effected/commands";
 import { Effect, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
-import { spawnOptions } from "./install.js";
+import { runLogged, spawnOptions } from "./install.js";
 
 /**
  * Result of running custom commands.
@@ -54,13 +53,15 @@ export const runCommands = (
 		const failed: Array<{ command: string; error: string; exitCode?: number | undefined }> = [];
 
 		for (const command of commands) {
-			yield* Effect.logInfo(`Running: ${command}`);
-
-			// Run.collect treats a non-zero exit as a RESULT, so the failure branch
-			// is driven by the exit code rather than the error channel; the catch
-			// covers only a genuine spawn failure.
-			const result = yield* Run.collect(
+			// runLogged writes `$ <command>`, the command's output and its exit
+			// code as the step's detail, and treats a non-zero exit as a RESULT,
+			// so the failure branch is driven by the exit code rather than the
+			// error channel; the catch covers only a genuine spawn failure.
+			// `display` shows the command as the workflow wrote it, not the
+			// `sh -c` wrapper it runs under.
+			const result = yield* runLogged(
 				ChildProcess.make("sh", ["-c", command], options).pipe(ChildProcess.setCwd(workspaceRoot)),
+				command,
 			).pipe(
 				Effect.map((output) =>
 					output.succeeded
