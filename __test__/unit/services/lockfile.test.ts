@@ -2,16 +2,13 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BunExtension } from "@effected/bun";
-import type {
-	ImporterDependency,
-	LockfileImporter,
-	Lockfile as LockfileModel,
-	ResolvedPackage,
-} from "@effected/lockfiles";
+import type { ImporterDependency, LockfileImporter, ResolvedPackage } from "@effected/lockfiles";
+import { Lockfile as LockfileModel } from "@effected/lockfiles";
+import { DependencySpecifier } from "@effected/npm";
 import type { PnpmExtension } from "@effected/pnpm";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { WorkspaceDiscovery } from "@effected/workspaces";
-import { Effect, Layer, Logger, References, Result } from "effect";
+import { Effect, Layer, Logger, References, Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import type { LockfileChange } from "../../../src/schema/domain.js";
 import {
@@ -73,12 +70,21 @@ type DepType = ImporterDependency["depType"];
 // is not under test here, the comparison is.
 
 /** Build a LockfileImporter from a compact `[name, specifier, depType]` list. */
+/**
+ * Classify a specifier string exactly as `Lockfile.parse` does.
+ *
+ * A bare `{ raw }` stand-in is poorer than production: the kit's diff matches
+ * catalog consumers on the classified `_tag`, so a fixture without one would
+ * read every catalog reference as a plain range and report no consumers.
+ */
+const classify = Schema.decodeUnknownSync(DependencySpecifier.FromString);
+
 const importer = (path: string, deps: ReadonlyArray<[string, string, DepType?]>): LockfileImporter =>
 	({
 		path,
 		dependencies: deps.map(([name, specifier, depType]) => ({
 			name,
-			specifier: { raw: specifier },
+			specifier: classify(specifier),
 			depType: depType ?? "dependencies",
 		})),
 	}) as unknown as LockfileImporter;
@@ -466,28 +472,34 @@ describe("compareLockfiles - pnpm catalogs", () => {
 describe("compareLockfiles - bun catalogs", () => {
 	/**
 	 * bun records the bare specifier in its catalog and the resolved version on
-	 * the package tuples, so the version must be joined in by name.
+	 * package entries, so the fixture is real `bun.lock` text through
+	 * `Lockfile.parse`: the kit's diff reads each consumer's resolved edge, which
+	 * a hand-built object cannot carry. The rule for an ambiguous or duplicated
+	 * resolution belongs to `LockfileDiff.compare` and is tested there.
 	 */
-	const bunLockfile = (specifier: string, resolved: ReadonlyArray<ResolvedPackage>, named = false) =>
-		makeLockfile({
-			format: "bun",
-			packages: resolved,
-			importers: [
-				importer("pkgs/core", [["react", named ? "catalog:ui" : "catalog:", "dependencies"]]),
-				importer(".", [["react", named ? "catalog:ui" : "catalog:default", "devDependencies"]]),
-			],
-			extension: {
-				_tag: "bun",
-				...(named ? { catalogs: { ui: { react: specifier } } } : { catalog: { react: specifier } }),
-			} as unknown as BunExtension,
-		});
-
-	const pkg = (name: string, version: string, isWorkspace = false) =>
-		({ name, version, isWorkspace }) as unknown as ResolvedPackage;
+	const bunLockfile = (specifier: string, reactVersion: string, named = false): LockfileModel =>
+		Effect.runSync(
+			LockfileModel.parse(
+				JSON.stringify(
+					{
+						lockfileVersion: 1,
+						workspaces: {
+							"": { name: "test-root", devDependencies: { react: named ? "catalog:ui" : "catalog:default" } },
+							"pkgs/core": { name: "@savvy-web/core", dependencies: { react: named ? "catalog:ui" : "catalog:" } },
+						},
+						...(named ? { catalogs: { ui: { react: specifier } } } : { catalog: { react: specifier } }),
+						packages: { react: [`react@${reactVersion}`, "", {}, "sha512-fixture"] },
+					},
+					null,
+					2,
+				),
+				{ format: "bun" },
+			),
+		);
 
 	it("reports a default-catalog specifier bump for every consuming importer and section", async () => {
-		const before = bunLockfile("^19.0.0", [pkg("react", "19.0.1")]);
-		const after = bunLockfile("^19.1.0", [pkg("react", "19.1.0")]);
+		const before = bunLockfile("^19.0.0", "19.0.1");
+		const after = bunLockfile("^19.1.0", "19.1.0");
 
 		const changes = await runCompare(before, after);
 
@@ -511,8 +523,8 @@ describe("compareLockfiles - bun catalogs", () => {
 	});
 
 	it("reports a named-catalog specifier bump", async () => {
-		const before = bunLockfile("^19.0.0", [pkg("react", "19.0.1")], true);
-		const after = bunLockfile("^19.1.0", [pkg("react", "19.1.0")], true);
+		const before = bunLockfile("^19.0.0", "19.0.1", true);
+		const after = bunLockfile("^19.1.0", "19.1.0", true);
 
 		const changes = await runCompare(before, after);
 
@@ -520,10 +532,9 @@ describe("compareLockfiles - bun catalogs", () => {
 		expect(changes[0]).toMatchObject({ dependency: "react", from: "^19.0.0", to: "^19.1.0" });
 	});
 
-	it("recovers resolved-version movement by joining through packages", async () => {
-		// The specifier is unchanged; only the resolved package tuple moved.
-		const before = bunLockfile("^19.0.0", [pkg("react", "19.0.1"), pkg("test-root", "1.0.0", true)]);
-		const after = bunLockfile("^19.0.0", [pkg("react", "19.0.2"), pkg("test-root", "1.0.0", true)]);
+	it("reports resolved-version movement under an unchanged specifier", async () => {
+		const before = bunLockfile("^19.0.0", "19.0.1");
+		const after = bunLockfile("^19.0.0", "19.0.2");
 
 		const changes = await runCompare(before, after);
 
@@ -531,25 +542,10 @@ describe("compareLockfiles - bun catalogs", () => {
 		expect(changes[0]).toMatchObject({ dependency: "react", from: "19.0.1", to: "19.0.2" });
 	});
 
-	it("does not fabricate a version when the join is ambiguous", async () => {
-		// Two resolved copies of react: no unambiguous version to join, and the
-		// specifier is unchanged, so nothing is reported.
-		const before = bunLockfile("^19.0.0", [pkg("react", "19.0.1"), pkg("react", "18.2.0")]);
-		const after = bunLockfile("^19.0.0", [pkg("react", "19.0.2"), pkg("react", "18.2.0")]);
-
-		const changes = await runCompare(before, after);
+	it("reports nothing when neither the specifier nor the resolved version moved", async () => {
+		const changes = await runCompare(bunLockfile("^19.0.0", "19.0.1"), bunLockfile("^19.0.0", "19.0.1"));
 
 		expect(changes).toHaveLength(0);
-	});
-
-	it("collapses duplicate identical package entries into one version", async () => {
-		const before = bunLockfile("^19.0.0", [pkg("react", "19.0.1"), pkg("react", "19.0.1")]);
-		const after = bunLockfile("^19.0.0", [pkg("react", "19.0.2"), pkg("react", "19.0.2")]);
-
-		const changes = await runCompare(before, after);
-
-		expect(changes).toHaveLength(2);
-		expect(changes[0]).toMatchObject({ from: "19.0.1", to: "19.0.2" });
 	});
 
 	it("reports nothing for a bun lockfile with no catalogs at all", async () => {
@@ -563,10 +559,9 @@ describe("compareLockfiles - bun catalogs", () => {
 
 	it("skips catalog entries whose shape is neither a string nor a {specifier} object", async () => {
 		// BunExtension.catalog/.catalogs are typed Record<string, unknown> upstream,
-		// so any of these can appear in real lockfile content. Each one exercises a
-		// different false branch of the isCatalogEntryShape guard: not an object,
-		// null, an object with no `specifier`, and an object whose `specifier` is
-		// not a string. None should be cast into a lie — all must be skipped.
+		// so any of these can appear in real lockfile content: not an object, null,
+		// an object with no `specifier`, and an object whose `specifier` is not a
+		// string. None is a catalog entry, so none may surface as a change.
 		const malformed: Record<string, unknown> = {
 			notAnObject: 42,
 			nullEntry: null,
@@ -698,6 +693,30 @@ describe("compareLockfiles - importer specifier changes", () => {
 		const after = makeLockfile({ importers: [importer("pkgs/core", [["lodash", "^4.18.0"]])] });
 
 		expect(await runCompare(before, after)).toHaveLength(0);
+	});
+
+	it("skips importers that no longer exist", async () => {
+		const before = makeLockfile({ importers: [importer("pkgs/core", [["lodash", "^4.18.0"]])] });
+		const after = makeLockfile({ importers: [] });
+
+		expect(await runCompare(before, after)).toHaveLength(0);
+	});
+
+	it("skips a resolved-version move under an unchanged specifier", async () => {
+		// The lockfile is regenerated from a clean slate on every run, so resolved
+		// versions drift under unchanged ranges; that drift is not a change this
+		// action made. The kit's diff does report it, so this pins the filter.
+		const withVersion = (version: string) =>
+			makeLockfile({
+				importers: [
+					{
+						path: "pkgs/core",
+						dependencies: [{ name: "lodash", specifier: classify("^4.17.0"), depType: "dependencies", version }],
+					} as unknown as LockfileImporter,
+				],
+			});
+
+		expect(await runCompare(withVersion("4.17.20"), withVersion("4.17.21"))).toHaveLength(0);
 	});
 
 	it("uses the importer path when it is not in the workspace map", async () => {

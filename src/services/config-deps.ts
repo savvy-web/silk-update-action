@@ -24,14 +24,13 @@ import { existsSync, writeFileSync } from "node:fs";
 import type { NpmRegistryShape } from "@effected/npm";
 import { NpmRegistry } from "@effected/npm";
 import { ConfigDependencySpec } from "@effected/workspaces";
-import { Yaml } from "@effected/yaml";
 import { Context, Effect, Layer, Option, Result } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
 import type { DependencyUpdateResult } from "../schema/domain.js";
 import { configDepUpgradeRange, resolveLatestSatisfying } from "../utils/semver.js";
 import { ReleaseAge } from "./release-age.js";
-import { STRINGIFY_OPTIONS, readWorkspaceYaml, sortContent } from "./workspace-yaml.js";
+import { formatWorkspaceContent, readWorkspaceYaml } from "./workspace-yaml.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Service Interface
@@ -199,8 +198,7 @@ const updateConfigDepsImpl = (
 
 		// Write back if changed
 		if (changed) {
-			const sorted = sortContent(content);
-			const formatted = yield* Yaml.stringify(sorted, STRINGIFY_OPTIONS).pipe(
+			const formatted = yield* formatWorkspaceContent(content).pipe(
 				Effect.catch((e) => Effect.as(Effect.logWarning(`Failed to stringify pnpm-workspace.yaml: ${e}`), null)),
 			);
 

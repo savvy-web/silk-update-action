@@ -1,9 +1,11 @@
 /**
  * `pnpm-workspace.yaml` formatting and reading.
  *
- * Formats the workspace file consistently to match @savvy-web/lint-staged's
- * PnpmWorkspace handler, avoiding lint-staged hook changes after our action
- * commits.
+ * Formats the workspace file with `@savvy-web/silk-effects`' own
+ * `PnpmWorkspace.sortContent` and `PnpmWorkspace.formatContentEffect`, the
+ * functions the consumer's lint-staged handler runs, so the hook leaves the
+ * file exactly as this action committed it. There is no local copy of the
+ * key order or the stringify options to keep in step with silk.
  *
  * **Standalone functions, not a service.** There was a `WorkspaceYaml` tag and
  * a `WorkspaceYamlLive` layer here; both were deleted because nothing in `src/`
@@ -23,7 +25,9 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import type { YamlStringifyError } from "@effected/yaml";
 import { Yaml } from "@effected/yaml";
+import { Lint } from "@savvy-web/silk-effects";
 import { Effect } from "effect";
 
 import { FileSystemError } from "../errors/errors.js";
@@ -40,74 +44,49 @@ export interface PnpmWorkspaceContent {
 }
 
 /**
- * Keys whose array values should be sorted alphabetically.
- */
-const SORTABLE_ARRAY_KEYS = new Set(["packages", "onlyBuiltDependencies", "publicHoistPattern"]);
-
-/**
  * Keys whose object entries should be sorted alphabetically by key.
+ *
+ * Kept here, on top of silk's sort, deliberately. Silk sorts the top-level
+ * keys and three arrays and leaves nested maps in source order, so its lint
+ * hook never reorders these entries and sorting them here cannot fight it. The
+ * action rewrites `configDependencies` entries, and sorting keeps the order of
+ * an updated file independent of the order the updates were applied in.
  */
 const SORTABLE_MAP_KEYS = new Set(["configDependencies"]);
 
 /**
- * Default YAML stringify options for consistent formatting.
- * Must match @savvy-web/lint-staged PnpmWorkspace handler.
- */
-export const STRINGIFY_OPTIONS = {
-	indent: 2,
-	lineWidth: 0, // Disable line wrapping
-	// Indent block sequences one level under their mapping key, matching the
-	// legacy `yaml` npm package's default output (byte-parity with prior runs).
-	indentSequences: true,
-	// Fall back to double quotes (not @effected/yaml's single-quoted default) when
-	// a scalar requires quoting, so scoped keys like `"@parcel/watcher"` are not
-	// rewritten to single quotes on every run — matching the v3 `yaml` package's
-	// `singleQuote: false` posture and the @savvy-web/silk-effects PnpmWorkspace
-	// handler. Requires @effected/yaml >= 0.5.0 (quoteStyle).
-	quoteStyle: "double",
-} as const;
-
-/**
  * Sort pnpm-workspace.yaml content.
  *
- * Matches @savvy-web/lint-staged PnpmWorkspace.sortContent pattern, extended
- * with configDependencies key sorting since updated entries may not preserve
- * alphabetical order.
- *
- * Sorts:
- * - `packages` array alphabetically
- * - `onlyBuiltDependencies` array (if present)
- * - `publicHoistPattern` array (if present)
- * - `configDependencies` object keys alphabetically
- * - All top-level keys alphabetically, `packages` included (as the
- *   silk-effects handler does, so the consumer's lint hook leaves the file as
- *   this action wrote it)
+ * `PnpmWorkspace.sortContent` from silk-effects (top-level keys, `packages`,
+ * `onlyBuiltDependencies` and `publicHoistPattern`), then the keys of each
+ * map in {@link SORTABLE_MAP_KEYS}.
  */
 export const sortContent = (content: PnpmWorkspaceContent): PnpmWorkspaceContent => {
-	const result: PnpmWorkspaceContent = {};
+	const result: PnpmWorkspaceContent = Lint.PnpmWorkspace.sortContent(content);
 
-	const keys = Object.keys(content).sort((a, b) => a.localeCompare(b));
-
-	for (const key of keys) {
-		const value = content[key];
-
-		// Sort array values for known sortable keys
-		if (SORTABLE_ARRAY_KEYS.has(key) && Array.isArray(value)) {
-			result[key] = [...value].sort();
-		} else if (SORTABLE_MAP_KEYS.has(key) && value && typeof value === "object" && !Array.isArray(value)) {
-			// Sort object keys alphabetically for known map keys
+	for (const key of SORTABLE_MAP_KEYS) {
+		const value = result[key];
+		if (value && typeof value === "object" && !Array.isArray(value)) {
 			const sorted: Record<string, unknown> = {};
 			for (const k of Object.keys(value as Record<string, unknown>).sort()) {
 				sorted[k] = (value as Record<string, unknown>)[k];
 			}
 			result[key] = sorted;
-		} else {
-			result[key] = value;
 		}
 	}
 
 	return result;
 };
+
+/**
+ * Sort workspace content and stringify it to silk's canonical bytes.
+ *
+ * `PnpmWorkspace.formatContentEffect` owns the stringify options, so this is
+ * byte-identical to what the consumer's lint hook would write for the same
+ * content.
+ */
+export const formatWorkspaceContent = (content: PnpmWorkspaceContent): Effect.Effect<string, YamlStringifyError> =>
+	Lint.PnpmWorkspace.formatContentEffect(sortContent(content));
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Implementation Functions
@@ -161,8 +140,7 @@ const formatWorkspaceYamlImpl = (workspaceRoot: string): Effect.Effect<void, Fil
 		)) as PnpmWorkspaceContent;
 
 		// Sort and format
-		const sorted = sortContent(parsed);
-		const formatted = yield* Yaml.stringify(sorted, STRINGIFY_OPTIONS).pipe(
+		const formatted = yield* formatWorkspaceContent(parsed).pipe(
 			Effect.mapError(
 				(e) =>
 					new FileSystemError({

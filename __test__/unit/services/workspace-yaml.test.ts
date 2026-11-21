@@ -2,10 +2,17 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
+import { Yaml } from "@effected/yaml";
+import { Lint } from "@savvy-web/silk-effects";
 import { Effect, References } from "effect";
 
 import type { PnpmWorkspaceContent } from "../../../src/services/workspace-yaml.js";
-import { formatWorkspaceYaml, readWorkspaceYaml, sortContent } from "../../../src/services/workspace-yaml.js";
+import {
+	formatWorkspaceContent,
+	formatWorkspaceYaml,
+	readWorkspaceYaml,
+	sortContent,
+} from "../../../src/services/workspace-yaml.js";
 
 describe("sortContent", () => {
 	// `packages` takes no special place: @savvy-web/silk-effects' PnpmWorkspace
@@ -246,6 +253,41 @@ describe("readWorkspaceYaml", () => {
 				return yield* readWorkspaceYaml(tempDir);
 			}).pipe(Effect.provideService(References.MinimumLogLevel, "None"));
 			expect(result).toBeNull();
+		}),
+	);
+});
+
+describe("formatWorkspaceContent", () => {
+	// Keys out of order, unsorted arrays, a scoped key that needs quoting and
+	// configDependencies out of order: every rule either side applies.
+	const input: PnpmWorkspaceContent = {
+		packages: ["pkgs/*", "apps/*"],
+		configDependencies: { "@savvy-web/pnpm-plugin-silk": "0.55.0", "@effected/pnpm-plugin-effected": "0.27.1" },
+		autoInstallPeers: true,
+		onlyBuiltDependencies: ["sharp", "@parcel/watcher"],
+	};
+
+	it.effect("writes bytes the consumer's lint hook leaves unchanged", () =>
+		Effect.gen(function* () {
+			const ours = yield* formatWorkspaceContent(input);
+			// What silk's lint-staged handler does to a staged pnpm-workspace.yaml:
+			// parse, sort, format. Running it over our output must be a no-op.
+			const reparsed = (yield* Yaml.parse(ours)) as PnpmWorkspaceContent;
+			const hook = Lint.PnpmWorkspace.formatContentSync(Lint.PnpmWorkspace.sortContent(reparsed));
+			expect(hook).toBe(ours);
+		}),
+	);
+
+	it.effect("sorts configDependencies keys, which silk's own sort leaves in source order", () =>
+		Effect.gen(function* () {
+			const ours = yield* formatWorkspaceContent(input);
+			expect(ours.indexOf("@effected/pnpm-plugin-effected")).toBeLessThan(ours.indexOf("@savvy-web/pnpm-plugin-silk"));
+			// The control: silk alone keeps the source order, so the local pass is
+			// what makes the difference.
+			const silkOnly = Lint.PnpmWorkspace.formatContentSync(Lint.PnpmWorkspace.sortContent(input));
+			expect(silkOnly.indexOf("@savvy-web/pnpm-plugin-silk")).toBeLessThan(
+				silkOnly.indexOf("@effected/pnpm-plugin-effected"),
+			);
 		}),
 	);
 });
