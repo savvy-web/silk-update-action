@@ -13,11 +13,10 @@ import { fromMap } from "../../utils/spawner.js";
 /**
  * Records the command lines runInstall spawns.
  *
- * The predecessor's runner split streaming (`exec`) from capturing
- * (`execCapture`) and this suite asserted runInstall used the streaming half.
- * `@effected/commands` has no such split — every `Run` combinator collects — so
- * that invariant no longer exists and the surviving assertion is which commands
- * run, in what order.
+ * Every command runs through `ActionLogger.command`, which writes its output as
+ * the enclosing step's detail and also collects both streams, so this suite
+ * asserts which commands run, in what order. That the output reaches the step
+ * is pinned in `program.inner.test.ts`.
  */
 const run = (pm: "pnpm" | "bun" | "npm", workspaceRoot = "/ws") => {
 	const spawner = fromMap();

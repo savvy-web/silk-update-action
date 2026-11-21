@@ -11,7 +11,14 @@
  */
 
 import { GitHubApp } from "@effected/github";
-import { Action, ActionEnvironment, ActionInput, ActionState, GitHubToken } from "@effected/github-actions";
+import {
+	Action,
+	ActionEnvironment,
+	ActionInput,
+	ActionLogger,
+	ActionState,
+	GitHubToken,
+} from "@effected/github-actions";
 import { Effect } from "effect";
 import { STATE_KEYS, StartTimeState } from "./state.js";
 
@@ -32,16 +39,19 @@ export const pre = Effect.gen(function* () {
 	const privateKey = yield* ActionInput.redacted("app-private-key");
 	const owner = (yield* env.github).repositoryOwner;
 
-	yield* Effect.logInfo("Generating GitHub App installation token...");
-	const token = yield* GitHubToken.provision({
-		appId,
-		privateKey,
-		owner,
-		required: { contents: "write", pull_requests: "write", checks: "write" },
-	});
-
-	yield* Effect.logInfo(
-		`Token generated${token.appName !== undefined ? ` for app "${token.appName}"` : ""} (expires: ${token.expiresAt})`,
+	const logger = yield* ActionLogger;
+	yield* logger.step(
+		"Provision GitHub App token",
+		GitHubToken.provision({
+			appId,
+			privateKey,
+			owner,
+			required: { contents: "write", pull_requests: "write", checks: "write" },
+		}),
+		{
+			summary: (token) =>
+				`GitHub App token${token.appName !== undefined ? ` for "${token.appName}"` : ""} · expires ${token.expiresAt}`,
+		},
 	);
 	yield* Effect.logDebug("Pre-action completed");
 });

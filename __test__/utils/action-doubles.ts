@@ -10,7 +10,7 @@
  */
 
 import type { InstallationToken } from "@effected/github";
-import { AppIdentity, GitHubApp } from "@effected/github";
+import { AppIdentity, GitHubApp, GitHubAppError } from "@effected/github";
 import { ActionOutputs, ActionState, ActionStateError } from "@effected/github-actions";
 import type { Layer } from "effect";
 import { DateTime, Effect, Option, Redacted, Schema } from "effect";
@@ -117,6 +117,8 @@ export interface GitHubAppRecording {
 	readonly revokeCalls: Array<string>;
 	/** Permissions the minted token reports as granted. */
 	permissions: Record<string, string>;
+	/** When true, `revoke` records the call and then fails, as a 401 from GitHub would. */
+	revokeFails: boolean;
 }
 
 export const emptyGitHubApp = (): GitHubAppRecording => ({
@@ -125,6 +127,7 @@ export const emptyGitHubApp = (): GitHubAppRecording => ({
 	// provision verifies the granted scopes before persisting, so the default
 	// grants what this action asks for; a test narrows it to exercise the gap.
 	permissions: { contents: "write", pull_requests: "write", checks: "write" },
+	revokeFails: false,
 });
 
 export const makeInstallationToken = (permissions: Record<string, string>): InstallationToken =>
@@ -149,7 +152,9 @@ export const gitHubAppTestLayer = (recording: GitHubAppRecording): Layer.Layer<G
 		revoke: (token) =>
 			Effect.suspend(() => {
 				recording.revokeCalls.push(Redacted.value(token));
-				return Effect.void;
+				return recording.revokeFails
+					? Effect.fail(new GitHubAppError({ kind: "revoke", reason: "Bad credentials" }))
+					: Effect.void;
 			}),
 		// provision resolves the app identity best-effort to label the token.
 		identity: () => Effect.succeed(AppIdentity.make({ slug: "silk-bot", name: "Silk Bot", userId: 1234 })),

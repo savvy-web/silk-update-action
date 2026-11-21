@@ -8,8 +8,8 @@
  */
 
 import type { GitHubApp } from "@effected/github";
-import type { ActionOutputs, ActionState } from "@effected/github-actions";
-import { GitHubToken } from "@effected/github-actions";
+import type { ActionOutputs, ActionState, StepLogEntry } from "@effected/github-actions";
+import { ActionLogger, GitHubToken } from "@effected/github-actions";
 import { Effect, Layer, Redacted } from "effect";
 import { describe, expect, it } from "vitest";
 import { post } from "../../src/post.js";
@@ -27,6 +27,8 @@ import { silentLogger } from "../utils/fixtures.js";
 interface Fixtures {
 	stateState: ActionStateRecording;
 	appState: GitHubAppRecording;
+	steps: () => ReadonlyArray<StepLogEntry>;
+	logLayer: Layer.Layer<ActionLogger>;
 	layer: Layer.Layer<ActionOutputs | ActionState | GitHubApp>;
 }
 
@@ -40,7 +42,8 @@ const makeFixtures = (): Fixtures => {
 		gitHubAppTestLayer(appState),
 		actionOutputsTestLayer(emptyActionOutputs()),
 	);
-	return { stateState, appState, layer };
+	const log = ActionLogger.recording();
+	return { stateState, appState, steps: log.entries, logLayer: log.layer, layer };
 };
 
 /** Provision a token into the shared ActionState, simulating the pre phase. */
@@ -53,7 +56,11 @@ const provisionToken = (fixtures: Fixtures): Promise<void> =>
 	);
 
 const runPost = (fixtures: Fixtures): Promise<void> =>
-	post.pipe(Effect.provide(fixtures.layer), Effect.provide(silentLogger), Effect.runPromise);
+	post.pipe(
+		Effect.provide(Layer.merge(fixtures.layer, fixtures.logLayer)),
+		Effect.provide(silentLogger),
+		Effect.runPromise,
+	);
 
 describe("post", () => {
 	it("revokes the installation token provisioned by pre", async () => {
@@ -61,6 +68,16 @@ describe("post", () => {
 		await provisionToken(fixtures);
 		await runPost(fixtures);
 		expect(fixtures.appState.revokeCalls).toContain("ghs_test_token");
+		expect(fixtures.steps()).toMatchObject([{ kind: "step", name: "Revoke GitHub App token", outcome: "success" }]);
+	});
+
+	it("reports a failed revocation as a warning step, not a failure", async () => {
+		const fixtures = makeFixtures();
+		await provisionToken(fixtures);
+		fixtures.appState.revokeFails = true;
+		await runPost(fixtures);
+		expect(fixtures.appState.revokeCalls).toContain("ghs_test_token");
+		expect(fixtures.steps()).toMatchObject([{ kind: "step", name: "Revoke GitHub App token", outcome: "warning" }]);
 	});
 
 	it("completes cleanly when no token was provisioned", async () => {
