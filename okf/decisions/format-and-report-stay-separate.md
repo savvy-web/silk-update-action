@@ -14,7 +14,7 @@ sources:
     resource: ../../src/format.ts
   - id: report
     resource: ../../src/services/report.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 1649b9a806879b7c
 ---

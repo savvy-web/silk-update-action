@@ -16,7 +16,7 @@ sources:
     resource: ../../src/steps/detect-package-manager.ts
   - id: config-deps-step
     resource: ../../src/steps/config-dependencies.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 66ce4084f17bc943
   verified:

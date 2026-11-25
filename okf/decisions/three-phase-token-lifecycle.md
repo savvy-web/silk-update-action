@@ -17,7 +17,7 @@ sources:
     resource: ../../src/state.ts
   - id: layers-app
     resource: ../../src/layers/app.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: cfdf07f835f97bd0
 ---

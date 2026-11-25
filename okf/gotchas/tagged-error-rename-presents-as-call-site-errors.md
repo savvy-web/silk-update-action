@@ -10,15 +10,13 @@ tags:
 resource: ../../src/errors/errors.ts
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-25T23:20:30Z
 sources:
   - id: errors-ts
     resource: ../../src/errors/errors.ts
-  - id: effect-package-json
-    resource: ../../node_modules/effect/package.json
-integrity:
+x-okfit-integrity:
   generated:
-    body: 25db0f4ea9d9a0c4
+    body: 44aedd605d6ded8a
 ---
 
 # An Effect Schema base-class rename presents as dozens of unrelated call-site errors
@@ -72,7 +70,8 @@ the current name was sufficient.
 - Read the currently installed `effect` version's exports directly —
   `node -p "require('./node_modules/effect/package.json').version"` against
   the schema module's actual export name — rather than assuming a name from
-  memory or from a previous advance.[^effect-package-json]
+  memory or from a previous advance. `node_modules/` is not tracked, so the
+  answer exists only in a checkout that has run `pnpm install`.
 - Before editing any call site that constructs or reads a tagged error, grep
   every class declaration in `src/errors/errors.ts` for the factory name it
   extends, and confirm that name matches what the installed `effect` version
@@ -87,4 +86,3 @@ the current name was sufficient.
   current name before building one.
 
 [^errors-ts]: `src/errors/errors.ts`
-[^effect-package-json]: `node_modules/effect/package.json`

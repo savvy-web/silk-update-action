@@ -2,6 +2,7 @@
 type: Convention
 title: Adopting a service into a second consumer is a layer-wiring change
 description: When a second domain layer starts resolving a service in its layer body, provide that service to it in `makeAppLayer` in the same change — Action.run accepts an unprovided requirement silently, so nothing else will catch the omission.
+status: stable
 stale_after: 2027-03-12T00:00:00Z
 tags:
   - architecture
@@ -13,7 +14,7 @@ sources:
     resource: ../../src/layers/app.ts
   - id: app-layer-test
     resource: ../../__test__/unit/layers/app.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: fc765fc7f87f4f85
 ---

@@ -15,7 +15,7 @@ sources:
     resource: ../../src/steps/install.ts
   - id: custom-commands-step
     resource: ../../src/steps/custom-commands.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 2cff83cc304a41da
 ---

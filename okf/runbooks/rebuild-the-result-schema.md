@@ -18,7 +18,7 @@ sources:
     resource: ../../package.json
   - id: turbo-json
     resource: ../../turbo.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 1aeafb14eeb52d90
 ---

@@ -14,7 +14,7 @@ generated:
 sources:
   - id: lockfile-service
     resource: ../../src/services/lockfile.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 852dca100e07d72c
 ---

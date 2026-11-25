@@ -11,7 +11,7 @@ generated:
 sources:
   - id: release-age-service
     resource: ../../src/services/release-age.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: e6b041d36c651733
 ---

@@ -7,7 +7,7 @@ stale_after: 2026-12-13T00:00:00Z
 tags:
   - deps
   - bundle
-justifies:
+x-okfit-justifies:
   - ../decisions/platform-stays-in-requirement-channel.md
 generated:
   by: okfit/claude-code
@@ -19,7 +19,7 @@ sources:
     resource: ../../dist/main.js
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 0b2a2e26fe0e21c5
 ---

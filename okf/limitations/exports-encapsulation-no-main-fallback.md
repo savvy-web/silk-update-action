@@ -5,7 +5,7 @@ description: The bun catalog-merge path's entry resolver is stricter than this a
 status: draft
 tags:
   - compat
-bounds: ../decisions/catalog-base-routing.md
+x-okfit-bounds: ../decisions/catalog-base-routing.md
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
@@ -14,7 +14,7 @@ sources:
     resource: ../../src/services/module-catalogs.ts
   - id: effected-282
     resource: "https://github.com/spencerbeggs/effected/pull/282"
-integrity:
+x-okfit-integrity:
   generated:
     body: 567a69b49441a1e1
 ---

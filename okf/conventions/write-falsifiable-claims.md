@@ -2,6 +2,7 @@
 type: Convention
 title: State what would falsify a load-bearing claim, or say it is unverified
 description: Every load-bearing claim in documentation, a comment, or a commit message must name what would change the answer, or say plainly that it is unverified. Re-derive counts and enumerations by command rather than editing a stale number, and check a doc against itself before checking it against the code.
+status: stable
 stale_after: 2027-03-12T00:00:00Z
 tags:
   - docs
@@ -12,7 +13,7 @@ generated:
 sources:
   - id: app-layer-test
     resource: ../../__test__/unit/layers/app.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 0460a08ae7b097e4
 ---

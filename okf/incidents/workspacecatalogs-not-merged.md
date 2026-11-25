@@ -20,7 +20,7 @@ sources:
     resource: ../../src/steps/peer-check.ts
   - id: program-inner-test
     resource: ../../__test__/unit/program.inner.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: cefc9cd6cd481aca
 ---

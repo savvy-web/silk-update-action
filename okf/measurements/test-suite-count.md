@@ -6,7 +6,7 @@ status: draft
 stale_after: 2026-12-13T00:00:00Z
 tags:
   - testing
-justifies:
+x-okfit-justifies:
   - ../decisions/tests-not-colocated.md
 generated:
   by: okfit/claude-code
@@ -16,7 +16,7 @@ sources:
     resource: ../../vitest.config.ts
   - id: test-collection-test
     resource: ../../__test__/unit/test-collection.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 760ba9873e26cf82
 ---

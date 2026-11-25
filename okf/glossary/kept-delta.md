@@ -11,7 +11,7 @@ generated:
 sources:
   - id: catalogs-utils
     resource: ../../src/utils/catalogs.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 46f4e7d70967ce52
 ---

@@ -15,7 +15,7 @@ sources:
     resource: ../../src/schema/inputs.ts
   - id: inputs-test
     resource: ../../__test__/unit/schema/inputs.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: bab2dd3b78e8ccfb
 ---

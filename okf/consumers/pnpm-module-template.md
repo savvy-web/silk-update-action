@@ -2,7 +2,7 @@
 type: Consumer
 title: spencerbeggs/pnpm-module-template
 description: The workspace where the peer-suppression time-skew bug and its fix were found live, across two consecutive runs (#84, #85) that behaved differently for a reason internal to this action.
-repository: spencerbeggs/pnpm-module-template
+x-okfit-repository: spencerbeggs/pnpm-module-template
 status: draft
 generated:
   by: okfit/claude-code
@@ -10,7 +10,7 @@ generated:
 sources:
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 8e97bf0760777127
 ---

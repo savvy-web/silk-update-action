@@ -13,7 +13,7 @@ generated:
 sources:
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 2dc491a3faf69ef6
 ---

@@ -17,7 +17,7 @@ sources:
     resource: ../../src/services/branch.ts
   - id: effected-issue-279
     resource: "https://github.com/spencerbeggs/effected/issues/279"
-integrity:
+x-okfit-integrity:
   generated:
     body: baba7e691299ec9a
 ---

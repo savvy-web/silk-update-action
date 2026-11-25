@@ -11,7 +11,7 @@ generated:
 sources:
   - id: peers-util
     resource: ../../src/utils/peers.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 40cdd8e477328362
 ---

@@ -20,7 +20,7 @@ sources:
     resource: "https://github.com/spencerbeggs/pnpm-module-template/issues/84"
   - id: pnpm-module-template-85
     resource: "https://github.com/spencerbeggs/pnpm-module-template/issues/85"
-integrity:
+x-okfit-integrity:
   generated:
     body: 871736781a7e61a2
 ---

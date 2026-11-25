@@ -16,7 +16,7 @@ sources:
     resource: "npm:@effected/github-references"
   - id: silk-release-worked-example
     resource: "https://github.com/savvy-web/silk-release-action"
-integrity:
+x-okfit-integrity:
   generated:
     body: 6a031e231c3f2833
 ---

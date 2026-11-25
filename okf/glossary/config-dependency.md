@@ -15,7 +15,7 @@ sources:
     resource: ../../src/services/catalog-config-deps.ts
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
-integrity:
+x-okfit-integrity:
   generated:
     body: bf6436ab0cfefa03
 ---

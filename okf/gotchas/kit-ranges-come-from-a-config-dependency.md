@@ -15,7 +15,7 @@ sources:
     resource: ../../pnpm-workspace.yaml
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 49b9f91f46787852
 ---

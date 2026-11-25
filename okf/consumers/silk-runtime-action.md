@@ -2,7 +2,7 @@
 type: Consumer
 title: savvy-web/silk-runtime-action
 description: The next step in the pipeline, which reads devEngines.runtime this action writes and rejects any range operator in it.
-repository: savvy-web/silk-runtime-action
+x-okfit-repository: savvy-web/silk-runtime-action
 status: draft
 generated:
   by: okfit/claude-code
@@ -12,7 +12,7 @@ sources:
     resource: ../../src/services/runtime-upgrade.ts
   - id: silk-update-workflow
     resource: ../../.github/workflows/silk-update.yml
-integrity:
+x-okfit-integrity:
   generated:
     body: e20987b9d7974b75
 ---

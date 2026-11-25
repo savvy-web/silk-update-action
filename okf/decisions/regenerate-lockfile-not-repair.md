@@ -11,7 +11,7 @@ sources:
     resource: ../../src/steps/install.ts
   - id: format
     resource: ../../src/format.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 9de37ee4c3c9e94d
 ---

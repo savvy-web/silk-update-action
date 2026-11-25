@@ -3,7 +3,7 @@ type: Module
 title: silk-update-action
 description: The GitHub Action's module structure, three-phase execution, and service/layer composition.
 status: draft
-kind: action
+x-okfit-kind: action
 resource: ../..
 tags:
   - architecture
@@ -29,7 +29,7 @@ sources:
     resource: ../../src/schema/inputs.ts
   - id: schema-outputs
     resource: ../../src/schema/outputs.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 2d55618b1b85199f
 ---

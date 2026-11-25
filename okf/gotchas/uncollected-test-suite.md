@@ -15,7 +15,7 @@ sources:
     resource: ../../__test__/unit/test-collection.test.ts
   - id: vitest-config
     resource: ../../vitest.config.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: c4cde9b5cc307357
 ---

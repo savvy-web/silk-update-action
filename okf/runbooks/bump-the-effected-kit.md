@@ -17,7 +17,7 @@ sources:
     resource: ../../package.json
   - id: repos-config
     resource: ../../.repos/config.json
-integrity:
+x-okfit-integrity:
   generated:
     body: a6e9a1d5bd0c4dc3
 ---

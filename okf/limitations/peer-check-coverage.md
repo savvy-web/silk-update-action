@@ -5,7 +5,7 @@ description: "Optional peers never gate, a workspace package's own peer declarat
 status: draft
 tags:
   - deps
-bounds: ../decisions/peer-gate-fails-closed.md
+x-okfit-bounds: ../decisions/peer-gate-fails-closed.md
 generated:
   by: okfit/claude-code
   at: 2026-09-28T21:24:50Z
@@ -26,7 +26,7 @@ sources:
     title: effected peer-wave round-2 handoff, "Intentionally not done"
     author: effected/claude-code
     last_modified: 2026-09-27T00:00:00Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 20733ee216fef99c
 ---

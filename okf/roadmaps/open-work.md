@@ -4,7 +4,7 @@ title: Open work toward integration testing with a real GitHub App
 description: "What remains before a real-App integration test runs green in CI, plus the smaller loose ends recorded alongside it — raw node: import drift, an unadopted lenient package.json decode path, and one program.ts extraction that has already partly happened."
 status: draft
 stale_after: 2027-03-13T00:00:00Z
-gate: An integration test against a real GitHub App runs green in CI.
+x-okfit-gate: An integration test against a real GitHub App runs green in CI.
 tags:
   - architecture
 generated:
@@ -21,7 +21,7 @@ sources:
     resource: ../../src/steps/config-dependencies.ts
   - id: format-workspace-step
     resource: ../../src/steps/format-workspace.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 5f5eda2e5d5430fd
 ---

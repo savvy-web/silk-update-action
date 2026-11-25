@@ -12,7 +12,7 @@ generated:
 sources:
   - id: effected-toml
     resource: ../../effected.toml
-integrity:
+x-okfit-integrity:
   generated:
     body: df481b2cc42ecc1d
 ---

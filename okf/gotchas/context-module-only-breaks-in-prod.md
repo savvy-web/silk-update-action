@@ -18,7 +18,7 @@ sources:
     resource: "https://github.com/savvy-web/silk-update-action/blob/fcbb6de/lib/scripts/assert-native-dynamic-import.mjs"
   - id: module-catalogs
     resource: ../../src/services/module-catalogs.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 80a49dd8cd4599a0
 ---

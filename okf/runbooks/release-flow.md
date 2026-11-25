@@ -15,7 +15,7 @@ sources:
     resource: ../../.github/workflows/branch-sync.yml
   - id: release-workflow
     resource: ../../.github/workflows/release.yml
-integrity:
+x-okfit-integrity:
   generated:
     body: 7dac4b2780a54476
 ---

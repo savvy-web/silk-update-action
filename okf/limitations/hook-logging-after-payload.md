@@ -5,7 +5,7 @@ description: The subprocess replay reads its child's last non-empty stdout line 
 status: draft
 tags:
   - deps
-bounds: ../decisions/release-age-fail-open.md
+x-okfit-bounds: ../decisions/release-age-fail-open.md
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
@@ -16,7 +16,7 @@ sources:
     resource: ../../__test__/integration/release-age.int.test.ts
   - id: effected-292
     resource: "https://github.com/spencerbeggs/effected/issues/292"
-integrity:
+x-okfit-integrity:
   generated:
     body: 748224a9310c0828
 ---

@@ -16,7 +16,7 @@ sources:
     resource: ../../src/services/package-manager-upgrade.ts
   - id: catalogs-ts
     resource: ../../src/utils/catalogs.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 468d1a8bc02562ba
 ---
