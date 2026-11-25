@@ -2,7 +2,7 @@
 type: Interface
 title: Action inputs
 description: The workflow-facing input contract — names, grammars, defaults, and what readInputs validates before any step runs.
-kind: config
+x-okfit-kind: config
 resource: ../../action.yml
 status: draft
 tags:
@@ -16,7 +16,7 @@ sources:
     resource: ../../action.yml
   - id: inputs-ts
     resource: ../../src/schema/inputs.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: d2521c4c704b5cb5
 ---

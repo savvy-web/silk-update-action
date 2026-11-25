@@ -15,7 +15,7 @@ sources:
     resource: ../../.github/workflows/silk-update.yml
   - id: release-workflow
     resource: ../../.github/workflows/release.yml
-integrity:
+x-okfit-integrity:
   generated:
     body: 90e690a7c05bdcc6
 ---

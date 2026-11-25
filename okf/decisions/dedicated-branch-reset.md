@@ -11,7 +11,7 @@ sources:
     resource: ../../src/services/branch.ts
   - id: steps-branch
     resource: ../../src/steps/branch.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 1820fbfb652eab08
 ---

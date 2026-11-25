@@ -13,7 +13,7 @@ generated:
 sources:
   - id: pnpm-lock
     resource: ../../pnpm-lock.yaml
-integrity:
+x-okfit-integrity:
   generated:
     body: c4df67dbd5e8f540
 ---

@@ -24,7 +24,7 @@ sources:
     resource: "https://github.com/spencerbeggs/type-registry-effect/issues/122"
   - id: lockfiles-package
     resource: "npm:@effected/lockfiles"
-integrity:
+x-okfit-integrity:
   generated:
     body: 64e9da28d98cfdae
 ---

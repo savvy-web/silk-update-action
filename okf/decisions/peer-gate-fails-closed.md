@@ -30,7 +30,7 @@ sources:
     title: effected peer-wave round-2 handoff
     author: effected/claude-code
     last_modified: 2026-09-27T00:00:00Z
-integrity:
+x-okfit-integrity:
   generated:
     body: 156782d5a69e7a84
 ---

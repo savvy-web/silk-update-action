@@ -23,7 +23,7 @@ sources:
     resource: ../../src/steps/upgrade-runtimes.ts
   - id: upgrade-pm-step
     resource: ../../src/steps/upgrade-package-manager.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: af1ca7f43bf6375f
 ---

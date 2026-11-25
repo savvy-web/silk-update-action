@@ -17,7 +17,7 @@ sources:
     resource: ../../src/layers/app.ts
   - id: layer-guard-test
     resource: ../../__test__/unit/layers/app.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 5e26bbecadfda594
 ---

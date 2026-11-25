@@ -12,7 +12,7 @@ generated:
 sources:
   - id: app-layer-test
     resource: ../../__test__/unit/layers/app.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 0460a08ae7b097e4
 ---

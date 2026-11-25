@@ -20,7 +20,7 @@ sources:
     resource: ../../src/services/peer-sync.ts
   - id: package-manager-service
     resource: ../../src/services/package-manager.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: aeded23c20d139b1
 ---

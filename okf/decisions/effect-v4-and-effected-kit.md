@@ -13,7 +13,7 @@ sources:
     resource: ../../src/layers/app.ts
   - id: services-branch
     resource: ../../src/services/branch.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 5d4231ec6a3f124c
 ---

@@ -16,7 +16,7 @@ sources:
     resource: ../../src/errors/errors.ts
   - id: effect-package-json
     resource: ../../node_modules/effect/package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 25db0f4ea9d9a0c4
 ---

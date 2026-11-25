@@ -15,7 +15,7 @@ sources:
     resource: ../../src/utils/runtime.ts
   - id: runtime-upgrade-unit-test
     resource: ../../__test__/unit/services/runtime-upgrade.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 89f3b297bdfd5a95
 ---

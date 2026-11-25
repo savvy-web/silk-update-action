@@ -16,7 +16,7 @@ sources:
     resource: ../../src/program.ts
   - id: program-inner-test
     resource: ../../__test__/unit/program.inner.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 0531aaff5fca4d5f
 ---

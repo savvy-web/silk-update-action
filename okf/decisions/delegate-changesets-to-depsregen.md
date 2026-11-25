@@ -15,7 +15,7 @@ sources:
     resource: ../../src/steps/changesets.ts
   - id: drift-canary
     resource: ../../__test__/integration/changeset-emission.int.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 779844fd6b9c4986
 ---

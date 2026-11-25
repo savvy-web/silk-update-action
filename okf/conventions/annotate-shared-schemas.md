@@ -14,7 +14,7 @@ sources:
     resource: ../../src/schema/domain.ts
   - id: schemastore-config
     resource: ../../lib/scripts/schemastore.config.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 72707fed3996d6cd
 ---

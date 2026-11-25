@@ -18,7 +18,7 @@ sources:
     resource: ../../src/main.ts
   - id: action-run-type
     resource: ../../node_modules/@effected/github-actions/index.d.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 36668c892bff250b
 ---

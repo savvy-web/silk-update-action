@@ -19,7 +19,7 @@ sources:
     resource: ../../src/services/changesets.ts
   - id: app-layer
     resource: ../../src/layers/app.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: fe1f6f26effdf39d
 ---

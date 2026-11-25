@@ -20,7 +20,7 @@ sources:
     resource: ../../node_modules/@effected/github-actions/index.d.ts
   - id: layer-guard-test
     resource: ../../__test__/unit/layers/app.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 983b45249df0026b
 ---

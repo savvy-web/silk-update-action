@@ -2,7 +2,7 @@
 type: Consumer
 title: savvy-web/systems
 description: A release-tag consumer since 2026-08-20 (it pinned @dev before that), and the source of the @savvy-web/* first-party dependencies this action dogfoods.
-repository: savvy-web/systems
+x-okfit-repository: savvy-web/systems
 status: draft
 generated:
   by: okfit/claude-code
@@ -12,7 +12,7 @@ sources:
     resource: ../../.github/workflows/silk-update.yml
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 8e9b08be0c6f2681
 ---

@@ -17,7 +17,7 @@ sources:
     resource: ../../__test__/unit/errors/errors.test.ts
   - id: lockfile-service
     resource: ../../src/services/lockfile.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: cd12c8a2726d3984
 ---

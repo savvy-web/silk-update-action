@@ -16,7 +16,7 @@ sources:
     resource: ../../__test__/unit/layers/app.test.ts
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 6373f5ee53fab9d7
 ---

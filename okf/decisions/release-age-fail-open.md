@@ -18,7 +18,7 @@ sources:
     resource: ../../__test__/integration/release-age.int.test.ts
   - id: effected-292
     resource: "https://github.com/spencerbeggs/effected/issues/292"
-integrity:
+x-okfit-integrity:
   generated:
     body: e22eece68bb15f1b
 ---

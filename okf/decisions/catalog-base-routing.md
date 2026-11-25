@@ -20,7 +20,7 @@ sources:
     resource: ../../__test__/integration/catalog-config-deps.int.test.ts
   - id: effected-282
     resource: "https://github.com/spencerbeggs/effected/pull/282"
-integrity:
+x-okfit-integrity:
   generated:
     body: 1b506b0dafa9b221
 ---

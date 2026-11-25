@@ -28,7 +28,7 @@ sources:
     resource: "https://github.com/spencerbeggs/effected/pull/366"
   - id: effected-issue-286
     resource: "https://github.com/spencerbeggs/effected/issues/286"
-integrity:
+x-okfit-integrity:
   generated:
     body: 5e922a5ef82e6f31
 ---

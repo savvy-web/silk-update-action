@@ -14,7 +14,7 @@ sources:
     resource: ../../src/errors/errors.ts
   - id: errors-test
     resource: ../../__test__/unit/errors/errors.test.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 60e862747e2a208a
 ---

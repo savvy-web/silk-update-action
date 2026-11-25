@@ -11,7 +11,7 @@ sources:
     resource: ../action.yml
   - id: package-json
     resource: ../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 8fa184907ceced71
 ---

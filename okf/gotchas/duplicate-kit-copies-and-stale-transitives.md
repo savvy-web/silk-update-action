@@ -18,7 +18,7 @@ sources:
     resource: ../../package.json
   - id: dist-main
     resource: ../../dist/main.js
-integrity:
+x-okfit-integrity:
   generated:
     body: 48420bff4b885af2
 ---

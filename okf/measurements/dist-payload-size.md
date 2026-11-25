@@ -6,7 +6,7 @@ status: draft
 stale_after: 2026-12-13T00:00:00Z
 tags:
   - bundle
-justifies:
+x-okfit-justifies:
   - ../decisions/persist-local-disabled.md
 generated:
   by: okfit/claude-code
@@ -20,7 +20,7 @@ sources:
     resource: ../../dist/post.js
   - id: action-yml
     resource: ../../action.yml
-integrity:
+x-okfit-integrity:
   generated:
     body: dbb77a9443751fb1
 ---

@@ -17,7 +17,7 @@ sources:
     resource: ../../src/layers/app.ts
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 77a804ca23da491c
 ---

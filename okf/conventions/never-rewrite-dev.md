@@ -17,7 +17,7 @@ sources:
     resource: ../../.github/workflows/silk-update.yml
   - id: effected-toml
     resource: ../../effected.toml
-integrity:
+x-okfit-integrity:
   generated:
     body: 37877ee18af6fbb5
 ---

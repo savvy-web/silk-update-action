@@ -17,7 +17,7 @@ sources:
     resource: ../../lib/configs/commitlint.config.ts
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: f01696f4d98162a7
 ---

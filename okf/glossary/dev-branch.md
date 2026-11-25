@@ -14,7 +14,7 @@ sources:
     resource: ../../.github/workflows/branch-sync.yml
   - id: effected-toml
     resource: ../../effected.toml
-integrity:
+x-okfit-integrity:
   generated:
     body: bf09eb097321ad8d
 ---

@@ -2,7 +2,7 @@
 type: Consumer
 title: spencerbeggs/type-registry-effect
 description: The repository where a real, clean pnpm lockfile was withheld auto-merge by check-peers, because two legitimate pnpm lockfile shapes were misclassified by an upstream lockfile parser.
-repository: spencerbeggs/type-registry-effect
+x-okfit-repository: spencerbeggs/type-registry-effect
 status: draft
 generated:
   by: okfit/claude-code
@@ -12,7 +12,7 @@ sources:
     resource: ../../src/steps/peer-check.ts
   - id: package-json
     resource: ../../package.json
-integrity:
+x-okfit-integrity:
   generated:
     body: 27d17f93c7278720
 ---

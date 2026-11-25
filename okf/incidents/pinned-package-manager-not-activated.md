@@ -25,7 +25,7 @@ sources:
     resource: "https://github.com/savvy-web/pnpm-module-template/actions/runs/35272832963/job/105376169449"
   - id: template-pr-198
     resource: "https://github.com/savvy-web/pnpm-module-template/pull/198"
-integrity:
+x-okfit-integrity:
   generated:
     body: 22cd8d5e5614aced
 ---

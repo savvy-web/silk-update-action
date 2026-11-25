@@ -15,7 +15,7 @@ sources:
     resource: ../../src/services/regular-deps.ts
   - id: semver-utils
     resource: ../../src/utils/semver.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: b9edf22e8c37b09b
 ---

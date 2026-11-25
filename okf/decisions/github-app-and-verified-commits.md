@@ -13,7 +13,7 @@ sources:
     resource: ../../src/utils/commit-signoff.ts
   - id: services-branch
     resource: ../../src/services/branch.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 0fe5fba944a9a552
 ---

@@ -2,7 +2,7 @@
 type: Interface
 title: Action outputs
 description: The five action outputs, the every-exit-path guarantee, and the closed, generated JSON Schema for `result`.
-kind: config
+x-okfit-kind: config
 resource: ../../schemas/5.0/output.json
 status: draft
 tags:
@@ -22,7 +22,7 @@ sources:
     resource: ../../lib/scripts/schemastore.config.ts
   - id: hosted
     resource: ../../src/schema/hosted.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: ddf17c7f228b554e
 ---

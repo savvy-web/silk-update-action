@@ -15,7 +15,7 @@ sources:
     resource: ../../__test__/unit/doubles.test.ts
   - id: vitest-config
     resource: ../../vitest.config.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: d81a3b436b340a3c
 ---

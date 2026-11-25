@@ -5,7 +5,7 @@ description: Under npm, config-dependencies is skipped with a warning rather tha
 status: draft
 tags:
   - compat
-bounds: ../decisions/detect-package-manager-once.md
+x-okfit-bounds: ../decisions/detect-package-manager-once.md
 generated:
   by: okfit/claude-code
   at: 2026-09-13T20:05:44Z
@@ -14,7 +14,7 @@ sources:
     resource: ../../src/steps/config-dependencies.ts
   - id: regular-dependencies-step
     resource: ../../src/steps/regular-dependencies.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: a8b0ad003a6651b1
 ---

@@ -3,7 +3,7 @@ type: Decision
 title: A computed dynamic import relies on rolldown keeping it native, with no annotation and no post-build guard
 description: "effected action build bundles with rolldown, which leaves every import() whose specifier is computed at runtime as a native import, so the action's computed imports carry no magic comment, the build declares no nativeDynamicImports list, and no script re-checks dist/main.js for a rewrite."
 status: draft
-supersedes: dynamic-import-stays-local.md
+x-okfit-supersedes: dynamic-import-stays-local.md
 tags:
   - bundle
 generated:
@@ -20,7 +20,7 @@ sources:
     resource: ../../dist/main.js
   - id: effected-bundler
     resource: "npm:@effected/bundler@0.3.0"
-integrity:
+x-okfit-integrity:
   generated:
     body: dfe84cfa7850164b
 ---

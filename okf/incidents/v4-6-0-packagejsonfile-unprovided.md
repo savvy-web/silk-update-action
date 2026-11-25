@@ -22,7 +22,7 @@ sources:
     resource: ../../src/services/runtime-upgrade.ts
   - id: main-ts
     resource: ../../src/main.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: f1abb5faef247d17
 ---

@@ -12,7 +12,7 @@ generated:
 sources:
   - id: package-manager-upgrade
     resource: ../../src/services/package-manager-upgrade.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 94274ba5fb94d9d9
 ---

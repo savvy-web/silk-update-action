@@ -17,7 +17,7 @@ sources:
     resource: ../../pnpm-workspace.yaml
   - id: peer-check-step
     resource: ../../src/steps/peer-check.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 112ba5daa3c48554
 ---

@@ -5,14 +5,14 @@ description: The kit's PackageManagerDetector refuses a yarn root with Unsupport
 status: draft
 tags:
   - compat
-bounds: ../modules/silk-update-action.md
+x-okfit-bounds: ../modules/silk-update-action.md
 generated:
   by: okfit/claude-code
   at: 2026-11-13T19:00:36Z
 sources:
   - id: package-manager-service
     resource: ../../src/services/package-manager.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 9e1a83d79362cd51
 ---

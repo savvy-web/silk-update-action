@@ -14,7 +14,7 @@ sources:
     resource: ../../src/steps/lockfile-snapshot.ts
   - id: lockfile-service
     resource: ../../src/services/lockfile.ts
-integrity:
+x-okfit-integrity:
   generated:
     body: 6bacf63a6ae3f1f3
 ---

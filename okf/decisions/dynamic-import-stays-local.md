@@ -17,7 +17,7 @@ sources:
     resource: "https://github.com/savvy-web/silk-update-action/blob/fcbb6de/lib/scripts/assert-native-dynamic-import.mjs"
   - id: effected-242
     resource: "https://github.com/spencerbeggs/effected/issues/242"
-integrity:
+x-okfit-integrity:
   generated:
     body: 81bb43ebcc4ed257
 ---
