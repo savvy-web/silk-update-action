@@ -8,7 +8,7 @@ tags:
   - architecture
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-25T23:20:30Z
 sources:
   - id: app-test
     resource: ../../__test__/unit/layers/app.test.ts
@@ -16,11 +16,9 @@ sources:
     resource: ../../src/layers/app.ts
   - id: main-entry
     resource: ../../src/main.ts
-  - id: action-run-type
-    resource: ../../node_modules/@effected/github-actions/index.d.ts
 x-okfit-integrity:
   generated:
-    body: 36668c892bff250b
+    body: dd22610b7eb791ab
 ---
 
 # Guard makeAppLayer's requirement channel at compile time, not by convention
@@ -29,7 +27,9 @@ x-okfit-integrity:
 
 `Action.run` is declared as
 `static readonly run: <E, R = never>(program: Effect.Effect<void, E, ActionServices | R>, options?: ActionRunOptions<R>) => Promise<void>`
-(`node_modules/@effected/github-actions/index.d.ts:966`).[^action-run-type]
+in the published declarations of `@effected/github-actions` (unchanged as
+of 0.38.1; the installed copy is under `node_modules/`, which is not
+tracked, so re-read it there rather than trusting this quote).
 Because `options` is optional, `R` infers to whatever the program still
 requires after every explicit layer is applied, and nothing forces a
 caller to supply one for it. `src/main.ts` calls `Action.run(program)`
@@ -167,5 +167,4 @@ nothing at the call site enforces it today.
 [^app-test]: `__test__/unit/layers/app.test.ts`
 [^app-layer]: `src/layers/app.ts`
 [^main-entry]: `src/main.ts`
-[^action-run-type]: `node_modules/@effected/github-actions/index.d.ts:966`
 </content>

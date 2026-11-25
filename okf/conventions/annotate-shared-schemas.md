@@ -2,6 +2,7 @@
 type: Convention
 title: Annotate every schema reused in more than one place with an explicit identifier
 description: A Schema.Struct or Schema.Literals value referenced from two or more places in the result-output schema must carry an explicit `identifier` annotation, or the JSON Schema generator invents a positional name for it.
+status: stable
 stale_after: 2027-03-12T00:00:00Z
 tags:
   - observability

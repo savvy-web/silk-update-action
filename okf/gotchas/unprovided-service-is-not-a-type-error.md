@@ -10,19 +10,17 @@ tags:
 resource: ../../src/layers/app.ts
 generated:
   by: okfit/claude-code
-  at: 2026-09-13T20:05:44Z
+  at: 2026-11-25T23:20:30Z
 sources:
   - id: main-ts
     resource: ../../src/main.ts
   - id: layers-app
     resource: ../../src/layers/app.ts
-  - id: github-actions-dts
-    resource: ../../node_modules/@effected/github-actions/index.d.ts
   - id: layer-guard-test
     resource: ../../__test__/unit/layers/app.test.ts
 x-okfit-integrity:
   generated:
-    body: 983b45249df0026b
+    body: c96d54bbee5d8c09
 ---
 
 # An unprovided service in makeAppLayer is not a type error
@@ -45,7 +43,8 @@ is complete.
 
 `Action.run` is declared `<E, R = never>(program: Effect.Effect<void, E,
 ActionServices | R>, options?: ActionRunOptions<R>) => Promise<void>`, and
-`options` is optional.[^github-actions-dts] Because it is optional, `R` infers
+`options` is optional (the published `@effected/github-actions`
+declarations, unchanged as of 0.38.1). Because it is optional, `R` infers
 to whatever `program` still requires, and nothing forces a caller to supply a
 layer for it. `Action.run(program)` typechecks at *any* leftover `R`
 whatsoever — there is no "you forgot a layer" error at this call site, ever.
@@ -71,9 +70,10 @@ project; nothing about `Action.run`'s own signature enforces it.[^layer-guard-te
 
 ## How to check
 
-- Read `node_modules/@effected/github-actions/index.d.ts` for the `run`
+- Read the installed `@effected/github-actions` declarations (its
+  `index.d.ts` under `node_modules/`, which is not tracked) for the `run`
   signature directly rather than trusting a paraphrase — confirm `options` is
-  still typed optional and `R` still defaults to `never`.[^github-actions-dts]
+  still typed optional and `R` still defaults to `never`.
 - If a new domain layer is added or an existing one gains a new dependency
   resolved in its layer body, confirm it also appears in a `Layer.mergeAll`
   (or equivalent provide) inside `makeAppLayer`, not merely somewhere a layer
@@ -94,5 +94,4 @@ compiler-error message is reproduced there verbatim.
 
 [^main-ts]: `src/main.ts`
 [^layers-app]: `src/layers/app.ts`
-[^github-actions-dts]: `node_modules/@effected/github-actions/index.d.ts`
 [^layer-guard-test]: `__test__/unit/layers/app.test.ts`

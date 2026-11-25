@@ -3,6 +3,7 @@ type: Decision
 title: A first-party computed dynamic import stays local, guarded by a build-time assertion
 description: "Superseded by computed-dynamic-imports: under the rspack-based github-action-builder, the module-catalogs computed import() carried an inline webpackIgnore comment and a post-build script checked dist/main.js for a context-module rewrite; the rolldown build needs neither."
 status: deprecated
+superseded_by: computed-dynamic-imports.md
 tags:
   - bundle
 generated:
@@ -20,6 +21,13 @@ sources:
 x-okfit-integrity:
   generated:
     body: 81bb43ebcc4ed257
+  verified:
+    by: human:spencer
+    at: 2026-11-25T23:15:34Z
+    content: 2651d33b467422b6
+verified:
+  - by: human:spencer
+    at: 2026-11-25T23:15:34Z
 ---
 
 # A first-party computed dynamic import stays local, guarded by a build-time assertion

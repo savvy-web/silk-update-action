@@ -2,6 +2,7 @@
 type: Convention
 title: Code style — extensions, tabs, no barrels, conventional commits
 description: "Relative TS imports carry an explicit .js extension; Node built-ins use the node: protocol; type-only imports use `import type`; formatting is tabs, enforced by Biome; commits are conventional format with DCO signoff and no markdown in the body; no barrel re-exports anywhere."
+status: stable
 stale_after: 2027-03-12T00:00:00Z
 tags:
   - dx
